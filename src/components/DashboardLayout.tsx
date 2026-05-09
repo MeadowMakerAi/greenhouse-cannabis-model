@@ -72,10 +72,12 @@ export default function DashboardLayout() {
 
   return (
     <div className="grid h-screen grid-cols-[360px_1fr] grid-rows-[auto_1fr]">
-      <header className="col-span-2 border-b border-ink-200 bg-white/80 px-5 py-3 shadow-card backdrop-blur">
+      {/* Header sits on a raised plane (e2 + bottom shadow) so the content
+          beneath it reads as the working surface, not a peer. */}
+      <header className="col-span-2 relative z-20 border-b border-ink-200/70 bg-white/90 px-5 py-3 shadow-header backdrop-blur-md">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-leaf-500 to-leaf-700 text-base font-bold text-white shadow-card">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-leaf-400 via-leaf-500 to-leaf-700 text-base font-bold text-white shadow-e2">
               CG
             </div>
             <div>
@@ -90,15 +92,19 @@ export default function DashboardLayout() {
           <ScenarioPresets />
         </div>
       </header>
-      <div className="row-start-2 overflow-hidden border-r border-ink-200 bg-ink-50/40">
+      {/* Sidebar = recessed trough. Slightly cooler bg + inset top shadow
+          so it visibly sits beneath the header plane. */}
+      <div className="row-start-2 relative overflow-hidden border-r border-ink-200/70 bg-ink-100/40">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-3 bg-gradient-to-b from-ink-900/[0.05] to-transparent" />
         <AssumptionPanel />
       </div>
-      <main className="row-start-2 overflow-y-auto p-4">
+      {/* Main content plane — slight off-white so cards lift visibly. */}
+      <main className="row-start-2 overflow-y-auto p-4 surface-page">
         <div className="space-y-4">
           <OutputSummary />
           <InsightsPanel />
           <Warnings />
-          <nav className="flex flex-wrap gap-1.5 rounded-xl border border-ink-200 bg-white p-1.5 shadow-card">
+          <nav className="tab-bar">
             {TABS.map((t) => {
               const isStarred = t.label.startsWith("★");
               const active = tab === t.id;

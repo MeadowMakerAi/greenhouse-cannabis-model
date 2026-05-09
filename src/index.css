@@ -17,10 +17,17 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* Three-layer page background:
+     1. soft leaf radial top-left (warm, brand)
+     2. soft slate radial bottom-right (cool, balance)
+     3. base neutral
+     The vignette darkens corners ~3% so the content plane reads as
+     foreground rather than fading into infinite white. */
   background:
-    radial-gradient(at 0% 0%, rgba(47, 143, 108, 0.06), transparent 50%),
-    radial-gradient(at 100% 100%, rgba(58, 90, 145, 0.05), transparent 50%),
-    #f6f7f9;
+    radial-gradient(at 0% 0%, rgba(47, 143, 108, 0.07), transparent 55%),
+    radial-gradient(at 100% 100%, rgba(58, 90, 145, 0.06), transparent 55%),
+    radial-gradient(ellipse at center, transparent 55%, rgba(13, 17, 23, 0.035) 100%),
+    #f3f5f8;
   color: #0d1117;
   letter-spacing: -0.005em;
 }
@@ -36,21 +43,55 @@ body,
 }
 
 @layer components {
-  /* ---- Card system ---- */
+  /* ---- Card system (elevation = importance) ----
+     e1 panel       — flat utility surfaces, sub-panels inside cards
+     e2 card        — canonical content cards (default .card)
+     e3 hero/KPI    — feature cards (OutputSummary, BuildSheet header)
+     e4 floating    — chatbot, tooltips, popovers
+     recessed       — sub-panel grooves, tab-bar trough, sidebar
+     ---------------------------------------------------------------- */
   .card {
-    @apply rounded-xl border border-ink-200 bg-white shadow-card transition-shadow;
+    @apply relative rounded-xl border border-ink-200/70 bg-white shadow-e2 transition-all duration-150;
   }
   .card:hover {
-    @apply shadow-cardHover;
+    @apply -translate-y-px shadow-e3 border-ink-200;
   }
   .card-flat {
-    @apply rounded-xl border border-ink-200 bg-white;
+    @apply relative rounded-xl border border-ink-200/70 bg-white shadow-e1;
   }
   .card-hero {
-    @apply relative overflow-hidden rounded-xl border border-ink-200 bg-gradient-to-br from-white via-white to-ink-50 shadow-kpi transition-all;
+    @apply relative overflow-hidden rounded-xl border border-ink-200/70 bg-gradient-to-br from-white via-white to-ink-50 shadow-e3 transition-all duration-150;
+  }
+  .card-hero::after {
+    /* Light-from-above sheen — a faint top gloss to simulate the lip of
+       the surface catching the room light. */
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 40%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .card-hero > * {
+    position: relative;
+    z-index: 1;
   }
   .card-hero:hover {
-    @apply -translate-y-px shadow-cardHover;
+    @apply -translate-y-0.5 shadow-e4;
+  }
+  .card-floating {
+    @apply rounded-xl border border-ink-200/60 bg-white shadow-e4;
+  }
+  /* Recessed surface — a depressed sub-panel, used for sidebar plane
+     and tab-bar trough. Slightly cooler than card to read as "behind". */
+  .surface-recessed {
+    @apply rounded-lg bg-ink-100/60 shadow-recessed;
+  }
+  .surface-page {
+    /* The main content area's neutral plane — slightly off-white so cards
+       read as raised against it. */
+    background: linear-gradient(180deg, rgba(13, 17, 23, 0.015) 0%, rgba(13, 17, 23, 0.025) 100%);
   }
   .ring-active {
     @apply ring-2 ring-leaf-500 ring-offset-2;
@@ -68,10 +109,10 @@ body,
       0 8px 24px -12px rgba(13, 17, 23, 0.1);
   }
   .card-header {
-    @apply flex items-center justify-between border-b border-ink-200 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500;
+    @apply flex items-center justify-between border-b border-ink-200/70 bg-gradient-to-b from-white to-ink-50/40 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500;
   }
   .card-header-strong {
-    @apply flex items-center justify-between border-b border-ink-200 px-4 py-3 text-sm font-semibold text-ink-900;
+    @apply flex items-center justify-between border-b border-ink-200/70 bg-gradient-to-b from-white to-ink-50/40 px-4 py-3 text-sm font-semibold text-ink-900;
   }
   .card-body {
     @apply p-4;
@@ -79,41 +120,52 @@ body,
   .card-body-tight {
     @apply px-4 py-3;
   }
+  /* Sub-panel inside a card — reads as "set into" the parent surface. */
+  .subpanel {
+    @apply rounded-lg border border-ink-200/60 bg-ink-50/50 shadow-recessed;
+  }
+  /* Accent stripes sit above the inner top-highlight from shadow-e3 so the
+     stripe reads as the painted edge of the card, not a separate ribbon.
+     Width bumped to 3px so it's legible alongside the new shadow stack. */
   .card-accent-leaf::before {
     content: "";
     position: absolute;
     inset: 0 0 auto 0;
-    height: 2px;
-    background: linear-gradient(90deg, #2f8f6c 0%, #43a47e 100%);
+    height: 3px;
+    background: linear-gradient(90deg, #185640 0%, #2f8f6c 50%, #43a47e 100%);
     border-top-left-radius: 0.75rem;
     border-top-right-radius: 0.75rem;
+    z-index: 2;
   }
   .card-accent-sun::before {
     content: "";
     position: absolute;
     inset: 0 0 auto 0;
-    height: 2px;
-    background: linear-gradient(90deg, #e8b04a 0%, #f1bd5e 100%);
+    height: 3px;
+    background: linear-gradient(90deg, #cf983a 0%, #e8b04a 50%, #f1bd5e 100%);
     border-top-left-radius: 0.75rem;
     border-top-right-radius: 0.75rem;
+    z-index: 2;
   }
   .card-accent-warn::before {
     content: "";
     position: absolute;
     inset: 0 0 auto 0;
-    height: 2px;
-    background: linear-gradient(90deg, #c0573a 0%, #d6694b 100%);
+    height: 3px;
+    background: linear-gradient(90deg, #a3462b 0%, #c0573a 50%, #d6694b 100%);
     border-top-left-radius: 0.75rem;
     border-top-right-radius: 0.75rem;
+    z-index: 2;
   }
   .card-accent-data::before {
     content: "";
     position: absolute;
     inset: 0 0 auto 0;
-    height: 2px;
-    background: linear-gradient(90deg, #3a5a91 0%, #5e7aa8 100%);
+    height: 3px;
+    background: linear-gradient(90deg, #2d4773 0%, #3a5a91 50%, #5e7aa8 100%);
     border-top-left-radius: 0.75rem;
     border-top-right-radius: 0.75rem;
+    z-index: 2;
   }
 
   /* ---- KPI typography ---- */
@@ -187,12 +239,19 @@ body,
     @apply bg-celebrate-400/10 text-celebrate-500;
   }
 
-  /* ---- Tab bar ---- */
+  /* ---- Tab bar ----
+     Container is recessed (sits in a groove). Inactive tabs are flush.
+     Hovered tabs get a faint raised pill. Active tab is dark + e2 shadow,
+     reading as a control floating in the trough. */
+  .tab-bar {
+    @apply flex flex-wrap gap-1.5 rounded-xl bg-ink-100/70 p-1.5 shadow-recessed;
+  }
   .tab-button {
-    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-ink-500 transition-all hover:bg-ink-100 hover:text-ink-900;
+    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-ink-500 transition-all duration-150 hover:bg-white hover:text-ink-900 hover:shadow-e1;
   }
   .tab-button-active {
-    @apply bg-ink-900 text-white shadow-card hover:bg-ink-900 hover:text-white;
+    @apply bg-ink-900 text-white shadow-e2 hover:bg-ink-900 hover:text-white;
+    background-image: linear-gradient(180deg, #2c3744 0%, #1a2230 100%);
   }
   .tab-button-star {
     @apply text-leaf-600;
@@ -200,24 +259,35 @@ body,
 
   /* ---- Buttons ---- */
   .btn {
-    @apply inline-flex items-center justify-center rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-sm font-medium text-ink-700 transition-all hover:bg-ink-50 hover:text-ink-900 focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-1;
+    @apply inline-flex items-center justify-center rounded-lg border border-ink-200/80 bg-gradient-to-b from-white to-ink-50 px-3 py-1.5 text-sm font-medium text-ink-700 shadow-e1 transition-all duration-150 hover:-translate-y-px hover:from-white hover:to-white hover:shadow-e2 hover:text-ink-900 active:translate-y-0 active:shadow-pressed focus:outline-none focus:ring-2 focus:ring-leaf-500/40 focus:ring-offset-1;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-leaf-500 px-3 py-1.5 text-sm font-semibold text-white shadow-card transition-all hover:bg-leaf-600 focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-1;
+    @apply inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white shadow-e2 transition-all duration-150 hover:-translate-y-px hover:shadow-e3 active:translate-y-0 active:shadow-pressed focus:outline-none focus:ring-2 focus:ring-leaf-500/50 focus:ring-offset-1;
+    background-image: linear-gradient(180deg, #43a47e 0%, #2f8f6c 60%, #1f6c50 100%);
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium text-ink-500 transition hover:bg-ink-100 hover:text-ink-900;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center rounded-lg bg-warn-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-warn-600;
+    @apply inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white shadow-e2 transition-all duration-150 hover:-translate-y-px hover:shadow-e3 active:translate-y-0 active:shadow-pressed;
+    background-image: linear-gradient(180deg, #d6694b 0%, #c0573a 60%, #a3462b 100%);
   }
 }
 
 input[type="number"],
 input[type="text"],
 select {
-  @apply w-full rounded-md border border-ink-200 bg-white px-2 py-1 text-sm text-ink-900 shadow-card transition focus:border-leaf-500 focus:outline-none focus:ring-2 focus:ring-leaf-500/20;
+  @apply w-full rounded-md border border-ink-200 bg-white px-2 py-1 text-sm text-ink-900 transition focus:border-leaf-500 focus:outline-none focus:ring-2 focus:ring-leaf-500/25;
+  /* Inputs read as recessed wells, not raised cards. */
+  box-shadow: inset 0 1px 2px rgba(13, 17, 23, 0.04);
   font-variant-numeric: tabular-nums;
+}
+input[type="number"]:focus,
+input[type="text"]:focus,
+select:focus {
+  box-shadow:
+    inset 0 1px 2px rgba(13, 17, 23, 0.04),
+    0 0 0 3px rgba(47, 143, 108, 0.18);
 }
 
 select {

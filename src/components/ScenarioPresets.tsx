@@ -45,22 +45,18 @@ export default function ScenarioPresets() {
   const { setInputs, reset } = useScenario();
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs uppercase tracking-wide text-ink-500">Scenario</span>
+      <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-500">Scenario</span>
       {Object.entries(presets).map(([key, p]) => (
         <button
           key={key}
           type="button"
           onClick={() => setInputs(p.patch)}
-          className="rounded border border-ink-300 bg-white px-2 py-1 text-xs hover:bg-leaf-500/5"
+          className="btn !px-2.5 !py-1 !text-xs"
         >
           {p.label}
         </button>
       ))}
-      <button
-        type="button"
-        onClick={reset}
-        className="rounded border border-ink-300 bg-white px-2 py-1 text-xs hover:bg-warn-500/10"
-      >
+      <button type="button" onClick={reset} className="btn-ghost !text-xs">
         Reset
       </button>
     </div>

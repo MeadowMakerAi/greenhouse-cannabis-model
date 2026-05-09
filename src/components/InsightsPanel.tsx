@@ -94,15 +94,17 @@ export default function InsightsPanel() {
           </span>
         </div>
       </div>
-      <div className="card-body space-y-2">
+      {/* Body uses the recessed sub-panel style so insight rows visually
+          sit *inside* the card rather than tile its surface. */}
+      <div className="card-body bg-ink-100/40 space-y-2 shadow-recessed">
         {insights.map((ins) => {
           const s = STYLE_BY_SEVERITY[ins.severity];
           return (
             <div
               key={ins.id}
-              className={`grid grid-cols-[10px_1fr] items-start gap-3 rounded border ${s.ring} ${s.bg} p-3`}
+              className={`grid grid-cols-[10px_1fr] items-start gap-3 rounded-lg border ${s.ring} ${s.bg} bg-white p-3 shadow-e1`}
             >
-              <span className={`mt-2 h-2 w-2 rounded-full ${s.dot}`} />
+              <span className={`mt-2 h-2 w-2 rounded-full ${s.dot} shadow-e1`} />
               <div>
                 <div className="flex items-baseline justify-between gap-3">
                   <div className="font-semibold text-ink-900">{ins.title}</div>
