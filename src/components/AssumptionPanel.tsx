@@ -1,0 +1,684 @@
+import { useScenario } from "../context/ScenarioContext";
+import { useAllFixtures } from "../context/useAllFixtures";
+import { cropTargets } from "../data/cropTargets";
+import { netCanopyTransmissionPct } from "../models/solarModel";
+import { fmtPct } from "../utils/formatting";
+import { FieldGroup, NumberField, SelectField, ToggleField } from "./Field";
+import CustomFixtureForm from "./CustomFixtureForm";
+import { MONTH_NAMES } from "../utils/formatting";
+
+const monthOptions = MONTH_NAMES.map((m, i) => ({ value: String(i), label: m }));
+
+export default function AssumptionPanel() {
+  const { inputs, setInputs, climate, refreshClimate } = useScenario();
+  const allFixtures = useAllFixtures();
+  const transmission = netCanopyTransmissionPct(inputs.envelope);
+
+  return (
+    <aside className="flex h-full flex-col gap-3 overflow-y-auto bg-ink-900/[0.02] p-3">
+      <div className="card">
+        <div className="card-header">
+          <span>Site</span>
+          <span className="tag tag-warn">{inputs.coordinateStatus}</span>
+        </div>
+        <div className="card-body space-y-2">
+          <p className="text-[11px] leading-snug text-ink-500">
+            Latitude / longitude drive solar geometry, day-length, and sun-angle calculations. They also feed the NASA POWER and Open-Meteo lookups. Override these directly — climate refresh always uses the values shown here.
+          </p>
+          <div className="kv">
+            <span className="kv-label">Address</span>
+            <span className="kv-value text-right">{inputs.siteAddress}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <NumberField
+              label="Latitude"
+              value={inputs.latitude}
+              onChange={(n) => setInputs({ latitude: n })}
+              step={0.0001}
+              unit="°"
+              hint="North positive, south negative. Drives day-length curve."
+            />
+            <NumberField
+              label="Longitude"
+              value={inputs.longitude}
+              onChange={(n) => setInputs({ longitude: n })}
+              step={0.0001}
+              unit="°"
+              hint="West negative. Used only for weather API lookup."
+            />
+            <NumberField
+              label="Elevation"
+              value={inputs.elevationFt}
+              onChange={(n) => setInputs({ elevationFt: n })}
+              unit="ft"
+              hint="Above sea level. Affects atmospheric clarity at margins."
+            />
+            <div>
+              <label className="field-label">Weather anchor</label>
+              <input
+                type="text"
+                value={inputs.weatherStation}
+                onChange={(e) => setInputs({ weatherStation: e.target.value })}
+              />
+              <p className="mt-1 text-[11px] text-ink-500">Label only — climate is fetched from APIs by lat/lon.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className={`tag ${climate.status === "ok" ? "tag-info" : "tag-warn"}`}>
+              {climate.source}
+            </span>
+            <span className="text-[11px] text-ink-500">{climate.message}</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="rounded border border-ink-300 px-2 py-1 text-xs hover:bg-leaf-500/5"
+              onClick={() => refreshClimate("nasa-power")}
+            >
+              NASA POWER
+            </button>
+            <button
+              type="button"
+              className="rounded border border-ink-300 px-2 py-1 text-xs hover:bg-leaf-500/5"
+              onClick={() => refreshClimate("open-meteo")}
+            >
+              Open-Meteo
+            </button>
+            <button
+              type="button"
+              className="rounded border border-ink-300 px-2 py-1 text-xs hover:bg-ink-300/20"
+              onClick={() => refreshClimate("fallback")}
+            >
+              Fallback
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <FieldGroup
+        title="Geometry · exterior dimensions"
+        description={
+          "Primary architectural inputs. LENGTH × WIDTH = floor footprint. " +
+          "EAVE = sidewall height where roof slope starts. PEAK = ridge height. " +
+          "Floor area, envelope area, and volume are auto-derived from these — change a dimension and they recompute. " +
+          "CANOPY is the plant-touching area inside (typically smaller than floor)."
+        }
+      >
+        <NumberField
+          label="Length"
+          value={inputs.greenhouseLengthFt}
+          onChange={(n) => setInputs({ greenhouseLengthFt: n })}
+          unit="ft"
+          hint="Long-axis exterior length (gutter run direction)."
+        />
+        <NumberField
+          label="Width"
+          value={inputs.greenhouseWidthFt}
+          onChange={(n) => setInputs({ greenhouseWidthFt: n })}
+          unit="ft"
+          hint="Short-axis exterior width (eave-to-eave)."
+        />
+        <NumberField
+          label="Eave height"
+          value={inputs.eaveHeightFt}
+          onChange={(n) => setInputs({ eaveHeightFt: n })}
+          unit="ft"
+          hint="Sidewall vertical height before roof slope."
+        />
+        <NumberField
+          label="Peak height"
+          value={inputs.peakHeightFt}
+          onChange={(n) => setInputs({ peakHeightFt: n })}
+          unit="ft"
+          hint="Ridge / peak vertical height."
+        />
+        <NumberField
+          label="Canopy area"
+          value={inputs.canopyAreaSqFt}
+          onChange={(n) => setInputs({ canopyAreaSqFt: n })}
+          unit="ft²"
+          hint="Active flowering footprint — what fixtures sit over (typically smaller than floor)."
+        />
+        <div className="rounded-lg border border-ink-200 bg-ink-50 p-2 text-xs">
+          <div className="text-[10px] uppercase tracking-wider text-ink-500">Auto-derived</div>
+          <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono tabular-nums text-ink-900">
+            <span className="text-ink-500">Floor</span>
+            <span className="text-right">{inputs.greenhouseFloorAreaSqFt.toLocaleString()} ft²</span>
+            <span className="text-ink-500">Envelope</span>
+            <span className="text-right">{inputs.greenhouseEnvelopeAreaSqFt.toLocaleString()} ft²</span>
+            <span className="text-ink-500">Volume</span>
+            <span className="text-right">{inputs.greenhouseVolumeCuFt.toLocaleString()} ft³</span>
+          </div>
+        </div>
+      </FieldGroup>
+
+      <FieldGroup
+        title={`Envelope transmission · net ${fmtPct(transmission)}`}
+        description={
+          "Light loss stacks multiplicatively from outdoor to canopy. " +
+          "GLAZING TRANS. is the PAR transmission of the material itself — single poly ~80%, double poly ~70%, glass ~88%. " +
+          "ROOF FACTOR is an additional reduction for roof shape, pitch, and condensation droplet scattering — separate from the glazing material spec. " +
+          "STRUCTURE SHADE LOSS is light blocked by trusses, gutters, mullions (not the glazing). " +
+          "DIRT/AGING and INTERNAL OBSTRUCTION are the soiling and the equipment hanging in the path."
+        }
+      >
+        <NumberField
+          label="Glazing trans."
+          value={inputs.envelope.baseTransmissionPct}
+          onChange={(n) =>
+            setInputs({ envelope: { ...inputs.envelope, baseTransmissionPct: n } })
+          }
+          unit="%"
+          hint="Material-only PAR transmission. Single poly ~80, glass ~88, double poly ~70."
+        />
+        <NumberField
+          label="Roof factor"
+          value={inputs.envelope.roofTransmissionPct}
+          onChange={(n) =>
+            setInputs({ envelope: { ...inputs.envelope, roofTransmissionPct: n } })
+          }
+          unit="%"
+          hint="Geometry & condensation factor on top of glazing material. Typical 88–95%."
+        />
+        <NumberField
+          label="Structure shade loss"
+          value={inputs.envelope.structureShadeLossPct}
+          onChange={(n) =>
+            setInputs({ envelope: { ...inputs.envelope, structureShadeLossPct: n } })
+          }
+          unit="%"
+          hint="Trusses, gutters, mullions blocking sky. Typical 5–10%."
+        />
+        <NumberField
+          label="Dirt/aging loss"
+          value={inputs.envelope.dirtAgingLossPct}
+          onChange={(n) =>
+            setInputs({ envelope: { ...inputs.envelope, dirtAgingLossPct: n } })
+          }
+          unit="%"
+          hint="Soiling & material yellowing. Typical 5–8% for aged glazing."
+        />
+        <NumberField
+          label="Internal obstruction"
+          value={inputs.envelope.internalObstructionLossPct}
+          onChange={(n) =>
+            setInputs({ envelope: { ...inputs.envelope, internalObstructionLossPct: n } })
+          }
+          unit="%"
+          hint="Hangers, pipes, equipment shading canopy. 3–8% typical."
+        />
+        <NumberField
+          label="kWh→PAR DLI factor"
+          value={inputs.solarToPARFactor}
+          onChange={(n) => setInputs({ solarToPARFactor: n })}
+          step={0.05}
+          unit="mol/kWh"
+          hint="Broadband shortwave→PAR conversion. Range 6.8–8.0; 7.35 is the textbook clear-sky value."
+        />
+      </FieldGroup>
+
+      <FieldGroup
+        title="Photoperiod & DLI target"
+        description={
+          "DLI is integrated photons per square meter per day. " +
+          "PHOTOPERIOD is the lights-on duration during flower (cannabis flips at 12h). " +
+          "WINDOW START/END is when overhead lighting actually runs on the clock — used to align supplemental light with the flowering window vs the natural day. " +
+          "BLACKOUT pulls curtains to enforce 12h darkness during long summer days."
+        }
+      >
+        <SelectField
+          label="Crop stage"
+          value={inputs.cropStage}
+          onChange={(v) => setInputs({ cropStage: v })}
+          options={[
+            { value: "veg", label: "Veg" },
+            { value: "earlyFlower", label: "Early flower" },
+            { value: "midFlower", label: "Mid flower" },
+            { value: "lateFlower", label: "Late flower" },
+          ]}
+          hint="Drives VPD targets and humidity-risk thresholds."
+        />
+        <SelectField
+          label="DLI target preset"
+          value={inputs.cropTargetId}
+          onChange={(v) => setInputs({ cropTargetId: v as keyof typeof cropTargets })}
+          options={Object.values(cropTargets).map((t) => ({
+            value: t.id,
+            label: `${t.label} · ${t.targetDLI} DLI`,
+          }))}
+          hint="Sets canopy-level DLI target the model sizes lighting toward."
+        />
+        <NumberField
+          label="Photoperiod"
+          value={inputs.flowerPhotoperiodHours}
+          onChange={(n) => setInputs({ flowerPhotoperiodHours: n })}
+          unit="hr"
+          hint="Lights-on duration. Cannabis flowers at 12h."
+        />
+        <NumberField
+          label="Window start"
+          value={inputs.flowerWindowStartHr}
+          onChange={(n) => setInputs({ flowerWindowStartHr: n })}
+          unit="hr"
+          hint="Clock hour overhead lights turn on. 0–24."
+        />
+        <NumberField
+          label="Window end"
+          value={inputs.flowerWindowEndHr}
+          onChange={(n) => setInputs({ flowerWindowEndHr: n })}
+          unit="hr"
+          hint="Clock hour overhead lights turn off."
+        />
+        <ToggleField
+          label="Blackout"
+          value={inputs.blackoutEnabled}
+          onChange={(b) => setInputs({ blackoutEnabled: b })}
+          hint="Pulldown curtains forcing 12h dark in long-day months."
+        />
+      </FieldGroup>
+
+      <FieldGroup
+        title="Site electrical service"
+        description={
+          "What's actually available at the meter. Cottage Grove farm currently has single-phase 120/240V only — no 277V or 480V three-phase. Fixtures whose drivers require 208V+ cannot run on 120V branches; fixtures that need 277V+ can't run at all on this service without an upgrade. The model flags incompatibilities and computes amperage and circuit count at the available voltages."
+        }
+      >
+        <NumberField
+          label="Primary voltage"
+          value={inputs.serviceVoltagePrimary}
+          onChange={(n) => setInputs({ serviceVoltagePrimary: n })}
+          unit="V"
+          hint="Higher available voltage. 240 typical for residential / small ag service."
+        />
+        <NumberField
+          label="Secondary voltage"
+          value={inputs.serviceVoltageSecondary}
+          onChange={(n) => setInputs({ serviceVoltageSecondary: n })}
+          unit="V"
+          hint="Lower available voltage. 120 for single-phase residential service."
+        />
+        <NumberField
+          label="Branch circuit"
+          value={inputs.branchCircuitAmps}
+          onChange={(n) => setInputs({ branchCircuitAmps: n })}
+          unit="A"
+          hint="Per-circuit breaker rating. 20A typical general, 30A typical dedicated 240V."
+        />
+        <NumberField
+          label="Power factor"
+          value={inputs.servicePowerFactor}
+          onChange={(n) => setInputs({ servicePowerFactor: n })}
+          step={0.01}
+          unit="0–1"
+          hint="LED drivers 0.93–0.98, HPS magnetic 0.85–0.92. Used in I = P / (V·PF)."
+        />
+      </FieldGroup>
+
+      <FieldGroup
+        title="Overhead lighting"
+        description={
+          "Pick from generic presets, named-vendor reference fixtures, or custom fixtures you've added. " +
+          "PPE is fixture efficacy in µmol photons per joule of input electricity — higher = more light per dollar of electricity. " +
+          "Watts/fixture comes from the unit-level driver spec; the model derives total fixture count from required photon flux."
+        }
+      >
+        <SelectField
+          label="Fixture"
+          value={inputs.fixtureId}
+          onChange={(v) => setInputs({ fixtureId: v })}
+          options={Object.values(allFixtures).map((f) => {
+            const tag =
+              f.source === "vendor-verified"
+                ? " ✓ verified"
+                : f.source === "custom"
+                  ? " (custom)"
+                  : "";
+            return {
+              value: f.id,
+              label: `${f.label} · ${f.ppe} µmol/J${tag}`,
+            };
+          })}
+          hint="Preset (generic), vendor-verified (live datasheet), or custom-entered."
+        />
+        <NumberField
+          label="Electricity rate"
+          value={inputs.electricityRatePerKwh}
+          onChange={(n) => setInputs({ electricityRatePerKwh: n })}
+          step={0.01}
+          unit="$/kWh"
+          hint="All-in delivered rate including demand charges, if known."
+        />
+      </FieldGroup>
+
+      <CustomFixtureForm />
+
+      <FieldGroup
+        title="Under-canopy lighting"
+        description={
+          "Real photon flux delivered to lower bud sites and side branches. " +
+          "PPFD here is the intensity at the lit lower-canopy zone (typical 100–200 µmol/m²/s). " +
+          "COVERAGE is the fraction of canopy footprint the under-canopy bars actually illuminate. " +
+          "Under-canopy adds whole-plant photon delivery — but does NOT reduce overhead PPFD requirements at the apex."
+        }
+      >
+        <ToggleField
+          label="Enabled"
+          value={inputs.underCanopyEnabled}
+          onChange={(b) => setInputs({ underCanopyEnabled: b })}
+        />
+        <NumberField
+          label="UC PPFD"
+          value={inputs.underCanopyPPFD}
+          onChange={(n) => setInputs({ underCanopyPPFD: n })}
+          unit="µmol/m²/s"
+          hint="Intensity at lower-canopy zone. 100–200 typical."
+        />
+        <NumberField
+          label="Coverage"
+          value={inputs.underCanopyCoveragePct}
+          onChange={(n) => setInputs({ underCanopyCoveragePct: n })}
+          unit="%"
+          hint="Fraction of canopy footprint actually lit by UC bars."
+        />
+        <NumberField
+          label="UC PPE"
+          value={inputs.underCanopyPPE}
+          onChange={(n) => setInputs({ underCanopyPPE: n })}
+          step={0.05}
+          unit="µmol/J"
+          hint="Under-canopy fixture efficacy. Modern bars 2.4–2.8."
+        />
+        <NumberField
+          label="UC photoperiod"
+          value={inputs.underCanopyPhotoperiodHours}
+          onChange={(n) => setInputs({ underCanopyPhotoperiodHours: n })}
+          unit="hr"
+          hint="Hours UC bars run during flower window."
+        />
+        <NumberField
+          label="Heat to canopy"
+          value={inputs.underCanopyHeatFractionToCanopyZone}
+          onChange={(n) => setInputs({ underCanopyHeatFractionToCanopyZone: n })}
+          step={0.05}
+          unit="0–1"
+          hint="Fraction of UC waste heat that lands in the plant zone."
+        />
+      </FieldGroup>
+
+      <FieldGroup
+        title="CO₂ enrichment"
+        description={
+          "CO₂ shifts the operating envelope — it does not magically raise yield. " +
+          "Higher SETPOINT supports higher DLI without diminishing returns, but only if VENTILATION is low enough that you're not blowing the gas out of the building. " +
+          "CONTROL MODE is the operator's intent; the model uses ventilation mode to decide if CO₂ is feasible right now."
+        }
+      >
+        <ToggleField
+          label="Enabled"
+          value={inputs.co2Enabled}
+          onChange={(b) => setInputs({ co2Enabled: b })}
+        />
+        <NumberField
+          label="Setpoint"
+          value={inputs.co2SetpointPpm}
+          onChange={(n) => setInputs({ co2SetpointPpm: n })}
+          unit="ppm"
+          hint="Ambient ~420. Enriched 900–1200. Aggressive 1200–1500."
+        />
+        <SelectField
+          label="Control mode"
+          value={inputs.co2ControlMode}
+          onChange={(v) => setInputs({ co2ControlMode: v })}
+          options={[
+            { value: "ambient", label: "Ambient" },
+            { value: "enriched", label: "Enriched" },
+            { value: "sealed_or_semi_sealed", label: "Sealed / semi-sealed" },
+          ]}
+          hint="Operator strategy. Sealed = mechanical climate, no ventilation."
+        />
+        <SelectField
+          label="Ventilation"
+          value={inputs.ventilationMode}
+          onChange={(v) => setInputs({ ventilationMode: v })}
+          options={[
+            { value: "open_vented", label: "Open vented" },
+            { value: "moderate", label: "Moderate" },
+            { value: "low", label: "Low" },
+            { value: "semi_sealed", label: "Semi-sealed" },
+            { value: "sealed", label: "Sealed" },
+          ]}
+          hint="Actual airflow regime. Open ventilation defeats CO₂ enrichment."
+        />
+      </FieldGroup>
+
+      <FieldGroup
+        title="Shade cloth / curtain"
+        description={
+          "Shade is a control system, not just light loss. " +
+          "TRANSMISSION is the fraction of incoming light that passes through — 70% means 30% shade cloth. " +
+          "DEPLOY MODE controls when it's actually pulled: SEASONAL = fixed months, TEMP/RADIATION TRIGGER = closed only when needed. " +
+          "Shade reduces both solar heat gain and natural DLI, so the model shows the cooling vs supplemental-light tradeoff."
+        }
+      >
+        <ToggleField
+          label="Enabled"
+          value={inputs.shadeEnabled}
+          onChange={(b) => setInputs({ shadeEnabled: b })}
+        />
+        <NumberField
+          label="Transmission"
+          value={inputs.shadeTransmissionPct}
+          onChange={(n) => setInputs({ shadeTransmissionPct: n })}
+          unit="%"
+          hint="70 = 30% shade cloth. 50 = 50% shade. Lower = more shading."
+        />
+        <SelectField
+          label="Deploy mode"
+          value={inputs.shadeDeployMode}
+          onChange={(v) => setInputs({ shadeDeployMode: v })}
+          options={[
+            { value: "manual", label: "Manual" },
+            { value: "seasonal", label: "Seasonal months" },
+            { value: "temperature_trigger", label: "Temp trigger" },
+            { value: "radiation_trigger", label: "Radiation trigger" },
+          ]}
+          hint="When the shade is actually pulled."
+        />
+        <SelectField
+          label="Start month"
+          value={String(inputs.shadeStartMonth)}
+          onChange={(v) => setInputs({ shadeStartMonth: parseInt(v, 10) })}
+          options={monthOptions}
+          hint="Used in seasonal mode."
+        />
+        <SelectField
+          label="End month"
+          value={String(inputs.shadeEndMonth)}
+          onChange={(v) => setInputs({ shadeEndMonth: parseInt(v, 10) })}
+          options={monthOptions}
+          hint="Used in seasonal mode."
+        />
+      </FieldGroup>
+
+      <FieldGroup
+        title="Cultivation phase & cycles"
+        description={
+          "Driving the crop-steering, pathogen, and yield models. Phase determines target VPD/temp/RH bands and pathogen vulnerability. Cycles per year sets annual yield aggregation (greenhouse 2–3 typical, indoor 4–5)."
+        }
+      >
+        <SelectField
+          label="Cultivation phase"
+          value={inputs.cultivationPhase}
+          onChange={(v) => setInputs({ cultivationPhase: v })}
+          options={[
+            { value: "vegetative", label: "Vegetative" },
+            { value: "earlyFlower", label: "Early flower" },
+            { value: "midFlower", label: "Mid flower" },
+            { value: "lateFlower", label: "Late flower" },
+          ]}
+          hint="Mid-flower default for cannabis sizing math"
+        />
+        <NumberField
+          label="Cycles / year"
+          value={inputs.cyclesPerYear}
+          onChange={(n) => setInputs({ cyclesPerYear: n })}
+          step={0.5}
+          unit="cycles"
+          hint="Greenhouse 2–3, indoor sealed 4–5"
+        />
+      </FieldGroup>
+
+      <FieldGroup
+        title="Heating & cooling"
+        description={
+          "RADIANT HEAT covers winter night setpoints. EVAP COOLING is wet-bulb-limited — when outdoor dew point is high it stops working. " +
+          "INDOOR TARGET is the dry-bulb you're sizing cooling toward. " +
+          "ENVELOPE U-VALUE is heat loss per ft² of skin per °F delta — single poly ~1.1, double poly ~0.7, single glass ~1.0. " +
+          "THERMAL SCREEN is a deployable energy curtain that cuts overnight heat loss by 30–50% in northern climates (Wageningen)."
+        }
+      >
+        <ToggleField
+          label="Radiant heat"
+          value={inputs.radiantHeatingEnabled}
+          onChange={(b) => setInputs({ radiantHeatingEnabled: b })}
+        />
+        <NumberField
+          label="Radiant capacity"
+          value={inputs.radiantHeatingCapacityBTUhr}
+          onChange={(n) => setInputs({ radiantHeatingCapacityBTUhr: n })}
+          unit="BTU/hr"
+          hint="Installed boiler / hot-water heating output capacity."
+        />
+        <ToggleField
+          label="Evap cooling"
+          value={inputs.evapCoolingEnabled}
+          onChange={(b) => setInputs({ evapCoolingEnabled: b })}
+        />
+        <NumberField
+          label="Evap efficiency"
+          value={inputs.evapEfficiencyPct}
+          onChange={(n) => setInputs({ evapEfficiencyPct: n })}
+          unit="%"
+          hint="Pad media efficiency. New pads 75–80, aged 60–70."
+        />
+        <NumberField
+          label="Indoor target temp"
+          value={inputs.indoorTargetDryBulbF}
+          onChange={(n) => setInputs({ indoorTargetDryBulbF: n })}
+          unit="°F"
+          hint="Day setpoint. Cannabis flower 75–82°F typical."
+        />
+        <NumberField
+          label="Envelope U-value"
+          value={inputs.envelopeUValueBTUhrFtF}
+          onChange={(n) => setInputs({ envelopeUValueBTUhrFtF: n })}
+          step={0.05}
+          unit="BTU/hr·ft²·°F"
+          hint="Single poly 1.1, double poly 0.7, single glass 1.0."
+        />
+        <NumberField
+          label="Equipment heat"
+          value={inputs.equipmentKW}
+          onChange={(n) => setInputs({ equipmentKW: n })}
+          step={0.1}
+          unit="kW"
+          hint="Pumps, fans, dehumidifiers, controllers — non-lighting electrical."
+        />
+        <NumberField
+          label="Night setpoint"
+          value={inputs.targetNightTempF}
+          onChange={(n) => setInputs({ targetNightTempF: n })}
+          unit="°F"
+          hint="Generative phase wants 65–68°F nights for 5–8°F day/night swing"
+        />
+        <NumberField
+          label="Leaf temp offset"
+          value={inputs.leafTempOffsetC}
+          onChange={(n) => setInputs({ leafTempOffsetC: n })}
+          step={0.5}
+          unit="°C"
+          hint="Leaf temp vs air. Negative = leaves cooler (typical −1 to −3°C with transpiration)."
+        />
+        <ToggleField
+          label="Thermal screen"
+          value={inputs.thermalScreenEnabled}
+          onChange={(b) => setInputs({ thermalScreenEnabled: b })}
+          hint="Energy curtain deployed at night; cuts envelope U by ~40%"
+        />
+        <NumberField
+          label="Screen night U"
+          value={inputs.thermalScreenNightUValue}
+          onChange={(n) => setInputs({ thermalScreenNightUValue: n })}
+          step={0.05}
+          unit="BTU/hr·ft²·°F"
+          hint="Effective U with screen closed. 0.55–0.70 typical."
+        />
+        <ToggleField
+          label="Heat pump (integrated)"
+          value={inputs.useIntegratedHeatPump}
+          onChange={(b) => setInputs({ useIntegratedHeatPump: b })}
+          hint="Hot-gas reheat DX, combined cooling+dehum COP 3–4"
+        />
+        <NumberField
+          label="HP combined COP"
+          value={inputs.heatPumpCombinedCOP}
+          onChange={(n) => setInputs({ heatPumpCombinedCOP: n })}
+          step={0.1}
+          unit="COP"
+          hint="Cooling+dehum COP. Mid-tier 3.0, premium 4.0"
+        />
+      </FieldGroup>
+
+      <FieldGroup
+        title="Dehumidification"
+        description={
+          "Cannabis flower sets a target RH around 50–60%. The model estimates how much water you have to remove daily and how much electricity that takes. " +
+          "TRANSP. RATE is the canopy water release into greenhouse air. " +
+          "DEHUM. EFF. is fixture pints removed per kWh — basic units 4–5, condensing/desiccant 7–12+."
+        }
+      >
+        <ToggleField
+          label="Enabled"
+          value={inputs.dehumidificationEnabled}
+          onChange={(b) => setInputs({ dehumidificationEnabled: b })}
+        />
+        <NumberField
+          label="Transp. rate"
+          value={inputs.plantTranspirationGalPerDayPer1000SqFt}
+          onChange={(n) => setInputs({ plantTranspirationGalPerDayPer1000SqFt: n })}
+          unit="gal/day/1000ft²"
+          hint="Canopy water released to air. Mid-flower 30–50 gal/day/1000ft²."
+        />
+        <NumberField
+          label="Irrigation rate"
+          value={inputs.irrigationRateGalDay}
+          onChange={(n) => setInputs({ irrigationRateGalDay: n })}
+          unit="gal/day"
+          hint="Total irrigation delivered, before runoff."
+        />
+        <NumberField
+          label="Runoff %"
+          value={inputs.runoffPct}
+          onChange={(n) => setInputs({ runoffPct: n })}
+          unit="%"
+          hint="Fraction of irrigation that drains; small portion evaporates from media."
+        />
+        <NumberField
+          label="Dehum. eff."
+          value={inputs.dehumidifierEfficiencyPintsPerKwh}
+          onChange={(n) => setInputs({ dehumidifierEfficiencyPintsPerKwh: n })}
+          step={0.5}
+          unit="pints/kWh"
+          hint="Basic units 4–5, mid-tier 6–8, premium condensing 10–12+."
+        />
+        <NumberField
+          label="Vent moisture removal"
+          value={inputs.ventilationMoistureRemovalGalDay}
+          onChange={(n) => setInputs({ ventilationMoistureRemovalGalDay: n })}
+          unit="gal/day"
+          hint="Water carried out by ventilation. Drops by ~75% under CO₂ enrichment."
+        />
+      </FieldGroup>
+    </aside>
+  );
+}

@@ -1,0 +1,265 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  color-scheme: light;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background:
+    radial-gradient(at 0% 0%, rgba(47, 143, 108, 0.06), transparent 50%),
+    radial-gradient(at 100% 100%, rgba(58, 90, 145, 0.05), transparent 50%),
+    #f6f7f9;
+  color: #0d1117;
+  letter-spacing: -0.005em;
+}
+
+@layer base {
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+  /* Default tabular numerics for any number that lives in a fixed column */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* ---- Card system ---- */
+  .card {
+    @apply rounded-xl border border-ink-200 bg-white shadow-card transition-shadow;
+  }
+  .card:hover {
+    @apply shadow-cardHover;
+  }
+  .card-flat {
+    @apply rounded-xl border border-ink-200 bg-white;
+  }
+  .card-hero {
+    @apply relative overflow-hidden rounded-xl border border-ink-200 bg-gradient-to-br from-white via-white to-ink-50 shadow-kpi transition-all;
+  }
+  .card-hero:hover {
+    @apply -translate-y-px shadow-cardHover;
+  }
+  .ring-active {
+    @apply ring-2 ring-leaf-500 ring-offset-2;
+  }
+  .glow-leaf {
+    box-shadow:
+      0 0 0 1px rgba(47, 143, 108, 0.25),
+      0 0 24px -6px rgba(47, 143, 108, 0.35),
+      0 8px 24px -12px rgba(13, 17, 23, 0.1);
+  }
+  .glow-warn {
+    box-shadow:
+      0 0 0 1px rgba(192, 87, 58, 0.25),
+      0 0 24px -6px rgba(192, 87, 58, 0.3),
+      0 8px 24px -12px rgba(13, 17, 23, 0.1);
+  }
+  .card-header {
+    @apply flex items-center justify-between border-b border-ink-200 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500;
+  }
+  .card-header-strong {
+    @apply flex items-center justify-between border-b border-ink-200 px-4 py-3 text-sm font-semibold text-ink-900;
+  }
+  .card-body {
+    @apply p-4;
+  }
+  .card-body-tight {
+    @apply px-4 py-3;
+  }
+  .card-accent-leaf::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    background: linear-gradient(90deg, #2f8f6c 0%, #43a47e 100%);
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+  }
+  .card-accent-sun::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    background: linear-gradient(90deg, #e8b04a 0%, #f1bd5e 100%);
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+  }
+  .card-accent-warn::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    background: linear-gradient(90deg, #c0573a 0%, #d6694b 100%);
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+  }
+  .card-accent-data::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    background: linear-gradient(90deg, #3a5a91 0%, #5e7aa8 100%);
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+  }
+
+  /* ---- KPI typography ---- */
+  .kpi-label {
+    @apply text-[10px] font-medium uppercase tracking-[0.08em] text-ink-500;
+  }
+  .kpi-number {
+    @apply font-mono text-3xl font-semibold tracking-tightest text-ink-900;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-number-sm {
+    @apply font-mono text-xl font-semibold tracking-tight text-ink-900;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-number-xl {
+    @apply font-mono text-4xl font-bold tracking-tightest text-ink-900;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .kpi-number-gradient-leaf {
+    background: linear-gradient(135deg, #185640 0%, #2f8f6c 60%, #43a47e 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .kpi-number-gradient-data {
+    background: linear-gradient(135deg, #2d4773 0%, #3a5a91 60%, #5e7aa8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .kpi-unit {
+    @apply ml-1 text-xs font-normal text-ink-500;
+  }
+  .kpi-context {
+    @apply mt-1 text-[11px] leading-snug text-ink-500;
+  }
+
+  /* ---- Key/value rows ---- */
+  .kv {
+    @apply flex items-baseline justify-between gap-3 py-1 text-sm;
+  }
+  .kv-label {
+    @apply text-ink-500;
+  }
+  .kv-value {
+    @apply font-mono text-ink-900;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Tags / chips ---- */
+  .tag {
+    @apply inline-block rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider;
+  }
+  .tag-warn {
+    @apply bg-warn-50 text-warn-600;
+  }
+  .tag-info {
+    @apply bg-leaf-50 text-leaf-700;
+  }
+  .tag-data {
+    @apply bg-accent-400/10 text-accent-600;
+  }
+  .tag-sun {
+    @apply bg-sun-50 text-sun-600;
+  }
+  .tag-muted {
+    @apply bg-ink-100 text-ink-700;
+  }
+  .tag-celebrate {
+    @apply bg-celebrate-400/10 text-celebrate-500;
+  }
+
+  /* ---- Tab bar ---- */
+  .tab-button {
+    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-ink-500 transition-all hover:bg-ink-100 hover:text-ink-900;
+  }
+  .tab-button-active {
+    @apply bg-ink-900 text-white shadow-card hover:bg-ink-900 hover:text-white;
+  }
+  .tab-button-star {
+    @apply text-leaf-600;
+  }
+
+  /* ---- Buttons ---- */
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-sm font-medium text-ink-700 transition-all hover:bg-ink-50 hover:text-ink-900 focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-1;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-leaf-500 px-3 py-1.5 text-sm font-semibold text-white shadow-card transition-all hover:bg-leaf-600 focus:outline-none focus:ring-2 focus:ring-leaf-500 focus:ring-offset-1;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium text-ink-500 transition hover:bg-ink-100 hover:text-ink-900;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center rounded-lg bg-warn-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-warn-600;
+  }
+}
+
+input[type="number"],
+input[type="text"],
+select {
+  @apply w-full rounded-md border border-ink-200 bg-white px-2 py-1 text-sm text-ink-900 shadow-card transition focus:border-leaf-500 focus:outline-none focus:ring-2 focus:ring-leaf-500/20;
+  font-variant-numeric: tabular-nums;
+}
+
+select {
+  @apply cursor-pointer;
+}
+
+input[type="range"] {
+  @apply h-1 cursor-pointer appearance-none bg-ink-200;
+  border-radius: 999px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #2f8f6c;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(13, 17, 23, 0.2);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #2f8f6c;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(13, 17, 23, 0.2);
+  cursor: pointer;
+}
+
+label.field-label {
+  @apply block text-[10px] font-medium uppercase tracking-wider text-ink-500;
+}
+
+/* Recharts polish */
+.recharts-default-tooltip {
+  @apply rounded-lg border border-ink-200 bg-white/95 px-3 py-2 text-xs shadow-card backdrop-blur-sm;
+}
+.recharts-tooltip-label {
+  @apply mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-500;
+}
+.recharts-cartesian-axis-tick-value {
+  font-variant-numeric: tabular-nums;
+}
