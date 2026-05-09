@@ -25,6 +25,41 @@ export interface FixtureSpec {
   notes?: string;
   verifiedAt?: string;
   verifiedSource?: string;
+  /**
+   * Approximate visual color temperature in Kelvin. Drives the 3D scene's
+   * emissive color and light-footprint tint so HPS glows amber, LED glows
+   * white-warm, and aggressive blue-heavy spectra read cooler. Optional
+   * because most datasheets quote spectral PFD curves, not a single CCT.
+   * If absent, getFixtureKelvin() falls back to a per-type default.
+   */
+  kelvin?: number;
+  /**
+   * Visual form factor for the 3D fixture mesh. "bulb" = HPS-style horizontal
+   * tube in a reflector hood. "bar" = the open bar grid most horticultural
+   * LEDs ship in (Fluence SPYDR, Gavita 1700e). "panel" = a compact rigid
+   * rectangle (Gavita RS V2-style). Optional; getFixtureFormFactor() falls
+   * back to "bulb" for HPS, "bar" for LED.
+   */
+  formFactor?: "bulb" | "bar" | "panel";
+}
+
+/**
+ * Resolve a fixture's color temperature for visual rendering. HPS sodium arc
+ * peaks around 2100K (warm amber-orange). Cannabis-grade LEDs typically run
+ * 3200-3800K phosphor-converted; default to 3500K when the spec is silent.
+ */
+export function getFixtureKelvin(spec: FixtureSpec): number {
+  if (typeof spec.kelvin === "number") return spec.kelvin;
+  return spec.type === "HPS" ? 2100 : 3500;
+}
+
+/**
+ * Resolve a fixture's visual form factor. HPS → bulb. LED → bar by default
+ * (matches the dominant horticultural form factor: open spider/bar grids).
+ */
+export function getFixtureFormFactor(spec: FixtureSpec): "bulb" | "bar" | "panel" {
+  if (spec.formFactor) return spec.formFactor;
+  return spec.type === "HPS" ? "bulb" : "bar";
 }
 
 export interface FixtureSizingInput {

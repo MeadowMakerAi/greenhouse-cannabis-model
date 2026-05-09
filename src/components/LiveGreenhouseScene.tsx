@@ -2,9 +2,14 @@ import { useState } from "react";
 import Greenhouse3D from "./Greenhouse3D";
 import Greenhouse3DHud from "./Greenhouse3DHud";
 import { useScenario } from "../context/ScenarioContext";
+import { useDerived } from "../context/useDerived";
 import { useLiveDynamics } from "../context/useLiveDynamics";
 import { useSimulation } from "../context/SimulationContext";
 import { dayOfYearToMonth } from "../models/simulationModel";
+import {
+  getFixtureFormFactor,
+  getFixtureKelvin,
+} from "../models/fixtureModel";
 import { fmt1 } from "../utils/formatting";
 
 function formatHour(h: number) {
@@ -39,8 +44,16 @@ export default function LiveGreenhouseScene({
   syncToSim = true,
 }: LiveGreenhouseSceneProps) {
   const { inputs } = useScenario();
+  const derived = useDerived();
   const live = useLiveDynamics();
   const sim = useSimulation();
+
+  // Active fixture identity drives the 3D scene's lamp geometry, emissive
+  // color, and footprint tint. Resolved here so the scene reacts whenever
+  // the user picks a different fixture in the assumption panel.
+  const activeFixture = derived.fixture;
+  const fixtureFormFactor = getFixtureFormFactor(activeFixture);
+  const fixtureKelvin = getFixtureKelvin(activeFixture);
 
   const [month, setMonth] = useState(5);
   const [ridgeAzimuth, setRidgeAzimuth] = useState(0);
@@ -249,6 +262,11 @@ export default function LiveGreenhouseScene({
                 : 0
               : 1
           }
+          fixtureFormFactor={fixtureFormFactor}
+          fixtureKelvin={fixtureKelvin}
+          fixtureWatts={activeFixture.wattsPerFixture}
+          fixtureType={activeFixture.type}
+          fixtureLabel={activeFixture.label}
           plantGrowth={syncToSim ? live.snapshot.plant : undefined}
         />
         {syncToSim && <Greenhouse3DHud ridgeAzimuthDeg={ridgeAzimuth} />}

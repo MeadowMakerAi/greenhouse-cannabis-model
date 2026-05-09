@@ -50,6 +50,17 @@ interface Props {
   atmosphereTone?: "day" | "golden" | "twilight" | "night";
   /** Phase-aware plant growth geometry from the sim clock (overrides static height) */
   plantGrowth?: PlantGrowthGeom;
+  /** Visual form factor for the lamp mesh. "bulb" = HPS reflector hood + tube;
+   *  "bar" = open bar grid (most LEDs); "panel" = solid rigid rectangle. */
+  fixtureFormFactor?: "bulb" | "bar" | "panel";
+  /** Color temperature in Kelvin. Drives emissive color and footprint tint. */
+  fixtureKelvin?: number;
+  /** Per-fixture wattage. Scales emissive intensity (more watts → brighter glow). */
+  fixtureWatts?: number;
+  /** Fixture type — used for any HPS-specific accent (e.g. visible bulb glow). */
+  fixtureType?: "LED" | "HPS";
+  /** Human-readable fixture name — currently informational only. */
+  fixtureLabel?: string;
 }
 
 // 1 ft = 1 unit in scene; canvas camera distance scales accordingly.
@@ -517,19 +528,26 @@ function Truss({
   );
 }
 
-function FixtureMesh({
+/** Bar-grid LED form factor (Fluence SPYDR, Gavita 1700e/RS 1900e, generic LED).
+ *  Open driver box on top, multiple emitting bars on bottom. */
+function FixtureMeshBar({
   length,
   width,
-  dimLevel = 1,
+  dimLevel,
+  emissiveColor,
+  emissiveIntensity,
+  surfaceColor,
 }: {
   length: number;
   width: number;
-  dimLevel?: number;
+  dimLevel: number;
+  emissiveColor: string;
+  emissiveIntensity: number;
+  surfaceColor: string;
 }) {
   const bars = Math.max(2, Math.round(length / 1.0));
   const barWidth = (length / bars) * 0.85;
   const barOffset = length / bars;
-  const emissive = 1.8 * Math.max(0, Math.min(1, dimLevel));
   return (
     <group>
       <mesh position={[0, 0.12, 0]}>
@@ -554,15 +572,189 @@ function FixtureMesh({
           <mesh key={i} position={[x, -0.045, 0]}>
             <boxGeometry args={[barWidth, 0.02, width * 0.78]} />
             <meshStandardMaterial
-              color={dimLevel > 0 ? "#fff4d6" : "#3a3a3a"}
-              emissive={dimLevel > 0 ? "#ffe6a0" : "#000000"}
-              emissiveIntensity={emissive}
+              color={dimLevel > 0 ? surfaceColor : "#3a3a3a"}
+              emissive={dimLevel > 0 ? emissiveColor : "#000000"}
+              emissiveIntensity={emissiveIntensity}
               roughness={0.2}
             />
           </mesh>
         );
       })}
     </group>
+  );
+}
+
+/** Compact rigid panel form factor (Gavita RS 2400e V2, square broad-spectrum
+ *  panels). One contiguous emitting face on the bottom — no bar gaps. */
+function FixtureMeshPanel({
+  length,
+  width,
+  dimLevel,
+  emissiveColor,
+  emissiveIntensity,
+  surfaceColor,
+}: {
+  length: number;
+  width: number;
+  dimLevel: number;
+  emissiveColor: string;
+  emissiveIntensity: number;
+  surfaceColor: string;
+}) {
+  return (
+    <group>
+      {/* Heatsink top */}
+      <mesh position={[0, 0.18, 0]}>
+        <boxGeometry args={[length * 0.92, 0.16, width * 0.9]} />
+        <meshStandardMaterial color="#2a2f36" metalness={0.75} roughness={0.45} />
+      </mesh>
+      {/* Driver mount block */}
+      <mesh position={[0, 0.32, 0]}>
+        <boxGeometry args={[length * 0.45, 0.12, width * 0.55]} />
+        <meshStandardMaterial color="#1a1d22" metalness={0.6} roughness={0.5} />
+      </mesh>
+      {/* Diffuser body (slight chamfer reads via two stacked boxes) */}
+      <mesh position={[0, 0.04, 0]}>
+        <boxGeometry args={[length * 0.95, 0.08, width * 0.95]} />
+        <meshStandardMaterial color="#15181c" metalness={0.5} roughness={0.6} />
+      </mesh>
+      {/* Single emitting face */}
+      <mesh position={[0, -0.02, 0]}>
+        <boxGeometry args={[length * 0.92, 0.03, width * 0.9]} />
+        <meshStandardMaterial
+          color={dimLevel > 0 ? surfaceColor : "#3a3a3a"}
+          emissive={dimLevel > 0 ? emissiveColor : "#000000"}
+          emissiveIntensity={emissiveIntensity * 1.1}
+          roughness={0.18}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/** HPS reflector hood + horizontal arc-tube. Reflector is broad and
+ *  slightly tilted so the inner mirror surface catches the camera; the
+ *  bulb is a small bright capsule that glows even when "off" (residual
+ *  heat) is suppressed via dimLevel. */
+function FixtureMeshBulb({
+  length,
+  width,
+  dimLevel,
+  emissiveColor,
+  emissiveIntensity,
+}: {
+  length: number;
+  width: number;
+  dimLevel: number;
+  emissiveColor: string;
+  emissiveIntensity: number;
+}) {
+  const reflectorLen = length * 1.05;
+  const reflectorWid = width * 1.7;
+  return (
+    <group>
+      {/* Reflector outer shell — wide aluminum hood */}
+      <mesh position={[0, 0.18, 0]} rotation={[Math.PI, 0, 0]}>
+        <boxGeometry args={[reflectorLen, 0.22, reflectorWid]} />
+        <meshStandardMaterial color="#2a2f36" metalness={0.85} roughness={0.35} />
+      </mesh>
+      {/* Reflector inner mirror — bright when lights on (catches bulb glow) */}
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[reflectorLen * 0.95, reflectorWid * 0.92]} />
+        <meshStandardMaterial
+          color={dimLevel > 0 ? "#f5e8c8" : "#9ea0a6"}
+          metalness={0.95}
+          roughness={0.15}
+          side={THREE.DoubleSide}
+          emissive={dimLevel > 0 ? emissiveColor : "#000000"}
+          emissiveIntensity={emissiveIntensity * 0.45}
+        />
+      </mesh>
+      {/* Socket end caps */}
+      <mesh position={[length / 2 + 0.12, 0.0, 0]}>
+        <boxGeometry args={[0.25, 0.18, 0.4]} />
+        <meshStandardMaterial color="#1a1d22" metalness={0.6} roughness={0.5} />
+      </mesh>
+      <mesh position={[-length / 2 - 0.12, 0.0, 0]}>
+        <boxGeometry args={[0.25, 0.18, 0.4]} />
+        <meshStandardMaterial color="#1a1d22" metalness={0.6} roughness={0.5} />
+      </mesh>
+      {/* Arc-tube — horizontal capsule, the actual point of light */}
+      <mesh position={[0, -0.05, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.08, 0.08, length * 0.7, 12]} />
+        <meshStandardMaterial
+          color={dimLevel > 0 ? "#fff4dc" : "#5b6573"}
+          emissive={dimLevel > 0 ? emissiveColor : "#000000"}
+          emissiveIntensity={emissiveIntensity * 1.6}
+          roughness={0.1}
+        />
+      </mesh>
+      {/* Soft glow halo around the tube — only when lit */}
+      {dimLevel > 0.05 && (
+        <mesh position={[0, -0.05, 0]}>
+          <sphereGeometry args={[Math.max(length * 0.45, 0.6), 12, 8]} />
+          <meshBasicMaterial
+            color={emissiveColor}
+            transparent
+            opacity={0.18 * dimLevel}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function FixtureMesh({
+  length,
+  width,
+  dimLevel = 1,
+  formFactor,
+  emissiveColor,
+  emissiveIntensity,
+  surfaceColor,
+}: {
+  length: number;
+  width: number;
+  dimLevel?: number;
+  formFactor: "bulb" | "bar" | "panel";
+  emissiveColor: string;
+  emissiveIntensity: number;
+  surfaceColor: string;
+}) {
+  const dl = Math.max(0, Math.min(1, dimLevel));
+  if (formFactor === "bulb") {
+    return (
+      <FixtureMeshBulb
+        length={length}
+        width={width}
+        dimLevel={dl}
+        emissiveColor={emissiveColor}
+        emissiveIntensity={emissiveIntensity}
+      />
+    );
+  }
+  if (formFactor === "panel") {
+    return (
+      <FixtureMeshPanel
+        length={length}
+        width={width}
+        dimLevel={dl}
+        emissiveColor={emissiveColor}
+        emissiveIntensity={emissiveIntensity}
+        surfaceColor={surfaceColor}
+      />
+    );
+  }
+  return (
+    <FixtureMeshBar
+      length={length}
+      width={width}
+      dimLevel={dl}
+      emissiveColor={emissiveColor}
+      emissiveIntensity={emissiveIntensity}
+      surfaceColor={surfaceColor}
+    />
   );
 }
 
@@ -574,6 +766,10 @@ function Fixtures({
   ridgeHeight,
   cableLengthFt = 1.5,
   dimLevel = 1,
+  formFactor,
+  emissiveColor,
+  emissiveIntensity,
+  surfaceColor,
 }: {
   positions: { x: number; z: number }[];
   fixtureLength?: number;
@@ -583,6 +779,10 @@ function Fixtures({
   /** Length of hanger cable in ft. Real fixtures hang on 1-2 ft chains/cables, not all the way to ridge. */
   cableLengthFt?: number;
   dimLevel?: number;
+  formFactor: "bulb" | "bar" | "panel";
+  emissiveColor: string;
+  emissiveIntensity: number;
+  surfaceColor: string;
 }) {
   // Per-fixture cable-to-rafter geometry. Cables are short hangers attaching
   // the fixture to the truss/rafter above — NOT continuous all the way to the
@@ -612,7 +812,15 @@ function Fixtures({
     <group>
       {positions.map((p, i) => (
         <group key={i} position={[p.x, hangHeight, p.z]}>
-          <FixtureMesh length={fixtureLength} width={fixtureWidth} dimLevel={dimLevel} />
+          <FixtureMesh
+            length={fixtureLength}
+            width={fixtureWidth}
+            dimLevel={dimLevel}
+            formFactor={formFactor}
+            emissiveColor={emissiveColor}
+            emissiveIntensity={emissiveIntensity}
+            surfaceColor={surfaceColor}
+          />
           <lineSegments>
             <primitive object={cableGeom} attach="geometry" />
             <lineBasicMaterial color="#9aa39c" />
@@ -659,17 +867,19 @@ function buildFrustumGeometry(
 function LightFootprint({
   position,
   geometry,
+  color,
   opacity = 0.13,
 }: {
   position: [number, number, number];
   geometry: THREE.BufferGeometry;
+  color: string;
   opacity?: number;
 }) {
   return (
     <mesh position={position}>
       <primitive object={geometry} attach="geometry" />
       <meshBasicMaterial
-        color="#ffe6a0"
+        color={color}
         transparent
         opacity={opacity}
         side={THREE.DoubleSide}
@@ -686,6 +896,9 @@ function LightFootprints({
   footprintLength,
   footprintWidth,
   dimLevel = 1,
+  color,
+  formFactor,
+  intensityScale = 1,
 }: {
   positions: { x: number; z: number }[];
   fixtureZ: number;
@@ -693,19 +906,34 @@ function LightFootprints({
   footprintLength: number;
   footprintWidth: number;
   dimLevel?: number;
+  color: string;
+  formFactor: "bulb" | "bar" | "panel";
+  /** Multiplier on opacity, e.g. driven by fixture wattage. */
+  intensityScale?: number;
 }) {
+  // HPS reflector hood throws a wider, softer footprint than a directional LED
+  // bar — bias the spread by form factor so the visual matches the physics.
+  const spreadFactor =
+    formFactor === "bulb" ? 1.18 : formFactor === "panel" ? 0.95 : 1.0;
+  // The cone's apex (fixture-side rectangle) is bigger for bulb (broad
+  // reflector) and smaller for panel (narrower diffuser face).
+  const apexFactor =
+    formFactor === "bulb" ? 0.55 : formFactor === "panel" ? 0.32 : 0.4;
   const geometry = useMemo(
     () =>
       buildFrustumGeometry(
-        footprintLength * 0.4,
-        footprintWidth * 0.4,
-        footprintLength,
-        footprintWidth,
+        footprintLength * apexFactor,
+        footprintWidth * apexFactor,
+        footprintLength * spreadFactor,
+        footprintWidth * spreadFactor,
         fixtureZ - canopyZ,
       ),
-    [footprintLength, footprintWidth, fixtureZ, canopyZ],
+    [footprintLength, footprintWidth, fixtureZ, canopyZ, spreadFactor, apexFactor],
   );
   if (dimLevel <= 0.001) return null;
+  // HPS reads as much warmer + slightly more visible glow at the same dim
+  // level — so bias the base opacity for bulb form factor.
+  const baseOpacity = formFactor === "bulb" ? 0.18 : 0.13;
   return (
     <group>
       {positions.map((p, i) => (
@@ -713,7 +941,8 @@ function LightFootprints({
           key={i}
           position={[p.x, fixtureZ, p.z]}
           geometry={geometry}
-          opacity={0.13 * dimLevel}
+          color={color}
+          opacity={baseOpacity * dimLevel * intensityScale}
         />
       ))}
     </group>
@@ -1177,6 +1406,10 @@ export default function Greenhouse3D({
   greenhouseLengthFt,
   greenhouseWidthFt,
   plantGrowth,
+  fixtureFormFactor = "bar",
+  fixtureKelvin = 3500,
+  fixtureWatts = 720,
+  fixtureType = "LED",
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
@@ -1233,9 +1466,37 @@ export default function Greenhouse3D({
   const footprintWidth = rowSpacing * 0.95;
 
   void glazingPct;
+  void fixtureType;
 
   // Plant height grows with canopy spacing — more headroom = taller training
   const plantHeight = Math.min(5, Math.max(3, Math.min(rowSpacing, colSpacing) * 0.45));
+
+  // ---- Fixture-driven visuals --------------------------------------------
+  // Translate the fixture's color temperature into an RGB hex string for
+  // emissive material + light footprint. HPS lands around #ffaf60 (amber);
+  // typical horticultural LED lands around #fff0d0 - #ffe6a8 (warm white).
+  const emissiveRGB = kelvinToRGB(fixtureKelvin);
+  const emissiveColor = rgbToHex(emissiveRGB);
+  // Cooler surface tint for the lamp face — same hue, more white. We mix
+  // 65% pure white with the emissive color so even amber HPS reads as a
+  // hot bright surface, not a flat orange paint chip.
+  const surfaceColor = rgbToHex({
+    r: Math.round(emissiveRGB.r * 0.35 + 255 * 0.65),
+    g: Math.round(emissiveRGB.g * 0.35 + 255 * 0.65),
+    b: Math.round(emissiveRGB.b * 0.35 + 255 * 0.65),
+  });
+  // Wattage drives apparent intensity. Reference 720W LED ≈ 1.0; 1055W HPS
+  // pushes brighter; small <500W panels look softer. Clamped so a custom
+  // 4000W spec doesn't melt the bloom pass.
+  const wattRatio = Math.min(1.6, Math.max(0.55, fixtureWatts / 720));
+  const baseEmissive = fixtureFormFactor === "bulb" ? 2.6 : 1.8;
+  const emissiveIntensity = baseEmissive * wattRatio * lightsDimLevel;
+  // Per-form-factor lamp dimensions. HPS reflectors are wide+shallow;
+  // panels are nearly square; bars are long+thin.
+  const fixtureMeshLength =
+    fixtureFormFactor === "panel" ? 3.2 : fixtureFormFactor === "bulb" ? 3.0 : 4.0;
+  const fixtureMeshWidth =
+    fixtureFormFactor === "panel" ? 2.6 : fixtureFormFactor === "bulb" ? 2.2 : 1.4;
 
   return (
     <div className="overflow-hidden rounded border border-ink-300/40 bg-ink-900/[0.02]" style={{ height: 760 }}>
@@ -1314,9 +1575,15 @@ export default function Greenhouse3D({
 
             <Fixtures
               positions={fixtures}
+              fixtureLength={fixtureMeshLength}
+              fixtureWidth={fixtureMeshWidth}
               hangHeight={fixtureZ + 0.5}
               ridgeHeight={peakHeightFt + 0.5}
               dimLevel={lightsDimLevel}
+              formFactor={fixtureFormFactor}
+              emissiveColor={emissiveColor}
+              emissiveIntensity={emissiveIntensity}
+              surfaceColor={surfaceColor}
             />
 
             <LightFootprints
@@ -1326,6 +1593,9 @@ export default function Greenhouse3D({
               footprintLength={footprintLength}
               footprintWidth={footprintWidth}
               dimLevel={lightsDimLevel}
+              color={emissiveColor}
+              formFactor={fixtureFormFactor}
+              intensityScale={wattRatio}
             />
           </group>
 
