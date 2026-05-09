@@ -135,59 +135,82 @@ export function useLiveDynamics() {
       const lightingBTUhr = lights.on
         ? kWToBTUhr(derived.peakInstalledKW * lights.dimLevel)
         : 0;
-      const ventOpen = ventStateAt({
-        indoorTempF: prevIndoor,
-        ventOpenSetpointF: inputs.indoorTargetDryBulbF + 2,
-        ventCloseSetpointF: inputs.indoorTargetDryBulbF - 1,
-        currentlyOpen: prevVent,
-      });
-      // Natural ventilation: ASAE EP406.4 stack-effect formula. Approximate
-      // ridge vent area as 4 ft along-slope × 88% of length × 38° opening
-      // projection × 2 leaves; sidewall area conservatively equal to ridge
-      // (typical commercial config: continuous ridge + continuous sidewall).
-      const ridgeOpeningAreaSqFt = ventOpen
-        ? 2 * 4 * inputs.greenhouseLengthFt * 0.88 * Math.sin((38 * Math.PI) / 180)
-        : 0;
-      const sidewallOpeningAreaSqFt = ventOpen ? ridgeOpeningAreaSqFt : 0;
-      const ventEffectiveArea = effectiveVentAreaSqFt(
-        ridgeOpeningAreaSqFt,
-        sidewallOpeningAreaSqFt,
-      );
+      /* Stack-effect ridge-vent area is large (paired N+S leaves × full
+       * ridge length), and CFM ∝ √ΔT — small at small ΔT, large at large
+       * ΔT. With a single 15-min Euler step + ~200 kW lighting heat input
+       * the system is numerically unstable: the temperature overshoots the
+       * equilibrium by 100°F+ in one step and oscillates outward, producing
+       * 1e+31°F after a few iterations.
+       *
+       * Fix: substep the 15-min outer step into 1-min inner steps so the
+       * vent feedback acts gradually. Vent state, vent CFM, heating, and
+       * cooling are recomputed every substep against the latest temp. */
+      const dt = 0.25; // 15-min outer step
+      const subSteps = 15;
+      const subDt = dt / subSteps;
       const stackHeightFt = Math.max(
         0.5,
         inputs.peakHeightFt - inputs.eaveHeightFt / 2,
       );
-      const ventCFM = naturalVentilationCFM({
-        effectiveOpenAreaSqFt: ventEffectiveArea,
-        stackHeightFt,
-        indoorTempF: prevIndoor,
-        outdoorTempF: diurnal.outdoorTempF,
-      });
-      const heatingBTUhr =
-        inputs.radiantHeatingEnabled &&
-        prevIndoor < inputs.indoorTargetDryBulbF - 2
-          ? inputs.radiantHeatingCapacityBTUhr * 0.7
+      const peakRidgeArea =
+        2 * 4 * inputs.greenhouseLengthFt * 0.88 * Math.sin((38 * Math.PI) / 180);
+      const envelopeUValueNow =
+        inputs.thermalScreenEnabled && (hourOfDay < 6 || hourOfDay > 19)
+          ? inputs.thermalScreenNightUValue
+          : inputs.envelopeUValueBTUhrFtF;
+      const peakCoolingCapBTUhr = Math.max(
+        ...derived.months.map((m) => m.totalCoolingBTUhr),
+      );
+
+      let T = prevIndoor;
+      let vent = prevVent;
+      for (let s = 0; s < subSteps; s++) {
+        vent = ventStateAt({
+          indoorTempF: T,
+          ventOpenSetpointF: inputs.indoorTargetDryBulbF + 2,
+          ventCloseSetpointF: inputs.indoorTargetDryBulbF - 1,
+          currentlyOpen: vent,
+        });
+        const A_eff = vent
+          ? effectiveVentAreaSqFt(peakRidgeArea, peakRidgeArea)
           : 0;
-      const coolingBTUhr =
-        prevIndoor > inputs.indoorTargetDryBulbF + 2 && !ventOpen
-          ? Math.max(...derived.months.map((m) => m.totalCoolingBTUhr)) * 0.5
-          : 0;
-      const dt = 0.25; // 15-min step
-      const indoorTempF = indoorTempStep({
-        outdoorTempF: diurnal.outdoorTempF,
-        prevIndoorTempF: prevIndoor,
-        lightingBTUhr,
-        heatingBTUhr,
-        coolingBTUhr,
-        envelopeAreaSqFt: inputs.greenhouseEnvelopeAreaSqFt,
-        envelopeUValue:
-          inputs.thermalScreenEnabled && (hourOfDay < 6 || hourOfDay > 19)
-            ? inputs.thermalScreenNightUValue
-            : inputs.envelopeUValueBTUhrFtF,
-        ventilationCFM: ventCFM,
-        volumeCuFt: inputs.greenhouseVolumeCuFt,
-        dtHours: dt,
-      });
+        const ventCFMSub = naturalVentilationCFM({
+          effectiveOpenAreaSqFt: A_eff,
+          stackHeightFt,
+          indoorTempF: T,
+          outdoorTempF: diurnal.outdoorTempF,
+        });
+        const heatingSub =
+          inputs.radiantHeatingEnabled && T < inputs.indoorTargetDryBulbF - 2
+            ? inputs.radiantHeatingCapacityBTUhr * 0.7
+            : 0;
+        const coolingSub =
+          T > inputs.indoorTargetDryBulbF + 2 && !vent
+            ? peakCoolingCapBTUhr * 0.5
+            : 0;
+        T = indoorTempStep({
+          outdoorTempF: diurnal.outdoorTempF,
+          prevIndoorTempF: T,
+          lightingBTUhr,
+          heatingBTUhr: heatingSub,
+          coolingBTUhr: coolingSub,
+          envelopeAreaSqFt: inputs.greenhouseEnvelopeAreaSqFt,
+          envelopeUValue: envelopeUValueNow,
+          ventilationCFM: ventCFMSub,
+          volumeCuFt: inputs.greenhouseVolumeCuFt,
+          dtHours: subDt,
+        });
+        // Physical clamp: a real greenhouse can't exit −20 °F to 140 °F.
+        // If the integrator still trips on extreme inputs, this stops the
+        // numerical blowup from poisoning downstream VPD/RH calcs.
+        if (!Number.isFinite(T)) {
+          T = inputs.indoorTargetDryBulbF;
+          break;
+        }
+        T = Math.max(-20, Math.min(140, T));
+      }
+      const ventOpen = vent;
+      const indoorTempF = T;
       return {
         sun,
         outdoor: diurnal,
@@ -235,6 +258,13 @@ export function useLiveDynamics() {
       prev.indoorTempF,
       prev.ventOpen === 1,
     );
+    // Hard guard: even with the substepped solver, sustained numerical
+    // pathology in user inputs (e.g., volume = 0, U-value 0) could produce
+    // non-finite indoor temp. Substitute the setpoint so HUD never renders
+    // 1e+31 °F as it did before this fix.
+    if (!Number.isFinite(fullSnap.indoorTempF)) {
+      fullSnap.indoorTempF = inputs.indoorTargetDryBulbF;
+    }
 
     // Indoor RH model — proper psychrometric coupling.
     //
@@ -271,16 +301,24 @@ export function useLiveDynamics() {
       Math.min(90, Math.min(ambientIndoorRH, targetRH * 1.05)),
     );
 
-    const indoorVPD = vpdFromTempRH(
+    const indoorVPDRaw = vpdFromTempRH(
       fullSnap.indoorTempF,
       indoorRH,
       inputs.leafTempOffsetC,
     );
-    const outdoorVPD = vpdFromTempRH(
+    const outdoorVPDRaw = vpdFromTempRH(
       fullSnap.outdoor.outdoorTempF,
       fullSnap.outdoor.outdoorRH,
       0, // outdoor: no leaf offset, just air-air VPD as reference
     );
+    // Physical clamp on VPD: cannabis canopy VPD never exceeds ~6 kPa, even
+    // in extreme dry/hot conditions. Anything above is a numerical artifact.
+    const indoorVPD = Number.isFinite(indoorVPDRaw)
+      ? Math.max(0, Math.min(6, indoorVPDRaw))
+      : 0;
+    const outdoorVPD = Number.isFinite(outdoorVPDRaw)
+      ? Math.max(0, Math.min(6, outdoorVPDRaw))
+      : 0;
 
     // ---- Plant growth state ----
     // Use the average DLI achieved so far across the cycle so far
