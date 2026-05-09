@@ -29,43 +29,59 @@ The screen recording is the single most-shared piece. Use macOS built-in Screen 
 | Wed | Show HN: "I built a peer-reviewed cannabis greenhouse model with Claude" | Different audience (technical), different motivation (curiosity) |
 | Thu | X thread (5-7 tweets, image-heavy) | Catches the people who don't read LinkedIn |
 | Fri | DMs: 5 cannabis ops contacts + 3 MIT professors + 2 greenhouse vendors (Stuppy, Nexus, GreenTek) | Personal asks > broadcast |
-| Weekend | Reply to every comment, especially from tagged institutions. The replies are where the connections form. |
+| Weekend | Reply to every comment | Replies are where the connections actually form, especially from tagged institutions |
 
 The comment-with-tags pattern is the real trick. LinkedIn down-ranks posts with > 3-4 mentions in the OP. You get the same exposure with no penalty by tagging in a follow-up comment, and the comment notification is what pulls the alumni in.
 
-## LinkedIn primary post (template — edit voice to match yours)
+## On bundling with the MIT agentic AI certificate
 
-> 9 days ago I started a side project: model my company's greenhouse so we could decide what to actually build. Cannabis cultivation is full of vendor pseudo-science and back-of-envelope claims. I wanted decision-support I'd actually trust.
+This is a strong combination if structured right. The risk is dilution: most cert announcements read as student content and most "I built a thing" posts read as ego. Bundled correctly, the two reinforce — the cert is the proof you have the skills, the artifact is the proof you can apply them in production. That sequence beats either post alone.
+
+**Rules for the combo:**
+
+1. **Lead with the artifact, not the cert.** First image and first line are the model. The cert appears in slide 2 of the carousel and in a single line of the body ("I just finished [MIT course]"), not in the headline.
+2. **Frame the cert as the catalyst, not the credential.** "I took [MIT course] and immediately put it to work on a real operations problem" reads way better than "I'm proud to have completed..."
+3. **Tag the professors in the follow-up comment**, not the OP. Same algorithm reasoning as institution tags. Their teaching is the connection — the model is the thank-you.
+4. **One unified post**, not two. Don't drop the cert today and the model next week — you'll burn the algorithm boost twice for less reach. One post, one moment, double the proof.
+
+## LinkedIn primary post — bundled version (recommended)
+
+**Carousel order (5 images):** (1) Live 3D scene mid-day with vents open, (2) MIT certificate, (3) Plant growth time-lapse strip clone → late flower, (4) HUD overlay close-up showing the science labels, (5) Bibliography page from CITATIONS.md.
+
+> Two weeks ago I started a side project. Today I'm releasing it free, MIT license, no signup.
 >
-> Today I'm open-sourcing it. Built solo with Claude as a paired-coding agent. ~9,000 lines of TypeScript, 128 passing unit tests, every coefficient traceable to a peer-reviewed source.
+> It's a cannabis greenhouse decision-support model — 3D live simulation, yield projection, HVAC sizing, ventilation physics, plant growth on a 24-hour clock. Built solo with Claude Opus as a paired-coding agent. ~9,000 lines of TypeScript. 128 passing tests. Every coefficient traceable to a peer-reviewed source.
 >
-> What it does:
-> → 3D live-simulation greenhouse on a 24-hour clock with sun position, plant growth, atrium ridge vents, light schedule, and HVAC
-> → Yield projection from Rodriguez-Morrison 2021 (Guelph) DLI response
+> I just finished MIT's [course name — e.g., Applied Generative AI / xPRO Designing AI Products] program (cert in slide 2) and put the agentic-AI workflow straight to work on a real operations problem at my cannabis brand. The course taught me how to think about agents, tool-use loops, and frontier-model coordination. The model is what those skills look like applied in production.
+>
+> What's in the model:
+> → Yield curve from Rodriguez-Morrison 2021 (Guelph)
 > → Photosynthesis Topt from Chandra 2008 (Mississippi)
-> → Stack-effect natural ventilation from ASAE EP406.4 / ASHRAE
-> → Greenhouse climate energy balance from Bot 1983 (Wageningen)
+> → Stack-effect ventilation from ASAE EP406.4 / ASHRAE
+> → Greenhouse climate energy balance from Bot 1983 (Wageningen / KASPRO lineage)
 > → Vapor-pressure / wet-bulb from Tetens & Stull 2011 (UBC)
-> → Atmospheric scattering for the live sky from Hosek-Wilkie 2012 (Charles University)
+> → Atmospheric sky scattering from Hosek-Wilkie 2012 (Charles University)
+> → Pathogen pressure thresholds from Penn State + UMass + Punja (SFU)
 > → Climate data live from NASA POWER + Open-Meteo + NOAA NWS
-> → Pathogen pressure thresholds from Penn State + UMass extension + Punja (SFU)
 >
-> Free. MIT license. No signup. No backend. Click the link, type a scenario, watch the model live.
+> The premise: most cannabis cultivation tooling is vendor pseudo-science. I wanted decision-support I'd actually trust. Now any operator can fork it, plug in their facility, and get the same answers — for free, in a browser, no install.
 >
 > [DEMO LINK]
 > [GITHUB LINK]
 >
-> Built with Anthropic Claude Opus 4.7. The model itself is decision-support — every output is screening-level and shouldn't replace a sealed CFD run before a real capex decision. But it's a tour through what one person + a frontier coding agent can actually ship in two weeks.
+> Outputs are screening-level — they don't replace a sealed CFD run before a real capex commit. But two weeks + a frontier coding agent can now ship what was a $30-50K consulting deliverable a year ago. That's the part of this I think matters most.
 >
-> If you're in cannabis ops, controlled-environment ag, or just curious how AI-paired engineering looks in 2026 — clone it, break it, send a PR.
+> If you're in cultivation, controlled-environment ag, AI engineering, or cannabis ops — clone it, break it, send a PR.
 
-**First comment (post 30 minutes after the OP):**
+**First comment (post 30 minutes after the OP, when engagement velocity peaks):**
 
 > Tagging the institutions whose research is built into this — every coefficient and equation traces back to your published work. Bibliography in the repo at /CITATIONS.md.
 >
-> @University of Guelph @University of Mississippi @Wageningen University & Research @ASABE @ASHRAE @UMass Amherst @Penn State Extension @Simon Fraser University @University of British Columbia @Charles University Prague @NASA @NOAA @MIT
+> @University of Guelph @University of Mississippi @Wageningen University & Research @ASABE @ASHRAE @UMass Amherst @Penn State Extension @Simon Fraser University @University of British Columbia @Charles University Prague @NASA @NOAA
 >
-> Special thank you to my MIT professors who taught me the AI fundamentals I used to actually paired-code this thing into existence — @[professor 1] @[professor 2] @[professor 3]. The skills you taught are what made working with a frontier model on a real engineering problem feel natural.
+> And a real thank-you to my MIT professors who taught me the foundations of how to actually work with frontier AI agents — not just prompt them, but design tool-use loops, evaluate outputs, and coordinate them on real problems. @[professor 1] @[professor 2] @[professor 3]. The skills you taught are the difference between AI as a toy and AI as a serious engineering partner. This model is the proof those skills compound.
+>
+> @MIT @MIT Sloan / @MIT Schwarzman College of Computing [whichever applies]
 
 ## The principles behind the play (so you can adapt)
 
