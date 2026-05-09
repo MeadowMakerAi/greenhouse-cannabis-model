@@ -51,7 +51,7 @@ body,
      recessed       — sub-panel grooves, tab-bar trough, sidebar
      ---------------------------------------------------------------- */
   .card {
-    @apply relative rounded-xl border border-ink-200/70 bg-white shadow-e2 transition-all duration-150;
+    @apply relative rounded-xl border border-ink-200/70 bg-white shadow-e2 transition duration-150;
   }
   .card:hover {
     @apply -translate-y-px shadow-e3 border-ink-200;
@@ -60,7 +60,7 @@ body,
     @apply relative rounded-xl border border-ink-200/70 bg-white shadow-e1;
   }
   .card-hero {
-    @apply relative overflow-hidden rounded-xl border border-ink-200/70 bg-gradient-to-br from-white via-white to-ink-50 shadow-e3 transition-all duration-150;
+    @apply relative overflow-hidden rounded-xl border border-ink-200/70 bg-gradient-to-br from-white via-white to-ink-50 shadow-e3 transition duration-150;
   }
   .card-hero::after {
     /* Light-from-above sheen — a faint top gloss to simulate the lip of
@@ -73,20 +73,15 @@ body,
     pointer-events: none;
     z-index: 0;
   }
-  .card-hero > * {
+  /* Scope this lift to .card-body only — narrower than `> *` so we don't
+     accidentally re-stack any future absolutely-positioned descendant
+     (badges, popovers, sticky labels) above the sheen ::after. */
+  .card-hero > .card-body {
     position: relative;
     z-index: 1;
   }
   .card-hero:hover {
     @apply -translate-y-0.5 shadow-e4;
-  }
-  .card-floating {
-    @apply rounded-xl border border-ink-200/60 bg-white shadow-e4;
-  }
-  /* Recessed surface — a depressed sub-panel, used for sidebar plane
-     and tab-bar trough. Slightly cooler than card to read as "behind". */
-  .surface-recessed {
-    @apply rounded-lg bg-ink-100/60 shadow-recessed;
   }
   .surface-page {
     /* The main content area's neutral plane — slightly off-white so cards
@@ -119,10 +114,6 @@ body,
   }
   .card-body-tight {
     @apply px-4 py-3;
-  }
-  /* Sub-panel inside a card — reads as "set into" the parent surface. */
-  .subpanel {
-    @apply rounded-lg border border-ink-200/60 bg-ink-50/50 shadow-recessed;
   }
   /* Accent stripes sit above the inner top-highlight from shadow-e3 so the
      stripe reads as the painted edge of the card, not a separate ribbon.
@@ -247,7 +238,7 @@ body,
     @apply flex flex-wrap gap-1.5 rounded-xl bg-ink-100/70 p-1.5 shadow-recessed;
   }
   .tab-button {
-    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-ink-500 transition-all duration-150 hover:bg-white hover:text-ink-900 hover:shadow-e1;
+    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-ink-500 transition duration-150 hover:bg-white hover:text-ink-900 hover:shadow-e1 active:shadow-pressed active:bg-ink-100;
   }
   .tab-button-active {
     @apply bg-ink-900 text-white shadow-e2 hover:bg-ink-900 hover:text-white;
@@ -259,25 +250,68 @@ body,
 
   /* ---- Buttons ---- */
   .btn {
-    @apply inline-flex items-center justify-center rounded-lg border border-ink-200/80 bg-gradient-to-b from-white to-ink-50 px-3 py-1.5 text-sm font-medium text-ink-700 shadow-e1 transition-all duration-150 hover:-translate-y-px hover:from-white hover:to-white hover:shadow-e2 hover:text-ink-900 active:translate-y-0 active:shadow-pressed focus:outline-none focus:ring-2 focus:ring-leaf-500/40 focus:ring-offset-1;
+    @apply inline-flex items-center justify-center rounded-lg border border-ink-200/80 bg-gradient-to-b from-white to-ink-50 px-3 py-1.5 text-sm font-medium text-ink-700 shadow-e1 transition duration-150 hover:-translate-y-px hover:from-white hover:to-white hover:shadow-e2 hover:text-ink-900 active:translate-y-0 active:shadow-pressed disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-e1 focus:outline-none focus:ring-2 focus:ring-leaf-500/60 focus:ring-offset-1;
   }
+  /* Primary/danger gradients use the *darker* mid+bottom stops only —
+     white-on-leaf-400 (#43a47e) measures 3.07:1, which fails WCAG AA for
+     14px/semibold body text. leaf-500 → leaf-700 keeps the depth read but
+     keeps every visible stop above 4.5:1. */
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white shadow-e2 transition-all duration-150 hover:-translate-y-px hover:shadow-e3 active:translate-y-0 active:shadow-pressed focus:outline-none focus:ring-2 focus:ring-leaf-500/50 focus:ring-offset-1;
-    background-image: linear-gradient(180deg, #43a47e 0%, #2f8f6c 60%, #1f6c50 100%);
+    @apply inline-flex items-center justify-center rounded-lg bg-leaf-600 px-3 py-1.5 text-sm font-semibold text-white shadow-e2 transition duration-150 hover:-translate-y-px hover:shadow-e3 active:translate-y-0 active:shadow-pressed disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-e2 focus:outline-none focus:ring-2 focus:ring-leaf-500/80 focus:ring-offset-1;
+    background-image: linear-gradient(180deg, #2f8f6c 0%, #1f6c50 60%, #185640 100%);
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium text-ink-500 transition hover:bg-ink-100 hover:text-ink-900;
+    @apply inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium text-ink-500 transition hover:bg-ink-100 hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white shadow-e2 transition-all duration-150 hover:-translate-y-px hover:shadow-e3 active:translate-y-0 active:shadow-pressed;
-    background-image: linear-gradient(180deg, #d6694b 0%, #c0573a 60%, #a3462b 100%);
+    @apply inline-flex items-center justify-center rounded-lg bg-warn-600 px-3 py-1.5 text-sm font-semibold text-white shadow-e2 transition duration-150 hover:-translate-y-px hover:shadow-e3 active:translate-y-0 active:shadow-pressed disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-e2;
+    background-image: linear-gradient(180deg, #c0573a 0%, #a3462b 100%);
+  }
+}
+
+/* Respect users who have asked the OS to reduce motion (Mac System
+   Settings → Accessibility → Reduce motion, Windows Animation Effects off).
+   The depth system uses translate-y micro-lifts on cards and buttons —
+   those become motion that some vestibular-sensitive users can't tolerate.
+   Shadows still swap, color states still transition; only the spatial
+   movement is cancelled. */
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card-hero,
+  .btn,
+  .btn-primary,
+  .btn-danger,
+  .tab-button {
+    transition-duration: 0.001ms !important;
+  }
+  .card:hover,
+  .card-hero:hover,
+  .btn:hover,
+  .btn-primary:hover,
+  .btn-danger:hover {
+    transform: none !important;
+  }
+}
+
+/* Users with prefers-contrast: more (Mac System Settings → Accessibility →
+   Display → Increase contrast, Windows High Contrast mode) need stronger
+   borders. Default border alpha is 70% for the soft "lift" feel; under
+   high-contrast we restore the full ink-200 stop so the card edge meets
+   WCAG 1.4.11 against any underlying surface. */
+@media (prefers-contrast: more) {
+  .card,
+  .card-flat,
+  .card-hero,
+  .card-header,
+  .card-header-strong {
+    border-color: theme('colors.ink.300') !important;
   }
 }
 
 input[type="number"],
 input[type="text"],
 select {
-  @apply w-full rounded-md border border-ink-200 bg-white px-2 py-1 text-sm text-ink-900 transition focus:border-leaf-500 focus:outline-none focus:ring-2 focus:ring-leaf-500/25;
+  @apply w-full rounded-md border border-ink-200 bg-white px-2 py-1 text-sm text-ink-900 transition focus:border-leaf-500 focus:outline-none focus:ring-2 focus:ring-leaf-500/50;
   /* Inputs read as recessed wells, not raised cards. */
   box-shadow: inset 0 1px 2px rgba(13, 17, 23, 0.04);
   font-variant-numeric: tabular-nums;
@@ -287,7 +321,7 @@ input[type="text"]:focus,
 select:focus {
   box-shadow:
     inset 0 1px 2px rgba(13, 17, 23, 0.04),
-    0 0 0 3px rgba(47, 143, 108, 0.18);
+    0 0 0 3px rgba(47, 143, 108, 0.45);
 }
 
 select {

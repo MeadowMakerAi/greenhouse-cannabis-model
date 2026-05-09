@@ -95,14 +95,16 @@ export default function InsightsPanel() {
         </div>
       </div>
       {/* Body uses the recessed sub-panel style so insight rows visually
-          sit *inside* the card rather than tile its surface. */}
-      <div className="card-body bg-ink-100/40 space-y-2 shadow-recessed">
+          sit *inside* the card rather than tile its surface. rounded-b-xl
+          inherits the parent .card's bottom radius so the inset shadow
+          follows the visible edge instead of bleeding past it. */}
+      <div className="card-body bg-ink-100/40 space-y-2 shadow-recessed rounded-b-xl">
         {insights.map((ins) => {
           const s = STYLE_BY_SEVERITY[ins.severity];
           return (
             <div
               key={ins.id}
-              className={`grid grid-cols-[10px_1fr] items-start gap-3 rounded-lg border ${s.ring} ${s.bg} bg-white p-3 shadow-e1`}
+              className={`grid grid-cols-[10px_1fr] items-start gap-3 rounded-lg border ${s.ring} ${s.bg} p-3 shadow-e1`}
             >
               <span className={`mt-2 h-2 w-2 rounded-full ${s.dot} shadow-e1`} />
               <div>

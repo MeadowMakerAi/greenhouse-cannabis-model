@@ -56,7 +56,7 @@ export default function ScenarioPresets() {
           {p.label}
         </button>
       ))}
-      <button type="button" onClick={reset} className="btn-ghost !text-xs">
+      <button type="button" onClick={reset} className="btn-ghost">
         Reset
       </button>
     </div>
