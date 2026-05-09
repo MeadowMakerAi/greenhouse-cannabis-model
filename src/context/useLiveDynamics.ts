@@ -18,8 +18,15 @@ import {
 import { netCanopyTransmissionPct } from "../models/solarModel";
 import { isShadeActive } from "../models/shadeModel";
 import { vpdFromTempRH } from "../models/vpdModel";
+import {
+  absoluteHumidityKgPerKg,
+  rhFromAbsoluteHumidity,
+} from "../models/psychrometricModel";
 import { plantGrowthAt, type PlantGrowthState } from "../models/plantGrowthModel";
-import { kWToBTUhr } from "../utils/unitConversions";
+import {
+  fahrenheitToCelsius,
+  kWToBTUhr,
+} from "../utils/unitConversions";
 
 /**
  * Live dynamics derived from the simulation clock + scenario state.
@@ -229,15 +236,40 @@ export function useLiveDynamics() {
       prev.ventOpen === 1,
     );
 
-    // Indoor RH approximation: dehumidification holds to target if running and
-    // moisture removal exceeds transpiration. For live display we use a soft
-    // floor at the target setpoint and rise above when conditions push it up.
+    // Indoor RH model — proper psychrometric coupling.
+    //
+    // Step 1: outdoor absolute humidity (kg water / kg dry air) from outdoor T/RH.
+    // Step 2: indoor air picks up moisture from outdoor (via leakage / open
+    //         vents) plus a small transpiration addition. Dehumidifier removes
+    //         moisture down to the target RH setpoint at indoor T.
+    // Step 3: convert resulting AH back to RH at indoor T.
+    //
+    // Dehumidifier behavior: when indoor AH would translate to RH > target,
+    // the dehumidifier holds it at the target RH. When ambient AH is already
+    // dry (e.g., cold winter outdoor air in lit greenhouse), indoor RH can
+    // run BELOW target.
     const targetRH = inputs.targetRHPct;
-    const dehumPressureRatio = Math.min(
-      1.5,
-      Math.max(0.6, fullSnap.outdoor.outdoorRH / 100 / Math.max(0.1, targetRH / 100)),
+    const outdoorAH = absoluteHumidityKgPerKg(
+      fahrenheitToCelsius(fullSnap.outdoor.outdoorTempF),
+      fullSnap.outdoor.outdoorRH,
     );
-    const indoorRH = Math.max(35, Math.min(85, targetRH * dehumPressureRatio));
+    const transpirationAH = 0.0008; // ~0.8 g/kg lift from dense canopy transpiration
+    const ventMixingFraction = fullSnap.ventOpen ? 0.85 : 0.25; // 85 % outdoor when vents open
+    const ambientIndoorAH =
+      outdoorAH * ventMixingFraction +
+      outdoorAH * (1 - ventMixingFraction) +
+      transpirationAH;
+    const ambientIndoorRH = rhFromAbsoluteHumidity(
+      fahrenheitToCelsius(fullSnap.indoorTempF),
+      ambientIndoorAH,
+    );
+    // Cap by dehumidifier setpoint (when indoor RH would exceed target, the
+    // dehumidifier holds at target). When dehum disabled or undersized, fall
+    // through to the ambient value.
+    const indoorRH = Math.max(
+      25,
+      Math.min(90, Math.min(ambientIndoorRH, targetRH * 1.05)),
+    );
 
     const indoorVPD = vpdFromTempRH(
       fullSnap.indoorTempF,

@@ -107,52 +107,70 @@ export default function Greenhouse3DHud({
         </div>
       </div>
 
-      {/* Bottom-right: indoor */}
-      <div className="pointer-events-auto absolute bottom-3 right-3 w-80 rounded-lg border border-white/30 bg-white/55 p-3 shadow-md backdrop-blur-md">
-        <div className="mb-1 flex items-baseline justify-between gap-3">
+      {/* Bottom-right: indoor — wider w-96 so 3-col stats + status rows
+       * can't overlap. Lights reason moved to its own muted line beneath
+       * the dim-% so long reasons (e.g. "natural-light-sufficient") wrap
+       * naturally instead of crowding the Vents cell. */}
+      <div className="pointer-events-auto absolute bottom-3 right-3 w-96 rounded-lg border border-white/30 bg-white/55 p-3 shadow-md backdrop-blur-md">
+        <div className="mb-1.5 flex items-baseline justify-between gap-3">
           <span className="text-[10px] uppercase tracking-wider text-ink-500">Indoor (canopy)</span>
-          <span className="text-[9px] text-ink-500">leaf offset {inputs.leafTempOffsetC.toFixed(1)}°C</span>
+          <span className="text-[9px] text-ink-500">leaf {inputs.leafTempOffsetC.toFixed(1)}°C</span>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2">
           <Stat label="Temp" value={snapshot.indoorTempF.toFixed(1)} unit="°F" />
           <Stat label="RH" value={snapshot.indoorRH.toFixed(0)} unit="%" />
           <Stat label="VPD" value={snapshot.indoorVPD.toFixed(2)} unit="kPa" highlight />
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-3 border-t border-ink-300/30 pt-2">
-          <div>
+        <div className="mt-2 grid grid-cols-2 gap-2 border-t border-ink-300/30 pt-2">
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-wider text-ink-500">Lights</div>
-            <div className="text-xs">
+            <div className="flex items-center gap-1.5">
               <span
                 className={`inline-block h-2 w-2 rounded-full ${snapshot.lights.on ? "bg-sun-500" : "bg-ink-300"}`}
               />
-              {" "}
-              <span className="font-mono">
-                {snapshot.lights.on ? `${(snapshot.lights.dimLevel * 100).toFixed(0)}%` : "off"}
-              </span>
-              <span className="ml-1 text-[10px] text-ink-500">
-                ({snapshot.lights.reason.replace("-", " ")})
+              <span className="font-mono text-xs font-semibold tabular-nums text-ink-900">
+                {snapshot.lights.on
+                  ? `${(snapshot.lights.dimLevel * 100).toFixed(0)}%`
+                  : "off"}
               </span>
             </div>
+            <div className="truncate text-[10px] text-ink-500" title={snapshot.lights.reason.replace(/-/g, " ")}>
+              {snapshot.lights.reason.replace(/-/g, " ")}
+            </div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-wider text-ink-500">Vents</div>
-            <div className="text-xs">
+            <div className="flex items-center gap-1.5">
               <span
                 className={`inline-block h-2 w-2 rounded-full ${snapshot.ventOpen ? "bg-leaf-500" : "bg-ink-300"}`}
               />
-              {" "}
-              <span className="font-mono">{snapshot.ventOpen ? "open" : "closed"}</span>
-            </div>
-          </div>
-          <div className="col-span-2">
-            <div className="text-[10px] uppercase tracking-wider text-ink-500">Canopy PPFD</div>
-            <div className="font-mono text-sm">
-              {snapshot.canopyTotalPPFD.toFixed(0)}
-              <span className="text-[10px] text-ink-500"> µmol/m²/s</span>
-              <span className="ml-2 text-[10px] text-ink-500">
-                ({snapshot.canopyNaturalPPFD.toFixed(0)} natural, {Math.max(0, snapshot.canopyTotalPPFD - snapshot.canopyNaturalPPFD).toFixed(0)} supp.)
+              <span className="font-mono text-xs font-semibold text-ink-900">
+                {snapshot.ventOpen ? "open" : "closed"}
               </span>
             </div>
+            <div className="text-[10px] text-ink-500">
+              {snapshot.shadeActive ? "shade deployed" : "shade retracted"}
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 border-t border-ink-300/30 pt-2">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[10px] uppercase tracking-wider text-ink-500">Canopy PPFD</span>
+            <span className="font-mono text-sm font-semibold tabular-nums text-ink-900">
+              {snapshot.canopyTotalPPFD.toFixed(0)}
+              <span className="ml-1 text-[10px] font-normal text-ink-500">µmol/m²/s</span>
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center justify-between text-[10px] text-ink-500 tabular-nums">
+            <span>
+              <span className="text-leaf-700">{snapshot.canopyNaturalPPFD.toFixed(0)}</span> natural
+            </span>
+            <span>
+              <span className="text-sun-600">
+                {Math.max(0, snapshot.canopyTotalPPFD - snapshot.canopyNaturalPPFD).toFixed(0)}
+              </span>{" "}
+              supplemental
+            </span>
           </div>
         </div>
       </div>
