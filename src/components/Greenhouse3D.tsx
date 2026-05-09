@@ -162,6 +162,7 @@ function RoofVent({
   ridgeZ,
   slopeAngleRad,
   open,
+  side,
 }: {
   ventWidth: number;
   /** Panel length along the roof slope (downhill from ridge) */
@@ -173,17 +174,28 @@ function RoofVent({
   /** Roof slope angle from horizontal (positive = ridge to eave going down) */
   slopeAngleRad: number;
   open: boolean;
+  /** "south" = +z slope, "north" = −z slope */
+  side: "south" | "north";
 }) {
-  // Hinged at the ridge. When closed, the vent panel sits flush on the roof
-  // slope (rotated by slopeAngleRad about the ridge axis). When open, it lifts
-  // an additional ~25° above the slope.
-  const openAngle = open ? Math.PI / 7 : 0; // ~26°
+  // Atrium-style continuous ridge vent. Hinge sits at the ridge. Closed: flush
+  // on the roof slope (rotated by ±slopeAngleRad). Open: rotates outward an
+  // additional ~38° (commercial ridge vents typically 30–45°).
+  // Each leaf opens AWAY from the ridge centerline — north leaf rotates one
+  // way, south leaf the opposite — so together they form an inverted-V opening.
+  const fullyOpenDeg = 38;
+  const openRad = open ? (fullyOpenDeg * Math.PI) / 180 : 0;
+  // Sign convention:
+  //   Closed south leaf: rotation about X = +slopeAngleRad (panel goes +z, downhill)
+  //   Closed north leaf: rotation about X = -slopeAngleRad (panel goes -z)
+  //   Open: rotate further away from horizontal (lifting the outer edge up)
+  const sign = side === "south" ? 1 : -1;
+  const closedAngle = sign * slopeAngleRad;
+  const openedAngle = closedAngle - sign * openRad; // outer edge lifts upward
   return (
     <group position={[ridgeX, ridgeY, ridgeZ]}>
-      {/* Hinge line at ridge — rotates about ridge X-axis */}
-      <group rotation={[slopeAngleRad - openAngle, 0, 0]}>
-        {/* Panel extends "down" the slope (in local +Y after rotation it goes outward & down) */}
-        <mesh position={[0, ventPanelLength / 2, 0]}>
+      <group rotation={[openedAngle, 0, 0]}>
+        {/* Panel extends from ridge outward along the slope (+y in local) */}
+        <mesh position={[0, ventPanelLength / 2, 0]} castShadow>
           <planeGeometry args={[ventWidth, ventPanelLength]} />
           <meshPhysicalMaterial
             color="#d4eaf6"
@@ -200,6 +212,16 @@ function RoofVent({
           <boxGeometry args={[ventWidth, 0.05, 0.05]} />
           <meshStandardMaterial color="#3d4452" />
         </mesh>
+        {/* Operator arm — a thin diagonal strut visible when open */}
+        {open && (
+          <mesh
+            position={[ventWidth / 2 - 0.1, ventPanelLength * 0.35, 0]}
+            rotation={[0, 0, -Math.PI / 4]}
+          >
+            <cylinderGeometry args={[0.025, 0.025, ventPanelLength * 0.6, 6]} />
+            <meshStandardMaterial color="#6a7280" metalness={0.6} roughness={0.4} />
+          </mesh>
+        )}
       </group>
     </group>
   );
@@ -342,22 +364,26 @@ function GreenhouseStructure({
       <HAFFan position={[-length / 2 + 1.2, eave * 0.7 + 0.5, width / 4]} />
       <HAFFan position={[-length / 2 + 1.2, eave * 0.7 + 0.5, -width / 4]} />
 
-      {/* Roof vents — segmented ridge vent on the south slope.
-       * Hinge is at the ridge; panel sits flush on the slope when closed and
-       * lifts ~26° upward when open. Slope angle derived from peak − eave. */}
+      {/* Atrium-style continuous ridge vent — paired leaves on both slopes.
+       * Each leaf hinges at the ridge and lifts ~38° outward when open.
+       * Commercial dimensions: 4 ft along-slope, ~85% of segment width along
+       * the ridge to leave room for hinge brackets between segments. Real
+       * continuous ridge vents (Stuppy, GreenTek, Nexus) span the full length.
+       * Stack-effect ventilation: ΔP ≈ ρ·g·(peak−eave)·ΔT/T → primary passive
+       * cooling driver in summer when paired with sidewall vents. */}
       {(() => {
         const ventCount = Math.max(2, Math.floor(length / 8));
         const ventStep = length / ventCount;
-        const ventSegmentLen = ventStep * 0.85; // along-ridge length
-        const ventPanelLength = 3; // along-slope length (3 ft typical ridge vent)
+        const ventSegmentLen = ventStep * 0.88;
+        const ventPanelLength = 4; // ft, along-slope (commercial 3-5 ft typical)
         const slopeAngleRad = Math.atan2(peak - eave, width / 2);
-        // Ridge runs along x-axis at z=0, y=peak (slightly recessed inside)
-        const ridgeY = peak + 0.45; // matches the ridge beam position
-        return Array.from({ length: ventCount }).map((_, i) => {
+        const ridgeY = peak + 0.45;
+        const leaves: React.ReactNode[] = [];
+        for (let i = 0; i < ventCount; i++) {
           const x = -length / 2 + ventStep * (i + 0.5);
-          return (
+          leaves.push(
             <RoofVent
-              key={i}
+              key={`s-${i}`}
               ventWidth={ventSegmentLen}
               ventPanelLength={ventPanelLength}
               ridgeX={x}
@@ -365,9 +391,22 @@ function GreenhouseStructure({
               ridgeZ={0}
               slopeAngleRad={slopeAngleRad}
               open={!!roofVentsOpen}
-            />
+              side="south"
+            />,
+            <RoofVent
+              key={`n-${i}`}
+              ventWidth={ventSegmentLen}
+              ventPanelLength={ventPanelLength}
+              ridgeX={x}
+              ridgeY={ridgeY}
+              ridgeZ={0}
+              slopeAngleRad={slopeAngleRad}
+              open={!!roofVentsOpen}
+              side="north"
+            />,
           );
-        });
+        }
+        return leaves;
       })()}
 
       {/* Thermal screen at gutter level — horizontal, below trusses, above

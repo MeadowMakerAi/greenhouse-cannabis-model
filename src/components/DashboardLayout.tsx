@@ -72,10 +72,26 @@ export default function DashboardLayout() {
 
   return (
     <div className="grid h-screen grid-cols-[360px_1fr] grid-rows-[auto_1fr]">
-      <header className="col-span-2 border-b border-ink-200 bg-white/80 px-5 py-3 shadow-card backdrop-blur">
+      <header
+        className="relative col-span-2 border-b border-ink-200 px-5 py-3 backdrop-blur"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.92) 100%)",
+          boxShadow:
+            "0 1px 0 rgba(255,255,255,0.8) inset, 0 1px 3px rgba(13,17,23,0.06), 0 6px 18px -10px rgba(13,17,23,0.18)",
+        }}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-leaf-500 to-leaf-700 text-base font-bold text-white shadow-card">
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold text-white"
+              style={{
+                background:
+                  "radial-gradient(120% 120% at 30% 20%, #43a47e 0%, #2f8f6c 55%, #185640 100%)",
+                boxShadow:
+                  "0 1px 0 rgba(255,255,255,0.25) inset, 0 4px 12px -2px rgba(47,143,108,0.45), 0 1px 2px rgba(13,17,23,0.2)",
+              }}
+            >
               CG
             </div>
             <div>
@@ -106,7 +122,7 @@ export default function DashboardLayout() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`tab-button ${active ? "tab-button-active" : isStarred ? "tab-button-star" : ""}`}
+                  className={`tab-button ${isStarred ? "tab-button-star" : ""} ${active ? "tab-button-active" : ""}`}
                   type="button"
                 >
                   {t.label}

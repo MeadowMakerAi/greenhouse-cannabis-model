@@ -183,6 +183,67 @@ export function ventStateAt(input: VentInput): boolean {
   return input.currentlyOpen;
 }
 
+// ---- Natural (stack-effect) ventilation ----
+//
+// Buoyancy-driven flow through paired ridge + sidewall vents follows ASAE
+// EP406.4 / ASHRAE Handbook (Fundamentals, Ch. 16):
+//
+//   Q = Cd × A_eff × √(2 · g · ΔH · ΔT / T_avg)
+//
+// where Cd ≈ 0.65 for greenhouse vents, A_eff is the harmonic mean of inlet
+// and outlet areas (paired vents), ΔH is the vertical distance between vent
+// centers, ΔT is indoor−outdoor temperature, T_avg is in absolute units.
+// In US customary units (ft, °R, ft³/min), the formula reduces to:
+//
+//   Q_cfm ≈ 60 · Cd · A_eff · √(2 · 32.2 · ΔH · ΔT_°F / (T_°F + 460))
+//
+// Wind-driven flow adds linearly: Q_wind ≈ Cv · A_eff · windSpeed_fpm × 0.5.
+// We omit wind here because the live sim doesn't model outdoor wind speed.
+//
+// Reference: ANSI/ASAE EP406.4 §6.2; Bot (1983) "Greenhouse climate: from
+// physical processes to a dynamic model" (Wageningen).
+export interface NaturalVentInput {
+  /** Effective open area combining ridge + sidewall vents (ft²) */
+  effectiveOpenAreaSqFt: number;
+  /** Vertical separation between vent centers (ft) — peak − eave/2 typical */
+  stackHeightFt: number;
+  /** Indoor air temp (°F) */
+  indoorTempF: number;
+  /** Outdoor air temp (°F) */
+  outdoorTempF: number;
+}
+
+export function naturalVentilationCFM(input: NaturalVentInput): number {
+  const Cd = 0.65;
+  const g = 32.2; // ft/s²
+  const dT = input.indoorTempF - input.outdoorTempF;
+  if (dT <= 0 || input.effectiveOpenAreaSqFt <= 0 || input.stackHeightFt <= 0) {
+    // No buoyancy drive (indoor cooler than outdoor) or no opening
+    return 0;
+  }
+  const T_R = (input.indoorTempF + input.outdoorTempF) / 2 + 459.67;
+  const velocity_fps = Math.sqrt((2 * g * input.stackHeightFt * dT) / T_R);
+  return 60 * Cd * input.effectiveOpenAreaSqFt * velocity_fps;
+}
+
+/**
+ * Compute the effective (harmonic-mean) open area when vents are open.
+ * Paired vents in series: A_eff = (A_in × A_out) / √(A_in² + A_out²).
+ * If only one is open, returns ~that area (capped to single-opening flow).
+ */
+export function effectiveVentAreaSqFt(
+  ridgeAreaSqFt: number,
+  sidewallAreaSqFt: number,
+): number {
+  if (ridgeAreaSqFt <= 0 && sidewallAreaSqFt <= 0) return 0;
+  if (ridgeAreaSqFt <= 0) return sidewallAreaSqFt * 0.5; // single-opening, less efficient
+  if (sidewallAreaSqFt <= 0) return ridgeAreaSqFt * 0.5;
+  return (
+    (ridgeAreaSqFt * sidewallAreaSqFt) /
+    Math.sqrt(ridgeAreaSqFt * ridgeAreaSqFt + sidewallAreaSqFt * sidewallAreaSqFt)
+  );
+}
+
 // ---- Indoor temp simulation (very simple energy balance step) ----
 export interface IndoorStepInput {
   outdoorTempF: number;

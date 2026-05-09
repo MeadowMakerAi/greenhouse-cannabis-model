@@ -52,6 +52,40 @@ body,
   .card-hero:hover {
     @apply -translate-y-px shadow-cardHover;
   }
+  /* Primary hero card — deepest shadow stack, gradient backdrop, larger surface */
+  .card-hero-primary {
+    @apply relative overflow-hidden rounded-2xl border border-leaf-500/25 transition-all;
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(67, 164, 126, 0.10), transparent 55%),
+      radial-gradient(80% 80% at 100% 100%, rgba(58, 90, 145, 0.08), transparent 60%),
+      linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 1px 2px rgba(13, 17, 23, 0.04),
+      0 12px 24px -12px rgba(13, 17, 23, 0.18),
+      0 24px 48px -28px rgba(47, 143, 108, 0.18);
+  }
+  .card-hero-primary:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 1px 2px rgba(13, 17, 23, 0.04),
+      0 18px 32px -12px rgba(13, 17, 23, 0.22),
+      0 32px 56px -28px rgba(47, 143, 108, 0.24);
+  }
+  /* Compact secondary KPI — used alongside primary, smaller, lighter */
+  .card-kpi-secondary {
+    @apply relative overflow-hidden rounded-xl border border-ink-200 bg-white transition-all;
+    box-shadow:
+      0 1px 2px rgba(13, 17, 23, 0.04),
+      0 4px 12px -4px rgba(13, 17, 23, 0.08);
+  }
+  .card-kpi-secondary:hover {
+    @apply -translate-y-px;
+    box-shadow:
+      0 1px 2px rgba(13, 17, 23, 0.04),
+      0 8px 16px -4px rgba(13, 17, 23, 0.12);
+  }
   .ring-active {
     @apply ring-2 ring-leaf-500 ring-offset-2;
   }
@@ -133,6 +167,12 @@ body,
     font-variant-numeric: tabular-nums;
     line-height: 1;
   }
+  .kpi-number-hero {
+    @apply font-mono font-bold tracking-tightest text-ink-900;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(2.5rem, 5vw, 3.75rem);
+    line-height: 0.95;
+  }
   .kpi-number-gradient-leaf {
     background: linear-gradient(135deg, #185640 0%, #2f8f6c 60%, #43a47e 100%);
     -webkit-background-clip: text;
@@ -192,10 +232,28 @@ body,
     @apply rounded-lg px-3 py-1.5 text-sm font-medium text-ink-500 transition-all hover:bg-ink-100 hover:text-ink-900;
   }
   .tab-button-active {
-    @apply bg-ink-900 text-white shadow-card hover:bg-ink-900 hover:text-white;
+    @apply text-white;
+    background: linear-gradient(180deg, #1a2230 0%, #0d1117 100%);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.12) inset,
+      0 1px 2px rgba(13, 17, 23, 0.2),
+      0 6px 12px -4px rgba(13, 17, 23, 0.32);
+  }
+  .tab-button-active:hover {
+    @apply text-white;
+    background: linear-gradient(180deg, #1a2230 0%, #0d1117 100%);
   }
   .tab-button-star {
     @apply text-leaf-600;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  .tab-button-star.tab-button-active {
+    background: linear-gradient(180deg, #2f8f6c 0%, #1f6c50 100%);
+    text-shadow: none;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.18) inset,
+      0 1px 2px rgba(13, 17, 23, 0.18),
+      0 6px 14px -4px rgba(47, 143, 108, 0.45);
   }
 
   /* ---- Buttons ---- */

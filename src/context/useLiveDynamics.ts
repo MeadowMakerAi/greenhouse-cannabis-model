@@ -5,8 +5,10 @@ import { useDerived } from "./useDerived";
 import {
   canopyPPFDFromOutdoor,
   diurnalState,
+  effectiveVentAreaSqFt,
   indoorTempStep,
   lightsStateAt,
+  naturalVentilationCFM,
   outdoorPPFDFromElevation,
   sunPositionAt,
   ventStateAt,
@@ -132,7 +134,28 @@ export function useLiveDynamics() {
         ventCloseSetpointF: inputs.indoorTargetDryBulbF - 1,
         currentlyOpen: prevVent,
       });
-      const ventCFM = ventOpen ? inputs.greenhouseVolumeCuFt * 0.5 : 0; // 30 ACH when open
+      // Natural ventilation: ASAE EP406.4 stack-effect formula. Approximate
+      // ridge vent area as 4 ft along-slope × 88% of length × 38° opening
+      // projection × 2 leaves; sidewall area conservatively equal to ridge
+      // (typical commercial config: continuous ridge + continuous sidewall).
+      const ridgeOpeningAreaSqFt = ventOpen
+        ? 2 * 4 * inputs.greenhouseLengthFt * 0.88 * Math.sin((38 * Math.PI) / 180)
+        : 0;
+      const sidewallOpeningAreaSqFt = ventOpen ? ridgeOpeningAreaSqFt : 0;
+      const ventEffectiveArea = effectiveVentAreaSqFt(
+        ridgeOpeningAreaSqFt,
+        sidewallOpeningAreaSqFt,
+      );
+      const stackHeightFt = Math.max(
+        0.5,
+        inputs.peakHeightFt - inputs.eaveHeightFt / 2,
+      );
+      const ventCFM = naturalVentilationCFM({
+        effectiveOpenAreaSqFt: ventEffectiveArea,
+        stackHeightFt,
+        indoorTempF: prevIndoor,
+        outdoorTempF: diurnal.outdoorTempF,
+      });
       const heatingBTUhr =
         inputs.radiantHeatingEnabled &&
         prevIndoor < inputs.indoorTargetDryBulbF - 2
@@ -192,10 +215,19 @@ export function useLiveDynamics() {
       });
     }
 
-    // Snapshot at current sim time — find nearest trace point or recompute
+    // Snapshot at current sim time. Codex P0: previously we picked the trace
+    // point at idx (which holds the post-step indoor/vent state) and re-fed it
+    // into another computeAt → snapshot was always one 15-min step ahead of
+    // the chart. Fix: feed the PREVIOUS trace point's state in so computeAt
+    // produces the same step the trace point represents.
     const idx = Math.max(0, Math.min(trace.length - 1, Math.round(sim.hourOfDay * 2)));
-    const snap = trace[idx];
-    const fullSnap = computeAt(sim.hourOfDay, snap.indoorTempF, snap.ventOpen === 1);
+    const prevIdx = Math.max(0, idx - 1);
+    const prev = trace[prevIdx];
+    const fullSnap = computeAt(
+      sim.hourOfDay,
+      prev.indoorTempF,
+      prev.ventOpen === 1,
+    );
 
     // Indoor RH approximation: dehumidification holds to target if running and
     // moisture removal exceeds transpiration. For live display we use a soft
