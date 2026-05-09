@@ -771,6 +771,66 @@ interface PlantGrowthGeom {
   foliageLight: number;
 }
 
+/**
+ * Cannabis plant geometry. Built from real anatomy (not a green orb):
+ *
+ *  - Central stalk, woody texture, taper top
+ *  - 4–5 node tiers along the stalk, each producing a pair of opposing
+ *    branches (vegetative phyllotaxy)
+ *  - Each branch ends in a palmate fan leaf cluster — 5–7 elongated
+ *    leaflet cones radiating outward (cannabis sativa/indica fan-leaf
+ *    pattern, 5–7 fingers typical)
+ *  - Apical meristem at top: in veg = a vegetative tip + small leaves;
+ *    in flower = main cola (vertical cone with trichome shimmer)
+ *  - Lateral colas at each branch node in flower phases
+ *
+ * All scale params come from PlantGrowthGeom — height, foliageRadius,
+ * colaCount, colaDevelopment all advance with sim time.
+ */
+function FanLeafCluster({
+  position,
+  rotationY,
+  size,
+  color,
+  rng,
+}: {
+  position: [number, number, number];
+  rotationY: number;
+  /** Overall cluster radius in feet */
+  size: number;
+  color: string;
+  rng: (n: number) => number;
+}) {
+  // Cannabis fan leaf: 5–7 elongated palmate leaflets. Each leaflet ≈ thin
+  // cone (length ≈ size × 1.0, base ≈ size × 0.18). Center leaflet longest,
+  // outer leaflets shorter — classic palmate gradient.
+  const leaflets = 5 + Math.round(rng(70) * 2); // 5–7
+  const tilt = -Math.PI / 6; // leaflets pitch slightly upward from horizontal
+  const leafLen = size;
+  const leafThick = size * 0.16;
+  return (
+    <group position={position} rotation={[0, rotationY, 0]}>
+      {Array.from({ length: leaflets }).map((_, i) => {
+        const t = leaflets === 1 ? 0 : i / (leaflets - 1) - 0.5; // -0.5..0.5
+        // Spread leaflets in a fan ±50°. Center leaflet longer.
+        const fanAng = t * (Math.PI * 0.55);
+        const lenScale = 1 - Math.abs(t) * 0.55; // outer leaflets ~45% of center
+        return (
+          <mesh
+            key={i}
+            position={[0, 0, 0]}
+            rotation={[tilt, 0, fanAng]}
+          >
+            {/* Each leaflet rendered as a stretched cone pointing +Y in local */}
+            <coneGeometry args={[leafThick, leafLen * lenScale, 5]} />
+            <meshStandardMaterial color={color} roughness={0.92} side={THREE.DoubleSide} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
 function CannabisPlant({
   position,
   growth,
@@ -788,117 +848,200 @@ function CannabisPlant({
 
   const height = growth.heightFt;
   const foliageR = growth.foliageRadiusFt;
-  const stalkRadiusBase = Math.max(0.04, 0.05 + height * 0.018);
-  const stalkRadiusTop = Math.max(0.03, stalkRadiusBase * 0.45);
+  const stalkRadiusBase = Math.max(0.045, 0.05 + height * 0.022);
+  const stalkRadiusTop = Math.max(0.025, stalkRadiusBase * 0.4);
+
   const fanLeafColor = `hsl(${growth.foliageHueDeg + (r(9) - 0.5) * 8}, ${
     growth.foliageSat + (r(10) - 0.5) * 6
   }%, ${growth.foliageLight + (r(11) - 0.5) * 6}%)`;
-  const colaColor = `hsl(${growth.foliageHueDeg - 5 + (r(12) - 0.5) * 8}, ${
-    growth.foliageSat + 3 + (r(13) - 0.5) * 8
-  }%, ${growth.foliageLight + 4 + (r(14) - 0.5) * 6}%)`;
+  const fanLeafColorLight = `hsl(${growth.foliageHueDeg + 6}, ${
+    growth.foliageSat + 6
+  }%, ${Math.min(55, growth.foliageLight + 12)}%)`;
+  const colaColor = `hsl(${growth.foliageHueDeg - 8}, ${
+    growth.foliageSat + 6
+  }%, ${growth.foliageLight + 6}%)`;
+  const stalkColor = `hsl(${growth.foliageHueDeg - 25}, 28%, ${
+    Math.max(22, growth.foliageLight - 4)
+  }%)`;
 
-  // Clone phase: simple young seedling — short stalk + small leaf cluster, no colas.
+  // Clone phase: tiny seedling. Stem + 2 cotyledons + 1 small fan-leaf cluster.
   if (growth.phase === "clone") {
-    const cloneR = Math.max(0.18, foliageR);
     return (
       <group position={position}>
         <mesh position={[0, height / 2, 0]}>
-          <cylinderGeometry args={[0.025, 0.04, height, 6]} />
-          <meshStandardMaterial color="#6b7d3a" roughness={0.95} />
+          <cylinderGeometry args={[0.018, 0.028, height, 6]} />
+          <meshStandardMaterial color="#7d8b3a" roughness={0.95} />
         </mesh>
-        <mesh position={[0, height * 0.85, 0]}>
-          <sphereGeometry args={[cloneR, 8, 6]} />
-          <meshStandardMaterial color={fanLeafColor} roughness={0.95} />
-        </mesh>
+        {/* Cotyledons (first round leaves) */}
+        {[0, Math.PI].map((ang, i) => (
+          <mesh
+            key={i}
+            position={[Math.cos(ang) * 0.08, height * 0.45, Math.sin(ang) * 0.08]}
+            rotation={[Math.PI / 2.5, ang, 0]}
+          >
+            <sphereGeometry args={[0.07, 6, 4]} />
+            <meshStandardMaterial color="#88a045" roughness={0.95} />
+          </mesh>
+        ))}
+        {/* First true fan-leaf set at the apex */}
+        <FanLeafCluster
+          position={[0, height, 0]}
+          rotationY={r(1) * Math.PI}
+          size={Math.max(0.18, foliageR * 0.7)}
+          color={fanLeafColorLight}
+          rng={r}
+        />
       </group>
     );
   }
 
-  // Veg phase: stalk + bushy foliage, no flower colas yet.
-  if (growth.phase === "veg") {
-    return (
-      <group position={position}>
-        <mesh position={[0, height / 2, 0]}>
-          <cylinderGeometry args={[stalkRadiusTop, stalkRadiusBase, height, 6]} />
-          <meshStandardMaterial color="#5a6f3a" roughness={0.95} />
-        </mesh>
-        {/* Lower foliage sphere */}
-        <mesh position={[0, height * 0.45, 0]}>
-          <sphereGeometry args={[foliageR * 0.9 + r(15) * 0.1, 10, 8]} />
-          <meshStandardMaterial color={fanLeafColor} roughness={0.95} />
-        </mesh>
-        {/* Upper foliage sphere (slightly smaller, lighter) */}
-        <mesh position={[0, height * 0.85, 0]}>
-          <sphereGeometry args={[foliageR * 0.65 + r(16) * 0.08, 10, 8]} />
-          <meshStandardMaterial
-            color={`hsl(${growth.foliageHueDeg + 5}, ${growth.foliageSat + 5}%, ${
-              growth.foliageLight + 8
-            }%)`}
-            roughness={0.95}
-          />
-        </mesh>
-      </group>
-    );
+  // Determine node count based on plant size — taller plants have more tiers.
+  const tierCount = Math.max(3, Math.min(6, Math.round(2 + height * 0.6)));
+  const tiers: { y: number; branchLen: number; tierFrac: number }[] = [];
+  for (let i = 0; i < tierCount; i++) {
+    // Skip the bottom 20% (bare stalk near base), distribute the rest evenly
+    const tierFrac = 0.22 + (i / Math.max(1, tierCount - 1)) * 0.78;
+    // Branches longer in the middle, shorter at top + bottom
+    const triangle = 1 - Math.abs(tierFrac - 0.55) * 1.4;
+    const branchLen = Math.max(0.25, foliageR * (0.5 + triangle * 0.5));
+    tiers.push({ y: height * tierFrac, branchLen, tierFrac });
   }
 
-  // Flowering phases: full plant with colaCount colas, cola size + trichome
-  // shimmer scaled by colaDevelopment.
-  const N = Math.max(1, Math.min(8, growth.colaCount));
-  const colas: { x: number; z: number; h: number; size: number }[] = [];
-  // Main cola at center
-  colas.push({ x: 0, z: 0, h: height, size: growth.colaSizeFt * 1.0 });
-  // Side colas distributed in a ring
-  for (let i = 1; i < N; i++) {
-    const ang = (i / Math.max(1, N - 1)) * Math.PI * 2 + r(20 + i) * 0.6;
-    const dist = foliageR * (0.55 + r(30 + i) * 0.25);
-    const heightFrac = 0.72 + r(40 + i) * 0.12;
-    colas.push({
-      x: Math.cos(ang) * dist,
-      z: Math.sin(ang) * dist,
-      h: height * heightFrac,
-      size: growth.colaSizeFt * (0.7 + r(50 + i) * 0.2),
-    });
-  }
+  const isFlower =
+    growth.phase === "flower-stretch" ||
+    growth.phase === "flower-mid" ||
+    growth.phase === "flower-late";
   const trichomeAlpha = 0.5 + 0.4 * Math.min(1, growth.colaDevelopment);
 
   return (
     <group position={position}>
-      {/* Stalk */}
-      <mesh position={[0, height / 2, 0]}>
-        <cylinderGeometry args={[stalkRadiusTop, stalkRadiusBase, height, 6]} />
-        <meshStandardMaterial color="#5a6f3a" roughness={0.95} />
+      {/* Central stalk — woody at base, greener at top */}
+      <mesh position={[0, height / 2, 0]} castShadow>
+        <cylinderGeometry args={[stalkRadiusTop, stalkRadiusBase, height, 7]} />
+        <meshStandardMaterial color={stalkColor} roughness={0.95} />
       </mesh>
-      {/* Lower fan-leaf canopy */}
-      <mesh position={[0, height * 0.5, 0]}>
-        <sphereGeometry args={[foliageR + r(15) * 0.12, 10, 8]} />
-        <meshStandardMaterial color={fanLeafColor} roughness={0.95} />
-      </mesh>
-      {/* Cola buds (vertical cone clusters) */}
-      {colas.map((c, i) => {
-        const coneR = Math.max(0.08, c.size * 1.2);
-        const coneH = Math.max(0.18, c.size * 2.6);
-        return (
-          <group key={i} position={[c.x, c.h - coneH * 0.4, c.z]}>
-            <mesh>
-              <coneGeometry args={[coneR, coneH, 8]} />
-              <meshStandardMaterial color={colaColor} roughness={0.85} />
-            </mesh>
-            {/* Trichome shimmer — opacity scales with cola development */}
-            <mesh scale={[0.95, 0.95, 0.95]} position={[0, 0.05, 0]}>
-              <coneGeometry args={[coneR * 0.85, coneH * 0.75, 8]} />
-              <meshStandardMaterial
-                color={`hsl(${growth.foliageHueDeg - 15}, ${
-                  Math.max(20, growth.foliageSat - 15)
-                }%, ${Math.min(70, growth.foliageLight + 22)}%)`}
-                roughness={0.6}
-                metalness={0.05}
-                transparent
-                opacity={trichomeAlpha}
-              />
-            </mesh>
-          </group>
-        );
+
+      {/* Branches + fan leaves at each node tier. Cannabis has opposite (then
+       * alternate) phyllotaxy — pair of opposing branches per tier with a
+       * 90° rotation between consecutive tiers (decussate → alternate).
+       * Each branch is rendered inside a yaw-rotated <group>, so the local
+       * frame is "+X = outward, +Y = up". A simple Z-axis tilt then leans
+       * the branch upward toward the light. */}
+      {tiers.map((tier, ti) => {
+        const baseAng = (ti % 2 === 0 ? 0 : Math.PI / 2) + r(80 + ti) * 0.4;
+        return [0, Math.PI].map((branchAng, bi) => {
+          const ang = baseAng + branchAng;
+          const branchHoriz = tier.branchLen;
+          const branchRise = tier.branchLen * 0.18; // apical dominance lift
+          const branchTotalLen = Math.sqrt(
+            branchHoriz * branchHoriz + branchRise * branchRise,
+          );
+          // Tilt from horizontal: positive angle lifts the tip upward.
+          // In the local yaw-rotated frame, branch goes outward along +X
+          // and up along +Y. A cylinder default is +Y; we rotate it by
+          // (90° − tilt) around Z so it lies along the branch vector.
+          const tiltFromHoriz = Math.atan2(branchRise, branchHoriz);
+          const cylRotZ = -(Math.PI / 2 - tiltFromHoriz);
+          const branchRBase = Math.max(0.018, stalkRadiusTop * 0.7);
+          const branchRTip = Math.max(0.012, branchRBase * 0.55);
+          const leafSize = Math.max(0.22, tier.branchLen * 0.85);
+          const showLateralCola =
+            isFlower && tier.tierFrac > 0.55 && bi < Math.max(0, growth.colaCount - 1);
+          const colaSize = growth.colaSizeFt * (0.7 + r(90 + ti * 2 + bi) * 0.25);
+          return (
+            <group key={`${ti}-${bi}`} position={[0, tier.y, 0]} rotation={[0, ang, 0]}>
+              {/* Branch cylinder — local frame: outward = +X, up = +Y.
+                  Place midpoint at half the branch in local +X/+Y, rotate
+                  Y-cylinder onto branch vector. */}
+              <mesh
+                position={[branchHoriz / 2, branchRise / 2, 0]}
+                rotation={[0, 0, cylRotZ]}
+              >
+                <cylinderGeometry args={[branchRTip, branchRBase, branchTotalLen, 5]} />
+                <meshStandardMaterial color={stalkColor} roughness={0.95} />
+              </mesh>
+              {/* Fan-leaf cluster at the tip — back into world coords */}
+              <group position={[branchHoriz, branchRise, 0]}>
+                <FanLeafCluster
+                  position={[0, 0, 0]}
+                  rotationY={0}
+                  size={leafSize}
+                  color={tier.tierFrac > 0.7 ? fanLeafColorLight : fanLeafColor}
+                  rng={r}
+                />
+              </group>
+              {/* Lateral cola at upper branches in flower */}
+              {showLateralCola && (
+                <group position={[branchHoriz, branchRise + colaSize * 0.5, 0]}>
+                  <mesh>
+                    <coneGeometry
+                      args={[Math.max(0.06, colaSize * 1.0), Math.max(0.16, colaSize * 2.4), 7]}
+                    />
+                    <meshStandardMaterial color={colaColor} roughness={0.85} />
+                  </mesh>
+                  <mesh scale={[0.92, 0.92, 0.92]} position={[0, 0.04, 0]}>
+                    <coneGeometry
+                      args={[Math.max(0.05, colaSize * 0.85), Math.max(0.12, colaSize * 1.7), 7]}
+                    />
+                    <meshStandardMaterial
+                      color={`hsl(${growth.foliageHueDeg - 10}, ${
+                        Math.max(20, growth.foliageSat - 12)
+                      }%, ${Math.min(72, growth.foliageLight + 24)}%)`}
+                      roughness={0.55}
+                      metalness={0.05}
+                      transparent
+                      opacity={trichomeAlpha}
+                    />
+                  </mesh>
+                </group>
+              )}
+            </group>
+          );
+        });
       })}
+
+      {/* Apical meristem — main cola in flower, vegetative tip + leaves in veg */}
+      {isFlower ? (
+        <group position={[0, height + growth.colaSizeFt * 0.3, 0]}>
+          <mesh>
+            <coneGeometry
+              args={[
+                Math.max(0.1, growth.colaSizeFt * 1.4),
+                Math.max(0.3, growth.colaSizeFt * 3.2),
+                8,
+              ]}
+            />
+            <meshStandardMaterial color={colaColor} roughness={0.85} />
+          </mesh>
+          {/* Main-cola trichome shimmer */}
+          <mesh scale={[0.94, 0.94, 0.94]} position={[0, 0.06, 0]}>
+            <coneGeometry
+              args={[
+                Math.max(0.08, growth.colaSizeFt * 1.18),
+                Math.max(0.22, growth.colaSizeFt * 2.4),
+                8,
+              ]}
+            />
+            <meshStandardMaterial
+              color={`hsl(${growth.foliageHueDeg - 12}, ${
+                Math.max(22, growth.foliageSat - 12)
+              }%, ${Math.min(72, growth.foliageLight + 26)}%)`}
+              roughness={0.5}
+              metalness={0.05}
+              transparent
+              opacity={trichomeAlpha}
+            />
+          </mesh>
+        </group>
+      ) : (
+        <FanLeafCluster
+          position={[0, height + 0.05, 0]}
+          rotationY={r(99) * Math.PI}
+          size={Math.max(0.25, foliageR * 0.55)}
+          color={fanLeafColorLight}
+          rng={r}
+        />
+      )}
     </group>
   );
 }
