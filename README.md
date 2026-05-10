@@ -1,153 +1,193 @@
-# Montgomery NY Greenhouse Cannabis Light + Climate Model
+# Greenhouse Cannabis Model
 
-Screening-level decision-support tool for evaluating year-round greenhouse
-flower production at **170 Neely Road, Montgomery, NY**. Built as an
-interactive React dashboard.
+Open-source, screening-level decision-support model for cannabis greenhouse
+design. Live 3D simulation, yield projection, HVAC sizing, ventilation
+physics, and plant growth on a 24-hour clock — every coefficient traced to
+a peer-reviewed source. Built solo with Claude Opus 4.7 as a paired-coding
+agent.
 
-This is an **engineering planning model**, not a stamped HVAC design or a
-crop simulation. It is meant to make assumptions visible, comparable, and
-edit-in-place so an operator and designer can argue from the same numbers.
+> ⚠ **Screening-level only.** Outputs are decision support, not stamped
+> engineering. Validate against a sealed CFD / engineering review before
+> any capex commitment.
 
-## Run
+## Quick start
 
 ```bash
 npm install
-npm run dev          # start the dashboard on Vite
-npm test             # vitest run for model unit tests
+npm run dev          # http://localhost:5180
+npm test             # 128 unit tests across the model layer
 npm run build        # type-check + production bundle
 ```
 
-Default scenario: `Premium Hybrid Greenhouse — Montgomery NY`. Switch
-scenarios with the preset buttons in the header (Low-Capex HPS, Sealed
-CO₂, Solar-First).
+Default scenario: a hybrid LED greenhouse profile in Montgomery NY (lat
+41.475, lon −74.245). Override every input at runtime — site address,
+geometry, fixture library, crop schedule, electrical service, climate
+provider — via the assumption panel.
 
-## What the model answers
+## What it answers
 
-1. How much natural light reaches canopy each month?
-2. How much supplemental overhead PPFD is needed to hit a chosen DLI target?
-3. How does under-canopy lighting change total photon delivery and
-   lower-canopy morphology support?
-4. How do LED vs HPS choices affect installed kW, heat load, and operating
-   cost?
-5. How does shade cloth reduce solar gain — and at what DLI cost?
-6. When does outdoor wet-bulb / dew-point make evaporative cooling
-   ineffective?
-7. How much mechanical cooling and dehumidification are implied?
-8. How do CO₂ targets shift recommended DLI / PPFD ranges?
-9. What is the best seasonal operating strategy?
+1. How much natural canopy PPFD reaches the plants each month, after the
+   greenhouse envelope?
+2. How much supplemental overhead PPFD is required to hit a chosen DLI
+   target (30 / 40 / 50 mol/m²/d)?
+3. What's the resulting installed kW, fixture count, grid spacing,
+   amperage, branch circuit count?
+4. How does fixture choice (LED vs HPS, vendor A vs vendor B) change
+   energy / cost / heat load / wet-bulb risk?
+5. How big is the cooling load, dehumidification load, heating load
+   month by month?
+6. What's the projected yield given DLI, indoor temp, CO₂?
+7. What's the pathogen pressure (botrytis / powdery mildew) by month?
+8. When does outdoor wet-bulb make evaporative cooling fail?
 
-## Data sources
+## Live 3D simulation
 
-* **NASA POWER** monthly climatology (`ALLSKY_SFC_SW_DWN`, `T2M`, `T2M_MIN`,
-  `T2M_MAX`, `RH2M`, `T2MDEW`). Loaded automatically on first render; falls
-  back silently if unreachable.
-* **Open-Meteo Historical Weather API** as a backup, aggregated over the
-  last 11 reference years.
-* **NWS API** (`api.weather.gov`) for forecast-office / observation-station
-  metadata only.
-* **Fallback monthly normals** for Orange County / Stewart Field, blended
-  from public NOAA normals and TMY3 reanalysis. Marked as planning data
-  only — replace before any engineering decision.
+The model includes a real-time 3D scene driven by the simulation clock:
 
-The active source and last-loaded message are shown in the assumption
-panel; you can force-switch between providers.
+- Sun position from astronomical first-principles (Spencer 1971)
+- Atmospheric scattering via drei `<Sky />` (Hosek-Wilkie 2012)
+- Tanner Helland Kelvin → RGB for sun color across the day
+- ACES Filmic tone mapping
+- Atrium-style continuous ridge vents (paired N+S leaves, ASAE EP406.4
+  stack-effect physics)
+- Phase-aware plant growth: clone seedling → veg bush → flowering with
+  cola development scaling with cumulative DLI / temp / CO₂
+- Glassmorphic HUD overlay with date, time, GPS, sun azimuth/elevation,
+  outdoor + indoor T/RH/VPD, vent state, light state, canopy PPFD
 
-## Coordinate handling
+## Science citations
 
-Default lat/lon for 170 Neely Rd is approximate and labelled
-`"Approximate — verify before engineering use"`. Override the value
-directly in the assumption panel; climate refresh uses the latest values.
+Every model coefficient traces to a citable source. See
+[`CITATIONS.md`](./CITATIONS.md) for the full bibliography (Guelph,
+Mississippi, Wageningen, ASAE/ASHRAE, UMass, Penn State, Simon Fraser,
+UBC, Charles University Prague, NASA POWER, NOAA NWS, Open-Meteo).
 
-## Equations and key conversions
+Key references:
 
-```text
-DLI [mol/m²/d] = PPFD [µmol/m²/s] · photoperiod [hr] · 0.0036
-PPFD            = DLI / (photoperiod · 0.0036)
+- **Yield-DLI curve**: Rodriguez-Morrison, Llewellyn & Zheng 2021 (Guelph)
+- **Photosynthesis Topt**: Chandra et al. 2008 (Mississippi)
+- **Greenhouse climate energy balance**: Bot 1983 (Wageningen / KASPRO lineage)
+- **Stack-effect ventilation**: ANSI/ASAE EP406.4 + ASHRAE Handbook Ch. 16
+- **Vapor pressure**: Magnus / Tetens; **wet-bulb**: Stull 2011 (UBC)
 
-Outdoor PAR DLI ≈ shortwave kWh/m²/d · 7.35 mol PAR / kWh    (range 6.8–8.0)
+## Chatbot — bring your own API key
 
-Net canopy transmission =
-  glazing% · roof% · (1 − structure%) · (1 − soiling%) · (1 − obstruction%)
+The dashboard includes an optional AI assistant powered by Anthropic
+Claude. The chatbot can read the current scenario, modify it, swap or
+add fixtures, run side-by-side comparisons, and **ingest greenhouse or
+fixture spec sheets via vision (PDF / image)** to auto-update model
+parameters.
 
-Required photon flux µmol/s = supplemental PPFD · canopy m²
-Electrical watts             = photon flux / (PPE · optical utilization)
-Lighting heat (BTU/hr)       = installed kW · 3412.142
+The chatbot is **disabled by default and never auto-calls Anthropic**.
+You provide your own API key, stored only in your browser's localStorage.
 
-Saturation vapor pressure (kPa) = 0.6108 · exp((17.27·T) / (T + 237.3))
-VPD = SVP(leafC) − SVP(airC) · RH%/100
+### Security model
 
-Wet-bulb (Stull 2011 approximation) — accurate to ~0.3 °C at typical RH.
+- **Browser-direct call to api.anthropic.com only.** A
+  [Content Security Policy](./index.html) restricts `connect-src` to
+  Anthropic + the climate APIs + the local dev server. Even if a
+  hostile script ran in the page (XSS, malicious browser extension),
+  the browser would refuse to send the key to attacker.com.
+- **Runtime URL allow-list** in `chatbotService.ts` — refuses to
+  transmit the key to any host other than `api.anthropic.com` over
+  HTTPS, regardless of how the request URL was constructed.
+- **`sk-ant-` format check** before the first transmission catches
+  paste-the-wrong-secret mistakes (a GitHub PAT, a Stripe key) before
+  they're sent.
+- **Public-hostname warning.** If you deploy this dashboard to a public
+  URL (Vercel, custom domain), the key-entry panel adds an extra
+  hardened warning. Keys belong to dedicated, spend-capped Anthropic
+  accounts — not your production key.
+- **One-click "Forget everything"** — clears the API key, the chat
+  history, and the model preference from localStorage in a single click.
 
-Evaporative supply = T_dry − efficiency · (T_dry − T_wet)
-Cooling tons       = total cooling BTU/hr / 12000
-```
+### Recommended posture for forks / public deploys
 
-## Important caveats
-
-* No measured PAR sensor data, no real envelope drawings, no fixture
-  photometric files. Replace every number with measured values before
-  using this for engineering procurement.
-* Hourly partitioning of monthly DLI into the flowering window uses a
-  sinusoidal day-length model — accurate enough for screening, not for
-  control-strategy simulation.
-* The HVAC and dehumidification estimates are screening-level. They do
-  not substitute for a stamped engineering design that includes design-
-  day weather, real airflow, crop density, and equipment specifications.
-* CO₂ enrichment is treated as a feasibility / target-range question,
-  not as a yield boost. The model deliberately refuses to translate CO₂
-  into estimated yield uplift.
+1. Create a dedicated Anthropic key for this dashboard at
+   [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys).
+2. Set a daily spend cap (e.g. $5/day) at
+   [console.anthropic.com/settings/limits](https://console.anthropic.com/settings/limits).
+3. Don't reuse a production key. Don't paste any key on a screen-share.
+4. If you fork this repo to a public Vercel/Netlify/etc deploy, treat
+   the key entry surface as untrusted by default and configure your
+   Anthropic key with the lowest reasonable rate limits.
 
 ## Architecture
 
 ```text
 src/
-  components/      Dashboard layout, tabs, charts, assumption panel
+  components/      Dashboard layout, tabs, charts, 3D scene, HUD, chatbot
   context/         Scenario state + memoized derived calculations
-  data/            Editable defaults — crop targets, fixture library,
-                   greenhouse defaults, fallback climate
+  data/            Editable defaults — fixture library, climate fallbacks
   models/          Pure, unit-tested calculation functions
-  services/        NASA POWER, Open-Meteo, NWS clients
-  utils/           Unit conversions, formatting, math
-  tests/           Vitest unit tests for the model layer
+                   — DLI, fixtures, cooling, heating, dehum, yield,
+                     pathogen, crop steering, plant growth, simulation,
+                     ventilation, psychrometrics, vpd, sky, kelvin
+  services/        Anthropic chatbot, NASA POWER, Open-Meteo, NWS clients
+  tests/           128 vitest unit tests for the model layer
 ```
 
-All meaningful constants live in `data/` — no hidden defaults inside
-chart components. Calculations are pure functions in `models/` and have
-unit tests in `tests/`.
+The science layer (`src/models/`) is pure TypeScript with no dependencies
+on React. You can copy any model file into another project and call it
+directly. All values are unitful and documented at the function level.
+
+## Numerical stability
+
+The indoor temperature simulation uses **substepped explicit Euler**
+(15-min outer step, 15 × 1-min inner steps in `useLiveDynamics.computeAt`).
+This is load-bearing: the natural-ventilation formula has a √ΔT feedback
+term that's unstable on a coarse Euler integrator with ~200 kW lighting
+heat input. See the in-file comment block for the derivation.
+
+VPD is clamped to [0, 6] kPa with `isFinite` fall-through; indoor temp to
+[−20, 140] °F per substep. Defense in depth against future regressions.
 
 ## Tabs
 
-1. **Annual DLI** — outdoor / greenhouse / shaded / flower-window DLI
-   with 30/40/50 reference bands.
-2. **Supplemental light** — monthly PPFD gap, installed kW, LED vs HPS
-   comparison cards with annual energy and peak heat load.
-3. **Under-canopy** — separate lower-canopy DLI, heat load, kW, and a
-   morphology support score (0–3).
-4. **CO₂** — feasibility, recommended DLI/PPFD ranges by setpoint,
-   ventilation conflict warnings, monthly operating windows.
-5. **Shade tradeoff** — DLI loss vs cooling benefit, supplemental PPFD
-   penalty, active-month chips.
-6. **Humidity / wet-bulb** — wet-bulb and dew-point profile against
-   60/68 °F risk thresholds; VPD vs flower targets.
-7. **HVAC screening** — cooling tons, dehumidification pints/day,
-   evaporative supply temperature, evap-failure months.
-8. **Seasonal calendar** — per-month strategy bullets and surfaced
-   warnings.
+1. **Build sheet** — procurement-grade BOM with fixtures, branch circuits,
+   amperage, electrical compliance flags
+2. **Optimized system** — recommendations with apply-this-suggestion CTAs
+3. **Cultivation science** — yield, pathogen, crop steering panel
+4. **Live simulation** — full 3D scene + 24h dynamics chart + clock
+   controls
+5. **Annual DLI** — outdoor / greenhouse / shaded / flower-window DLI
+6. **Supplemental light** — monthly PPFD gap, installed kW, fixture count
+7. **LED vs HPS** — efficacy, energy, heat, voltage compatibility
+8. **Under-canopy** — real PPFD/DLI delivered to lower canopy
+9. **CO₂** — feasibility, recommended DLI/PPFD ranges by setpoint
+10. **Shade tradeoff** — DLI loss vs cooling benefit
+11. **Humidity / wet-bulb** — wet-bulb + dew-point + VPD vs flower targets
+12. **HVAC screening** — cooling tons, dehumidification pints/day
+13. **Seasonal calendar** — per-month strategy bullets
 
-## Status
+## License
 
-* TypeScript compile: clean.
-* Vitest: 36 tests across DLI, fixture, psychrometric, evap cooling,
-  photoperiod, CO₂, and solar models.
-* Vite production build: succeeds.
-* Dev server starts and serves all routes 200; live in-browser interaction
-  was not verified by Claude — confirm panels render the first time you
-  launch.
+MIT. Use it. Fork it. Calibrate it for your facility. The science citations
+in [`CITATIONS.md`](./CITATIONS.md) are public; the implementation is yours
+to copy.
 
 ## What this model is **not**
 
-* Not a stamped HVAC design.
-* Not a full crop simulation.
-* Not a replacement for PAR sensor mapping.
-* Not a replacement for greenhouse engineering.
-* Not a guarantee of cannabis yield or quality.
+- Not a stamped HVAC design
+- Not a full crop simulation (no leaf-level photosynthesis ODE)
+- Not a replacement for PAR sensor mapping at canopy
+- Not a replacement for greenhouse engineering
+- Not a guarantee of cannabis yield or quality
+
+Outputs are screening-level. Every number is decision-support, not a
+specification. Validate against measured data + stamped engineering before
+any capex commitment.
+
+## Status
+
+- TypeScript compile: clean
+- Vitest: **128/128 tests pass**
+- Vite production build: succeeds
+- Live demo: `npm run dev` → <http://localhost:5180>
+
+## Acknowledgments
+
+Built solo by Alex Buckner Claiborne with Claude Opus 4.7 (Anthropic) as
+a paired-coding agent. The AI workflow itself draws on coursework from
+MIT (CSAIL, BCS, Sloan) — the foundations of how language models,
+optimization, and human-AI collaboration actually work.

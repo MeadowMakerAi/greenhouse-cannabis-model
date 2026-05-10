@@ -6,7 +6,19 @@ export default function OutputSummary() {
   const { inputs } = useScenario();
   const d = useDerived();
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-[0.08em] text-ink-500">
+          Key outputs
+        </div>
+        <div
+          className="rounded-full border border-warn-500/30 bg-warn-500/5 px-2 py-0.5 text-[10px] font-medium text-warn-600"
+          title="Outputs are decision-support only. Validate against stamped engineering before any capex commitment."
+        >
+          ⚠ Screening-level — verify before capex
+        </div>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-3">
       {/* Hero — DLI target is the operational north-star: yield ceiling,
        * fixture count, energy bill, all flow from this number. */}
       <div className="card-hero-primary lg:col-span-2">
@@ -99,6 +111,7 @@ export default function OutputSummary() {
             {fmtInt(inputs.canopyAreaSqFt)} ft² canopy · {d.peakFixtureCount} overhead
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

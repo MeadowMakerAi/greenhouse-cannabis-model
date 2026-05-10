@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Grid, Environment, Sky } from "@react-three/drei";
+import { OrbitControls, Grid, Sky } from "@react-three/drei";
 import { EffectComposer, Bloom, ToneMapping, Vignette } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
@@ -1458,7 +1458,11 @@ export default function Greenhouse3D({
             elevationDeg={liveSunElevationDeg ?? 60}
           />
           <Atmosphere elevationDeg={liveSunElevationDeg ?? 60} />
-          <Environment preset="warehouse" environmentIntensity={0.18} />
+          {/* Note: drei <Environment preset="warehouse" /> was previously
+            * used here for subtle image-based lighting (intensity 0.18),
+            * but it pulls an HDRI from raw.githack.com which would
+            * require widening the CSP. The contribution at 0.18 is
+            * minor; ElegantSky + Atmosphere + direct lights cover it. */}
 
           <CameraRig
             floorLength={floorLength}
