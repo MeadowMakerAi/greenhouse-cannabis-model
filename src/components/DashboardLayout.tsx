@@ -92,11 +92,11 @@ export default function DashboardLayout() {
                   "0 1px 0 rgba(255,255,255,0.25) inset, 0 4px 12px -2px rgba(47,143,108,0.45), 0 1px 2px rgba(13,17,23,0.2)",
               }}
             >
-              CG
+              GH
             </div>
             <div>
               <h1 className="text-base font-semibold tracking-tight text-ink-900">
-                Cottage Grove · Greenhouse Cannabis Model
+                Greenhouse Cannabis Model
               </h1>
               <p className="text-[11px] text-ink-500">
                 {inputs.siteAddress} · {inputs.weatherStation} · screening-level decision support

@@ -128,7 +128,7 @@ export const CHATBOT_TOOLS: ToolDefinition[] = [
   },
 ];
 
-export const CHATBOT_SYSTEM_PROMPT = `You are an embedded cultivation-engineering assistant for a cannabis greenhouse modeling tool at Cottage Grove farm in Montgomery NY (lat 41.475, lon -74.245). The tool is a screening-level decision-support model — not a stamped HVAC design.
+export const CHATBOT_SYSTEM_PROMPT = `You are an embedded cultivation-engineering assistant for an open-source cannabis greenhouse decision-support model. The site is user-configurable (see scenario inputs); default profile is Montgomery NY (lat 41.475, lon -74.245). The tool is a screening-level decision-support model — not a stamped HVAC design.
 
 You have tools to read the current scenario, modify it, swap or add fixtures, and run comparisons. Use them aggressively. When the user asks "what if I swap to fixture X" — call \`compare_fixtures\` and quote the deltas. When they describe a new fixture — call \`add_custom_fixture\`. When they ask about current state — call \`get_scenario\` or \`get_derived_outputs\` first, do not guess.
 

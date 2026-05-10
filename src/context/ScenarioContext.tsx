@@ -361,6 +361,25 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
           merged.eaveHeightFt,
           merged.peakHeightFt,
         );
+        // Auto-scale canopy area with floor footprint so plants, fixtures,
+        // and canopy all follow when the user resizes the greenhouse.
+        // The fixture count downstream is derived from canopy area; plant
+        // grid is derived from canopy dimensions — preserving the prior
+        // canopy:floor ratio means the whole 3D scene rescales coherently.
+        // Skip if the user is explicitly overriding canopyAreaSqFt this call.
+        const lengthOrWidthChanged =
+          "greenhouseLengthFt" in next || "greenhouseWidthFt" in next;
+        if (
+          lengthOrWidthChanged &&
+          !("canopyAreaSqFt" in next) &&
+          prev.greenhouseFloorAreaSqFt > 0
+        ) {
+          const ratio = d.floor / prev.greenhouseFloorAreaSqFt;
+          merged.canopyAreaSqFt = Math.max(
+            50,
+            Math.round(prev.canopyAreaSqFt * ratio),
+          );
+        }
         merged.greenhouseFloorAreaSqFt = Math.round(d.floor);
         merged.greenhouseEnvelopeAreaSqFt = Math.round(d.envelope);
         merged.greenhouseVolumeCuFt = Math.round(d.volume);

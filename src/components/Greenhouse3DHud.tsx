@@ -43,7 +43,7 @@ export default function Greenhouse3DHud({
     <div className="pointer-events-none absolute inset-0 z-10 select-none">
       {/* Top-left: identity */}
       <div className="pointer-events-auto absolute left-3 top-3 w-56 rounded-lg border border-white/30 bg-white/55 p-3 shadow-md backdrop-blur-md">
-        <div className="text-[10px] uppercase tracking-wider text-ink-500">Cottage Grove farm</div>
+        <div className="text-[10px] uppercase tracking-wider text-ink-500">Site overview</div>
         <div className="font-mono text-base font-semibold text-ink-900">{formatDate(sim.dayOfYear)}</div>
         <div className="font-mono text-2xl font-semibold tabular-nums text-ink-900">
           {formatTime(sim.hourOfDay)}

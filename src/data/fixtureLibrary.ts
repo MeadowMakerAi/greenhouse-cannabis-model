@@ -5,10 +5,10 @@ import type { FixtureSpec } from "../models/fixtureModel";
  * datasheet where possible; engineering estimates flagged in the notes.
  *
  * The site's branch electrical service constrains which fixtures can be
- * specified — Cottage Grove farm currently has single-phase 120/240 only.
- * Fixtures with minVoltage > 120 cannot run on 120V branches; fixtures with
- * minVoltage > 240 cannot be used at all without a service upgrade to
- * 277V or 480V three-phase.
+ * specified — the default profile is single-phase 120/240V (typical small
+ * ag service). Fixtures with minVoltage > 120 cannot run on 120V branches;
+ * fixtures with minVoltage > 240 cannot be used at all without a service
+ * upgrade to 277V or 480V three-phase.
  */
 export const fixtureLibrary: Record<string, FixtureSpec> = {
   ledHighEfficiency: {
