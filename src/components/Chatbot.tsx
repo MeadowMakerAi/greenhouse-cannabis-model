@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { chatTurn, type ChatMessage, type FileAttachment } from "../services/chatbotService";
-import { useScenario } from "../context/ScenarioContext";
+import { useScenario, geometryFromDims } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 import { useSimulation } from "../context/SimulationContext";
 import { useAllFixtures } from "../context/useAllFixtures";
@@ -51,6 +51,27 @@ export default function Chatbot() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // The Anthropic tool-use loop runs over multiple roundtrips inside a
+  // single chatTurn() Promise. The toolHandler closure created on this
+  // render captures `inputs`/`derived`/`sim`. When the model calls
+  // set_scenario then immediately get_scenario in the same loop, the
+  // second call would otherwise see stale React state because no re-render
+  // intervenes. Mirror live state into refs (after commit) and read from
+  // them inside the handler so chained tool calls see the merged result.
+  // Derived outputs are still based on the React-rendered snapshot (we
+  // can't recompute model outputs synchronously from a ref); scenario
+  // reads stay fresh because set_scenario also writes through to the ref.
+  const inputsRef = useRef(inputs);
+  const derivedRef = useRef(derived);
+  const simRef = useRef(sim);
+  const liveRef = useRef(live);
+  const allFixturesRef = useRef(allFixtures);
+  useEffect(() => { inputsRef.current = inputs; }, [inputs]);
+  useEffect(() => { derivedRef.current = derived; }, [derived]);
+  useEffect(() => { simRef.current = sim; }, [sim]);
+  useEffect(() => { liveRef.current = live; }, [live]);
+  useEffect(() => { allFixturesRef.current = allFixtures; }, [allFixtures]);
+
   const onFilesPicked = async (files: FileList | null) => {
     if (!files) return;
     const next: FileAttachment[] = [];
@@ -100,6 +121,13 @@ export default function Chatbot() {
   };
 
   const toolHandler = async (name: string, input: Record<string, unknown>) => {
+    // Always read latest state from refs so chained tool calls within one
+    // chatTurn() see the merged result of prior set_scenario calls.
+    const inputs = inputsRef.current;
+    const derived = derivedRef.current;
+    const sim = simRef.current;
+    const live = liveRef.current;
+    const allFixtures = allFixturesRef.current;
     switch (name) {
       case "get_scenario":
         return inputs;
@@ -138,8 +166,117 @@ export default function Chatbot() {
       }
       case "set_scenario": {
         const patches = (input.patches ?? {}) as Record<string, unknown>;
-        setInputs(patches as Partial<typeof inputs>);
-        return { applied: patches };
+        // The system prompt tells the model to use dotted keys for nested
+        // envelope fields (e.g. "envelope.baseTransmissionPct"). setInputs
+        // is a shallow merge, so a dotted key would otherwise land as a
+        // literal property name and silently do nothing.
+        //
+        // Algorithm — protects against three failure modes codex flagged:
+        // (a) deep nesting: walk arbitrary dot depth via recursion.
+        // (b) order-dependence: dotted patches and raw nested-object
+        //     patches for the same parent get merged, not stomped, by
+        //     processing all sources into a single nested map.
+        // (c) array values into object slots: skip the merge and store
+        //     as-is so downstream type guards reject cleanly rather than
+        //     silently coerce.
+        const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+          v !== null && typeof v === "object" && !Array.isArray(v);
+        const setDeep = (
+          target: Record<string, unknown>,
+          path: string[],
+          value: unknown,
+        ) => {
+          let node = target;
+          for (let i = 0; i < path.length - 1; i++) {
+            const key = path[i];
+            const next = node[key];
+            if (!isPlainObject(next)) {
+              node[key] = {};
+            }
+            node = node[key] as Record<string, unknown>;
+          }
+          node[path[path.length - 1]] = value;
+        };
+        // Seed nested patches with deep-clones of existing scenario state
+        // so partial merges don't drop sibling fields. Track which top
+        // levels we've seeded to keep this O(N) regardless of patch shape.
+        const normalized: Record<string, unknown> = {};
+        const seeded = new Set<string>();
+        const seedTopLevel = (parent: string) => {
+          if (seeded.has(parent)) return;
+          const existing: unknown = inputs[parent as keyof typeof inputs];
+          if (isPlainObject(existing)) {
+            normalized[parent] = { ...existing };
+          }
+          seeded.add(parent);
+        };
+        for (const [k, v] of Object.entries(patches)) {
+          if (k.includes(".")) {
+            const path = k.split(".");
+            seedTopLevel(path[0]);
+            // Ensure the top-level slot in normalized is an object before
+            // descending; this also covers the case where the user passed
+            // both "foo.bar" and "foo: {...}" — they merge naturally.
+            if (!isPlainObject(normalized[path[0]])) {
+              normalized[path[0]] = {};
+            }
+            setDeep(
+              normalized[path[0]] as Record<string, unknown>,
+              path.slice(1),
+              v,
+            );
+            continue;
+          }
+          const existing = inputs[k as keyof typeof inputs];
+          if (isPlainObject(existing) && isPlainObject(v)) {
+            // Shallow-merge nested objects so partial patches don't drop
+            // siblings, and merge with whatever dotted patches already
+            // wrote into normalized[k].
+            seedTopLevel(k);
+            normalized[k] = {
+              ...(normalized[k] as Record<string, unknown> | undefined),
+              ...v,
+            };
+          } else {
+            // Primitive, array, or array-into-object — store as-is. If the
+            // model passes an array where the schema expects an object,
+            // downstream code will surface it; we don't silently coerce.
+            normalized[k] = v;
+          }
+        }
+        setInputs(normalized as Partial<typeof inputs>);
+        // Mirror the merge into the ref so a follow-up get_scenario in the
+        // same chatTurn() loop reads the post-patch state.
+        const mirrored = {
+          ...inputsRef.current,
+          ...(normalized as Partial<typeof inputs>),
+        };
+        // ScenarioContext.setInputs auto-re-derives floor/envelope/volume
+        // when any exterior dimension changed. Replicate that here so the
+        // ref stays consistent with what React state will be on next
+        // render — otherwise a chained get_scenario after, say,
+        // set_scenario({greenhouseLengthFt: 96}) would report the new
+        // length but a stale floor/envelope/volume.
+        const dimKeys = [
+          "greenhouseLengthFt",
+          "greenhouseWidthFt",
+          "eaveHeightFt",
+          "peakHeightFt",
+        ] as const;
+        const dimChanged = dimKeys.some((k) => k in normalized);
+        if (dimChanged) {
+          const d = geometryFromDims(
+            mirrored.greenhouseLengthFt,
+            mirrored.greenhouseWidthFt,
+            mirrored.eaveHeightFt,
+            mirrored.peakHeightFt,
+          );
+          mirrored.greenhouseFloorAreaSqFt = Math.round(d.floor);
+          mirrored.greenhouseEnvelopeAreaSqFt = Math.round(d.envelope);
+          mirrored.greenhouseVolumeCuFt = Math.round(d.volume);
+        }
+        inputsRef.current = mirrored;
+        return { applied: normalized };
       }
       case "list_fixtures":
         return Object.values(allFixtures).map((f) => ({
@@ -308,14 +445,6 @@ export default function Chatbot() {
 
   return (
     <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/pdf,image/png,image/jpeg,image/webp,image/gif"
-        multiple
-        className="hidden"
-        onChange={(e) => onFilesPicked(e.target.files)}
-      />
       {!open && (
         <button
           type="button"

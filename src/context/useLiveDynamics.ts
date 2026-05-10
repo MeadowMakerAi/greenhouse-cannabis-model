@@ -72,16 +72,21 @@ export function useLiveDynamics() {
   const sim = useSimulation();
   const derived = useDerived();
 
-  return useMemo(() => {
+  // Split: the 24-hour trace depends only on the day-of-year + scenario
+  // inputs, NOT on hourOfDay. Computing it inside a hook that re-runs every
+  // animation frame (hourOfDay changes ~60× / sec during continuous play)
+  // burned ~49 iterations × 60 fps = 2,940 unnecessary computeAt calls per
+  // second. Hoisting the trace dropped that to a single recompute per
+  // simulated day. The snapshot still recomputes per frame from the trace
+  // index plus a single hour-aligned recompute.
+  const traceData = useMemo(() => {
     const lat = inputs.latitude;
-    // Pull monthly climate row
     const monthIdx = (() => {
       const cum = [31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
       for (let i = 0; i < 12; i++) if (sim.dayOfYear <= cum[i]) return i;
       return 11;
     })();
     const climateRow = climate.data[monthIdx];
-
     const transmission = netCanopyTransmissionPct(inputs.envelope);
 
     const computeAt = (hourOfDay: number, prevIndoor: number, prevVent: boolean) => {
@@ -192,7 +197,14 @@ export function useLiveDynamics() {
       });
     }
 
-    // Snapshot at current sim time — find nearest trace point or recompute
+    return { trace, monthIndex: monthIdx, computeAt };
+  }, [inputs, climate, sim.dayOfYear, derived]);
+
+  return useMemo(() => {
+    const { trace, monthIndex, computeAt } = traceData;
+    // Snapshot at current sim time — seed with nearest trace point's
+    // indoor-temp + vent state so the per-frame recompute starts from the
+    // hysteresis-correct condition for that hour rather than a cold start.
     const idx = Math.max(0, Math.min(trace.length - 1, Math.round(sim.hourOfDay * 2)));
     const snap = trace[idx];
     const fullSnap = computeAt(sim.hourOfDay, snap.indoorTempF, snap.ventOpen === 1);
@@ -251,6 +263,6 @@ export function useLiveDynamics() {
       plant,
     };
 
-    return { snapshot, trace, monthIndex: monthIdx };
-  }, [inputs, climate, sim.dayOfYear, sim.hourOfDay, derived]);
+    return { snapshot, trace, monthIndex };
+  }, [traceData, sim.dayOfYear, sim.hourOfDay, inputs, derived]);
 }

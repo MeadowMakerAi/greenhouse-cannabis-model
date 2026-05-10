@@ -19,4 +19,15 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  // Context files legitimately co-locate Provider components with their
+  // consumer hooks (useScenario / useSimulation) and module-level constants
+  // (defaultScenario, SPEED_PRESETS). The fast-refresh rule penalizes that
+  // pattern; trading the fast-refresh edge case for not splitting every
+  // context across two files is the right trade.
+  {
+    files: ['src/context/*Context.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

@@ -550,6 +550,8 @@ export default function BuildSheet() {
           fixtureCount={optFixtureCount}
           gridSpacingFt={optGridSpacing}
           fixtureLabel={optimal?.fixture.label ?? d.fixture.label}
+          greenhouseLengthFt={inputs.greenhouseLengthFt}
+          greenhouseWidthFt={inputs.greenhouseWidthFt}
         />
       </Section>
 

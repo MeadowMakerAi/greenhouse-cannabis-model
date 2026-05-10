@@ -1182,6 +1182,11 @@ export default function Greenhouse3D({
   greenhouseLengthFt?: number;
   greenhouseWidthFt?: number;
 }) {
+  // Clamp peak >= eave so an inverted-gable input doesn't produce negative
+  // slope angles, flipped truss geometry, or roof vents that hinge "below"
+  // the ridge. A flat roof (peak === eave) still renders as a degenerate but
+  // visually sensible monoslope.
+  const safePeakHeightFt = Math.max(peakHeightFt, eaveHeightFt);
   // Canopy footprint (assume same aspect as floor unless explicit dims given)
   const canopyWidth = Math.sqrt(canopyAreaSqFt / aspect);
   const canopyLength = canopyWidth * aspect;
@@ -1212,14 +1217,25 @@ export default function Greenhouse3D({
   const canopyOffsetX = -canopyLength / 2;
   const canopyOffsetZ = -canopyWidth / 2;
 
-  const cols = Math.max(1, Math.round(canopyLength / gridSpacingFt));
+  // Cols proportional to sqrt(N · canopyAspect) so the layout matches the
+  // canopy's shape. The previous formula picked cols from canopyLength /
+  // gridSpacingFt then derived rows = ceil(N / cols), which collapsed to a
+  // single row whenever grid spacing rounded large relative to canopy.
+  // Final tighten: cols = ceil(N/rows) so the last row isn't sparse for
+  // non-evenly-divisible fixture counts.
+  const canopyAspect = canopyLength / Math.max(0.001, canopyWidth);
+  let cols = Math.max(
+    1,
+    Math.round(Math.sqrt(Math.max(1, fixtureCount) * canopyAspect)),
+  );
   const rows = Math.max(1, Math.ceil(fixtureCount / cols));
+  cols = Math.max(1, Math.ceil(fixtureCount / rows));
   const colSpacing = canopyLength / cols;
   const rowSpacing = canopyWidth / rows;
   const fixtures: { x: number; z: number }[] = [];
-  for (let r = 0; r < rows; r++) {
+  outer: for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (fixtures.length >= fixtureCount) break;
+      if (fixtures.length >= fixtureCount) break outer;
       fixtures.push({
         x: canopyOffsetX + colSpacing * (c + 0.5),
         z: canopyOffsetZ + rowSpacing * (r + 0.5),
@@ -1227,12 +1243,13 @@ export default function Greenhouse3D({
     }
   }
 
-  const fixtureZ = peakHeightFt - 5; // Hang ~5 ft below ridge
+  const fixtureZ = safePeakHeightFt - 5; // Hang ~5 ft below ridge
   const canopyTopZ = 4; // canopy plant tops ~4 ft from floor
   const footprintLength = colSpacing * 0.95;
   const footprintWidth = rowSpacing * 0.95;
 
   void glazingPct;
+  void gridSpacingFt;
 
   // Plant height grows with canopy spacing — more headroom = taller training
   const plantHeight = Math.min(5, Math.max(3, Math.min(rowSpacing, colSpacing) * 0.45));
@@ -1260,7 +1277,7 @@ export default function Greenhouse3D({
           <CameraRig
             floorLength={floorLength}
             floorWidth={floorWidth}
-            peak={peakHeightFt}
+            peak={safePeakHeightFt}
             resetSignal={resetCameraSignal}
           />
 
@@ -1294,7 +1311,7 @@ export default function Greenhouse3D({
               length={floorLength}
               width={floorWidth}
               eave={eaveHeightFt}
-              peak={peakHeightFt}
+              peak={safePeakHeightFt}
               thermalScreenActive={thermalScreenActive}
               shadeActive={shadeActive}
               shadeTransmissionPct={shadeTransmissionPct}
@@ -1315,7 +1332,7 @@ export default function Greenhouse3D({
             <Fixtures
               positions={fixtures}
               hangHeight={fixtureZ + 0.5}
-              ridgeHeight={peakHeightFt + 0.5}
+              ridgeHeight={safePeakHeightFt + 0.5}
               dimLevel={lightsDimLevel}
             />
 
@@ -1337,7 +1354,7 @@ export default function Greenhouse3D({
 
           <OrbitControls
             makeDefault
-            target={[0, peakHeightFt / 2, 0]}
+            target={[0, safePeakHeightFt / 2, 0]}
             enableDamping
             dampingFactor={0.08}
             minDistance={20}

@@ -161,25 +161,33 @@ export interface ScenarioInputs {
   servicePowerFactor: number; // assumed PF for amperage calc when fixture doesn't provide one
 }
 
-// Auto-derive area + envelope + volume from exterior dimensions
-function geometryFromDims(
+// Auto-derive area + envelope + volume from exterior dimensions.
+// Exported so consumers (e.g. the chatbot's set_scenario tool) can mirror
+// the same derivation when echoing patches synchronously, without having
+// to wait for React to re-render and re-run setInputs's internal derive.
+export function geometryFromDims(
   length: number,
   width: number,
   eave: number,
   peak: number,
 ) {
+  // Clamp peak >= eave. A peak below the eave inverts the gable, producing
+  // negative gable area, negative volume contribution, and a "valley" roof
+  // slope that the 3D scene can't render correctly. Treat peak === eave as
+  // a flat roof and proceed.
+  const safePeak = Math.max(peak, eave);
   // Roof slope length: hypotenuse from eave to peak across half the width
-  const slopeLen = Math.sqrt(Math.pow(width / 2, 2) + Math.pow(peak - eave, 2));
+  const slopeLen = Math.sqrt(Math.pow(width / 2, 2) + Math.pow(safePeak - eave, 2));
   // Envelope area: 2 sidewalls (L×eave) + 2 end gables (rectangle + triangle)
   // + 2 roof slopes (L × slopeLen)
   const sidewalls = 2 * length * eave;
   const endRectangles = 2 * width * eave;
-  const endGables = 2 * (0.5 * width * (peak - eave));
+  const endGables = 2 * (0.5 * width * (safePeak - eave));
   const roofSlopes = 2 * length * slopeLen;
   const envelope = sidewalls + endRectangles + endGables + roofSlopes;
   const floor = length * width;
   // Volume: rectangular sidewalls + triangular ridge prism
-  const volume = floor * eave + 0.5 * width * (peak - eave) * length;
+  const volume = floor * eave + 0.5 * width * (safePeak - eave) * length;
   return {
     floor,
     envelope,

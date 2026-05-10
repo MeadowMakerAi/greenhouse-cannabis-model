@@ -4,6 +4,12 @@ interface Props {
   fixtureCount: number;
   gridSpacingFt: number;
   glazingPct: number;
+  /** Actual greenhouse length (ft). When supplied with width, overrides the 1.5:1 aspect heuristic. */
+  greenhouseLengthFt?: number;
+  greenhouseWidthFt?: number;
+  /** Actual eave/peak heights (ft). Defaults to 8/14 when not supplied. */
+  eaveHeightFt?: number;
+  peakHeightFt?: number;
 }
 
 /**
@@ -22,6 +28,10 @@ export default function GreenhouseIsoView({
   fixtureCount,
   gridSpacingFt,
   glazingPct,
+  greenhouseLengthFt,
+  greenhouseWidthFt,
+  eaveHeightFt,
+  peakHeightFt,
 }: Props) {
   // Isometric projection: x→ (right-down), y→ (right-up), z→ (up)
   // angle = 30°
@@ -32,16 +42,32 @@ export default function GreenhouseIsoView({
     py: (x + y) * sin30 - z,
   });
 
-  // Greenhouse dimensions in feet (1.5:1 aspect, 14 ft gable peak height)
+  // Use explicit dimensions when supplied; otherwise fall back to a 1.5:1
+  // aspect heuristic so the schematic still renders for legacy callers.
   const ASPECT = 1.5;
-  const floorWidth = Math.sqrt(floorAreaSqFt / ASPECT);
-  const floorLength = floorWidth * ASPECT;
-  const eaveHeight = 8;
-  const peakHeight = 14;
+  const hasExplicitDims =
+    typeof greenhouseLengthFt === "number" &&
+    typeof greenhouseWidthFt === "number" &&
+    greenhouseLengthFt > 0 &&
+    greenhouseWidthFt > 0;
+  const floorLength = hasExplicitDims
+    ? greenhouseLengthFt!
+    : Math.sqrt(floorAreaSqFt / ASPECT) * ASPECT;
+  const floorWidth = hasExplicitDims
+    ? greenhouseWidthFt!
+    : Math.sqrt(floorAreaSqFt / ASPECT);
+  const eaveHeight = typeof eaveHeightFt === "number" && eaveHeightFt > 0 ? eaveHeightFt : 8;
+  // Clamp peak >= eave so an inverted-gable input doesn't produce negative
+  // roof angles in the projection.
+  const peakHeight = Math.max(
+    eaveHeight,
+    typeof peakHeightFt === "number" && peakHeightFt > 0 ? peakHeightFt : 14,
+  );
 
-  // Canopy footprint inside floor
-  const canopyWidth = Math.sqrt(canopyAreaSqFt / ASPECT);
-  const canopyLength = canopyWidth * ASPECT;
+  // Canopy footprint inside floor — preserve floor aspect so plants/aisles align.
+  const floorAspect = floorLength / Math.max(0.001, floorWidth);
+  const canopyWidth = Math.sqrt(canopyAreaSqFt / Math.max(0.001, floorAspect));
+  const canopyLength = canopyWidth * floorAspect;
   const canopyOffsetX = (floorLength - canopyLength) / 2;
   const canopyOffsetY = (floorWidth - canopyWidth) / 2;
 
@@ -65,16 +91,23 @@ export default function GreenhouseIsoView({
   const peakNear = projAndScale(floorLength / 2, 0, peakHeight);
   const peakFar = projAndScale(floorLength / 2, floorWidth, peakHeight);
 
-  // Fixtures: lay out on grid 6 ft below ridge (height ~peakHeight - 6)
+  // Fixtures: lay out on grid hung ~6 ft below ridge. Cols proportional to
+  // sqrt(N · canopyAspect), then tightened to ceil(N/rows) so the last row
+  // isn't sparse for non-perfectly-fitting fixture counts.
   const fixtureZ = peakHeight - 6;
-  const cols = Math.max(1, Math.round(canopyLength / gridSpacingFt));
+  const canopyAspect = canopyLength / Math.max(0.001, canopyWidth);
+  let cols = Math.max(
+    1,
+    Math.round(Math.sqrt(Math.max(1, fixtureCount) * canopyAspect)),
+  );
   const rows = Math.max(1, Math.ceil(fixtureCount / cols));
+  cols = Math.max(1, Math.ceil(fixtureCount / rows));
   const colSpacing = canopyLength / cols;
   const rowSpacing = canopyWidth / rows;
   const fixtures: { x: number; y: number; z: number }[] = [];
-  for (let r = 0; r < rows; r++) {
+  outer: for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (fixtures.length >= fixtureCount) break;
+      if (fixtures.length >= fixtureCount) break outer;
       fixtures.push({
         x: canopyOffsetX + colSpacing * (c + 0.5),
         y: canopyOffsetY + rowSpacing * (r + 0.5),

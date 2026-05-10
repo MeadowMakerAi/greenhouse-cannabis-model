@@ -141,8 +141,10 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
         }
         if (dayInc > 0) {
           setDayOfYear((d) => {
-            const nd = d + dayInc;
-            return nd > 365 ? nd - 365 : nd;
+            // Days are 1..365. Wrap with modulo so very large dayInc (paused
+            // tab resumes after long delay, or fast speeds) lands inside range.
+            const zeroBased = d - 1 + dayInc;
+            return ((zeroBased % 365) + 365) % 365 + 1;
           });
         }
         return nextH;
@@ -155,21 +157,29 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     };
   }, [playing, speed, rangePlaying]);
 
+  const rangeStartSimTime = rangeStartDOY * 24 + rangeStartHour;
+  const rangeEndSimTime = rangeEndDOY * 24 + rangeEndHour;
+  const totalRangeSimHours = rangeEndSimTime - rangeStartSimTime;
+  // Internal `rangePlaying` is user intent; effective playback also
+  // requires a valid range. Exposing the AND-gated value keeps consumers
+  // from showing "playing" UI when the ticker is silently stopped, and
+  // lets the ticker effect early-return without an in-effect setState.
+  const effectiveRangePlaying = rangePlaying && totalRangeSimHours > 0;
+
   // Range-play ticker: interpolate across [start, end] over rangeDurationSec
   useEffect(() => {
-    if (!rangePlaying) {
+    if (!effectiveRangePlaying) {
       rangeStartTimeRef.current = 0;
       return;
     }
+    // Reset start-of-playback marker whenever the effect re-runs (range
+    // bounds, duration, or loop flag changed) so progress is computed from
+    // the new effective start, not a stale timestamp from a prior config.
+    rangeStartTimeRef.current = 0;
     let raf: number | null = null;
-    const startSimTime = rangeStartDOY * 24 + rangeStartHour;
-    const endSimTime = rangeEndDOY * 24 + rangeEndHour;
-    const totalSimHours = endSimTime - startSimTime;
-    if (totalSimHours <= 0) {
-      setRangePlaying(false);
-      return;
-    }
+    let stopped = false;
     const tick = (now: number) => {
+      if (stopped) return;
       if (rangeStartTimeRef.current === 0) {
         rangeStartTimeRef.current = now;
       }
@@ -182,20 +192,29 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
         } else {
           progress = 1;
           setRangePlaying(false);
+          // Snap clock to the final frame and stop scheduling more ticks.
+          stopped = true;
         }
       }
-      const t = startSimTime + totalSimHours * progress;
+      const t = rangeStartSimTime + totalRangeSimHours * progress;
       const newDOY = Math.max(1, Math.min(365, Math.floor(t / 24)));
       const newHour = ((t % 24) + 24) % 24;
       setDayOfYear(newDOY);
       setHourOfDay(newHour);
-      raf = requestAnimationFrame(tick);
+      if (!stopped) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => {
+      stopped = true;
       if (raf !== null) cancelAnimationFrame(raf);
     };
-  }, [rangePlaying, rangeStartDOY, rangeEndDOY, rangeStartHour, rangeEndHour, rangeDurationSec, rangeLoop]);
+  }, [
+    effectiveRangePlaying,
+    rangeStartSimTime,
+    totalRangeSimHours,
+    rangeDurationSec,
+    rangeLoop,
+  ]);
 
   const setRangeStart = useCallback(
     (doy: number, hour: number) => {
@@ -212,10 +231,18 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     [],
   );
   const setRangeDuration = useCallback((s: number) => setRangeDurationSec(s), []);
+  // Validate against an invalid (end <= start) range BEFORE flipping the
+  // play state. Without this guard the UI would show "Stop range" while the
+  // ticker silently never advanced (the gating happens further downstream
+  // in effectiveRangePlaying), confusing the user. The deps include the
+  // range bounds so the closure always sees fresh values.
   const startRangePlay = useCallback(() => {
+    const startSim = rangeStartDOY * 24 + rangeStartHour;
+    const endSim = rangeEndDOY * 24 + rangeEndHour;
+    if (endSim <= startSim) return;
     setPlaying(false); // stop continuous mode
     setRangePlaying(true);
-  }, []);
+  }, [rangeStartDOY, rangeStartHour, rangeEndDOY, rangeEndHour]);
   const stopRangePlay = useCallback(() => setRangePlaying(false), []);
 
   const value = useMemo(
@@ -230,7 +257,11 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       rangeEndHour,
       rangeDurationSec,
       rangeLoop,
-      rangePlaying,
+      // Expose the gated value so UI button states match the ticker's
+      // actual behavior. If the user sets an invalid range and clicks Play,
+      // startRangePlay refuses; if they invalidate the range mid-play the
+      // ticker stops and the UI flips back to "Play range" automatically.
+      rangePlaying: effectiveRangePlaying,
       setDayOfYear,
       setHourOfDay,
       setPlaying,
@@ -255,7 +286,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       rangeEndHour,
       rangeDurationSec,
       rangeLoop,
-      rangePlaying,
+      effectiveRangePlaying,
       togglePlay,
       jumpTo,
       setRangeStart,

@@ -4,13 +4,15 @@ interface Props {
   fixtureCount: number;
   gridSpacingFt: number;
   fixtureLabel: string;
+  /** Actual greenhouse length (ft). When supplied with width, overrides the 1.5:1 aspect heuristic. */
+  greenhouseLengthFt?: number;
+  greenhouseWidthFt?: number;
 }
 
 /**
  * Top-down schematic of the greenhouse with canopy footprint, aisles, and
- * fixture grid. NOT an architectural drawing — geometry is derived by
- * assuming a 1.5:1 length:width aspect ratio. Drop in a measured floor plan
- * to override.
+ * fixture grid. NOT an architectural drawing — when explicit dimensions are
+ * not supplied, geometry is derived by assuming a 1.5:1 length:width aspect.
  */
 export default function GreenhousePlanView({
   floorAreaSqFt,
@@ -18,13 +20,25 @@ export default function GreenhousePlanView({
   fixtureCount,
   gridSpacingFt,
   fixtureLabel,
+  greenhouseLengthFt,
+  greenhouseWidthFt,
 }: Props) {
-  // Assume 1.5:1 length:width
   const ASPECT = 1.5;
-  const floorWidth = Math.sqrt(floorAreaSqFt / ASPECT);
-  const floorLength = floorWidth * ASPECT;
-  const canopyWidth = Math.sqrt(canopyAreaSqFt / ASPECT);
-  const canopyLength = canopyWidth * ASPECT;
+  const hasExplicitDims =
+    typeof greenhouseLengthFt === "number" &&
+    typeof greenhouseWidthFt === "number" &&
+    greenhouseLengthFt > 0 &&
+    greenhouseWidthFt > 0;
+  const floorLength = hasExplicitDims
+    ? greenhouseLengthFt!
+    : Math.sqrt(floorAreaSqFt / ASPECT) * ASPECT;
+  const floorWidth = hasExplicitDims
+    ? greenhouseWidthFt!
+    : Math.sqrt(floorAreaSqFt / ASPECT);
+  // Canopy preserves the floor's actual aspect ratio so plants/aisles align.
+  const floorAspect = floorLength / Math.max(0.001, floorWidth);
+  const canopyWidth = Math.sqrt(canopyAreaSqFt / Math.max(0.001, floorAspect));
+  const canopyLength = canopyWidth * floorAspect;
 
   // SVG canvas
   const padding = 60;
@@ -47,15 +61,26 @@ export default function GreenhousePlanView({
   const canopyX = floorX + (drawnFloorLengthPx - drawnCanopyLengthPx) / 2;
   const canopyY = floorY + (drawnFloorWidthPx - drawnCanopyWidthPx) / 2;
 
-  // Lay out fixtures in a square-ish grid centered on canopy
-  const cols = Math.max(1, Math.round(canopyLength / gridSpacingFt));
+  // Lay out fixtures in a grid that matches the canopy's aspect ratio. Old
+  // approach picked cols from canopyLength/gridSpacing then capped rows to
+  // ceil(N/cols), which collapsed to a single row whenever the grid spacing
+  // was small enough that cols >= fixtureCount. New approach picks cols
+  // proportional to sqrt(N · aspect), then tightens cols back down to
+  // ceil(N/rows) so the last row isn't sparse — e.g., a 60×10 canopy with
+  // N=8 was producing 7×2 (last row of 1); now produces 4×2.
+  const canopyAspect = canopyLength / Math.max(0.001, canopyWidth);
+  let cols = Math.max(
+    1,
+    Math.round(Math.sqrt(Math.max(1, fixtureCount) * canopyAspect)),
+  );
   const rows = Math.max(1, Math.ceil(fixtureCount / cols));
+  cols = Math.max(1, Math.ceil(fixtureCount / rows));
   const colSpacingPx = drawnCanopyLengthPx / cols;
   const rowSpacingPx = drawnCanopyWidthPx / rows;
   const fixtures: { x: number; y: number }[] = [];
-  for (let r = 0; r < rows; r++) {
+  outer: for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (fixtures.length >= fixtureCount) break;
+      if (fixtures.length >= fixtureCount) break outer;
       fixtures.push({
         x: canopyX + colSpacingPx * (c + 0.5),
         y: canopyY + rowSpacingPx * (r + 0.5),
