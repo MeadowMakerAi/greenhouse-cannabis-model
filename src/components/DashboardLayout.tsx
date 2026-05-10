@@ -28,22 +28,61 @@ import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 
 const TABS = [
-  { id: "build", label: "★ Build sheet" },
-  { id: "optimized", label: "★ Optimized system" },
-  { id: "science", label: "★ Cultivation science" },
-  { id: "live", label: "★ Live simulation" },
-  { id: "dli", label: "1 · Annual DLI" },
-  { id: "supplemental", label: "2 · Supplemental light" },
-  { id: "ledHps", label: "3 · LED vs HPS" },
-  { id: "underCanopy", label: "4 · Under-canopy" },
-  { id: "co2", label: "5 · CO₂ + high DLI" },
-  { id: "shade", label: "6 · Shade tradeoff" },
-  { id: "humidity", label: "7 · Humidity / wet-bulb" },
-  { id: "hvac", label: "8 · HVAC screening" },
-  { id: "calendar", label: "9 · Seasonal calendar" },
+  { id: "build", label: "★ Build sheet", title: "Build sheet", subtitle: "Procurement-grade BOM with fixture count, kW, $/yr, and HVAC sizing.", index: "★" },
+  { id: "optimized", label: "★ Optimized system", title: "Optimized system", subtitle: "Apply recommended fixtures + setpoints with one click.", index: "★" },
+  { id: "science", label: "★ Cultivation science", title: "Cultivation science", subtitle: "Yield projection, pathogen pressure, crop steering, alongside the live scene.", index: "★" },
+  { id: "live", label: "★ Live simulation", title: "Live simulation", subtitle: "Sun, lights, vents, plant growth follow the time-range player.", index: "★" },
+  { id: "dli", label: "1 · Annual DLI", title: "Annual DLI", subtitle: "Outdoor, greenhouse-transmitted, and flower-window DLI by month.", index: "01" },
+  { id: "supplemental", label: "2 · Supplemental light", title: "Supplemental light", subtitle: "Monthly PPFD gap to target, installed kW, and fixture optimization.", index: "02" },
+  { id: "ledHps", label: "3 · LED vs HPS", title: "LED vs HPS", subtitle: "Annual energy, $/yr, and heat load across fixture choices.", index: "03" },
+  { id: "underCanopy", label: "4 · Under-canopy", title: "Under-canopy", subtitle: "Lower-canopy PPFD, kW, heat load, and morphology support.", index: "04" },
+  { id: "co2", label: "5 · CO₂ + high DLI", title: "CO₂ + high DLI", subtitle: "Feasibility band, recommended DLI ranges by setpoint, ventilation conflict.", index: "05" },
+  { id: "shade", label: "6 · Shade tradeoff", title: "Shade tradeoff", subtitle: "DLI loss vs cooling benefit; supplemental PPFD penalty by month.", index: "06" },
+  { id: "humidity", label: "7 · Humidity / wet-bulb", title: "Humidity & wet-bulb", subtitle: "Wet-bulb + dew-point profile against 60/68 °F risk thresholds; VPD vs target.", index: "07" },
+  { id: "hvac", label: "8 · HVAC screening", title: "HVAC screening", subtitle: "Cooling tons, dehumidification pints/day, evap-failure months.", index: "08" },
+  { id: "calendar", label: "9 · Seasonal calendar", title: "Seasonal calendar", subtitle: "Per-month strategy bullets and surfaced warnings.", index: "09" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+/** Editorial section header above each tab's content — small-caps index +
+ *  title + subtitle, hairline rule below. Anchors the eye and signals
+ *  hierarchy. Pattern: editorial magazine spread. */
+function TabHeader({ tabId }: { tabId: TabId }) {
+  const t = TABS.find((x) => x.id === tabId);
+  if (!t) return null;
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-ink-200/80 pb-3">
+      <div className="flex items-baseline gap-3">
+        <span
+          className="font-display text-leaf-700"
+          style={{
+            fontSize: "1.5rem",
+            fontWeight: 600,
+            letterSpacing: "-0.015em",
+            lineHeight: 1,
+          }}
+        >
+          {t.index}
+        </span>
+        <h2
+          className="font-display text-ink-900"
+          style={{
+            fontSize: "1.75rem",
+            fontWeight: 600,
+            letterSpacing: "-0.02em",
+            lineHeight: 1,
+          }}
+        >
+          {t.title}
+        </h2>
+      </div>
+      <p className="max-w-xl text-sm leading-snug text-ink-500 proportional-nums">
+        {t.subtitle}
+      </p>
+    </div>
+  );
+}
 
 function ScenePanel({
   title,
@@ -173,55 +212,58 @@ export default function DashboardLayout() {
             })}
           </nav>
 
-          {tab === "build" && <BuildSheet />}
-          {tab === "optimized" && <OptimizedSystemPanel />}
-          {tab === "science" && (
-            <div className="space-y-4">
-              <ScenePanel
-                title="Greenhouse · live 3D model"
-                subtitle="Synced to sim clock — sun, lights, vents, fabric follow the time-range player"
-                bleed
-              />
-              <CultivationSciencePanel />
-            </div>
-          )}
-          {tab === "live" && (
-            <div className="space-y-4">
-              <ScenePanel
-                title="Greenhouse · live 3D model"
-                subtitle="Sun · lights · vents · plant growth all follow the simulation clock"
-                bleed
-              />
-              <TimeControls />
-              <DailyDynamicsChart />
-            </div>
-          )}
-          {tab === "dli" && <AnnualDLIChart />}
-          {tab === "supplemental" && (
-            <div className="space-y-3">
-              <PPFDGapChart />
-              <FixtureKWByMonth />
-              <FixtureOptimization />
-            </div>
-          )}
-          {tab === "ledHps" && <LightingScenarioChart />}
-          {tab === "underCanopy" && <UnderCanopyLightingPanel />}
-          {tab === "co2" && <CO2ResponsePanel />}
-          {tab === "shade" && <ShadeClothControlPanel />}
-          {tab === "humidity" && (
-            <div className="space-y-3">
-              <WetBulbRiskChart />
-              <VPDChart />
-            </div>
-          )}
-          {tab === "hvac" && (
-            <div className="space-y-3">
-              <HeatLoadChart />
-              <HeatingPanel />
-              <CoolingModePanel />
-            </div>
-          )}
-          {tab === "calendar" && <SeasonalStrategyCalendar />}
+          <div key={tab} className="tab-content space-y-4">
+            <TabHeader tabId={tab} />
+            {tab === "build" && <BuildSheet />}
+            {tab === "optimized" && <OptimizedSystemPanel />}
+            {tab === "science" && (
+              <div className="space-y-4">
+                <ScenePanel
+                  title="Greenhouse · live 3D model"
+                  subtitle="Synced to sim clock — sun, lights, vents, fabric follow the time-range player"
+                  bleed
+                />
+                <CultivationSciencePanel />
+              </div>
+            )}
+            {tab === "live" && (
+              <div className="space-y-4">
+                <ScenePanel
+                  title="Greenhouse · live 3D model"
+                  subtitle="Sun · lights · vents · plant growth all follow the simulation clock"
+                  bleed
+                />
+                <TimeControls />
+                <DailyDynamicsChart />
+              </div>
+            )}
+            {tab === "dli" && <AnnualDLIChart />}
+            {tab === "supplemental" && (
+              <div className="space-y-3">
+                <PPFDGapChart />
+                <FixtureKWByMonth />
+                <FixtureOptimization />
+              </div>
+            )}
+            {tab === "ledHps" && <LightingScenarioChart />}
+            {tab === "underCanopy" && <UnderCanopyLightingPanel />}
+            {tab === "co2" && <CO2ResponsePanel />}
+            {tab === "shade" && <ShadeClothControlPanel />}
+            {tab === "humidity" && (
+              <div className="space-y-3">
+                <WetBulbRiskChart />
+                <VPDChart />
+              </div>
+            )}
+            {tab === "hvac" && (
+              <div className="space-y-3">
+                <HeatLoadChart />
+                <HeatingPanel />
+                <CoolingModePanel />
+              </div>
+            )}
+            {tab === "calendar" && <SeasonalStrategyCalendar />}
+          </div>
         </div>
       </main>
     </div>

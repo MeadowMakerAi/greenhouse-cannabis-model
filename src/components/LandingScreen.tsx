@@ -165,12 +165,14 @@ export default function LandingScreen({
                   "0 1px 0 rgba(255,255,255,0.9) inset, 0 1px 2px rgba(13,17,23,0.04), 0 12px 28px -12px rgba(13,17,23,0.18), 0 32px 56px -28px rgba(47,143,108,0.18)",
               }}
             >
-              <img
-                src="/landing-hero.png"
-                alt="Live 3D greenhouse simulation at solar noon, showing fixture grid, plant canopy, sun, and HUD telemetry."
-                className="block h-auto w-full"
-                loading="eager"
-              />
+              <div className="relative overflow-hidden">
+                <img
+                  src="/landing-hero.png"
+                  alt="Live 3D greenhouse simulation at solar noon, showing fixture grid, plant canopy, sun, and HUD telemetry."
+                  className="landing-hero-img block h-auto w-full"
+                  loading="eager"
+                />
+              </div>
               {/* Caption strip */}
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 border-t border-ink-200/60 bg-white/85 px-4 py-2 text-[11px] text-ink-500 backdrop-blur-sm">
                 <span className="font-semibold uppercase tracking-[0.10em] text-ink-700">
