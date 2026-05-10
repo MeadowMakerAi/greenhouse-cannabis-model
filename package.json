@@ -1,7 +1,9 @@
 {
   "name": "greenhouse-model",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Open-source decision-support model for cannabis greenhouse design. React + R3F + Tailwind. Screening-level — not a substitute for stamped engineering review.",
   "type": "module",
   "scripts": {
     "dev": "vite",
