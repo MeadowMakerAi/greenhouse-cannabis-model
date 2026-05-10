@@ -114,8 +114,12 @@ export default function DashboardLayout() {
       <header className="col-span-2 relative z-20 border-b border-ink-200/70 bg-white/95 px-5 py-3 shadow-header">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold text-white"
+            <button
+              type="button"
+              aria-label="Show project intro"
+              title="Show project intro"
+              onClick={() => window.dispatchEvent(new CustomEvent("greenhouse-model:show-landing"))}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold text-white transition-transform duration-150 hover:-translate-y-px focus:outline-none focus:ring-2 focus:ring-leaf-500/60 focus:ring-offset-2"
               style={{
                 background:
                   "radial-gradient(120% 120% at 30% 20%, #43a47e 0%, #2f8f6c 55%, #185640 100%)",
@@ -124,7 +128,7 @@ export default function DashboardLayout() {
               }}
             >
               GH
-            </div>
+            </button>
             <div>
               <h1 className="text-base font-semibold tracking-tight text-ink-900">
                 Greenhouse Cannabis Model
