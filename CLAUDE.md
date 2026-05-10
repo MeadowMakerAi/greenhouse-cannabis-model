@@ -81,8 +81,23 @@ reason→search→reason→search pattern explicitly.
 
 When Codex flags a P0, treat it as a P0. Most recent run found 5 real P0s
 (API key in localStorage, `set_scenario` shallow-merge, DOY wrap, snapshot
-drift, peak<eave geometry guard). Three are patched; two (API key / set_scenario
-deep-merge) are deferred and tracked in commit `dc38c18`.
+drift, peak<eave geometry guard). All five are now settled:
+
+- DOY wrap, snapshot drift, peak<eave geometry guard: patched in `dc38c18`.
+- `set_scenario` shallow-merge: chatbot tool handler now deep-merges nested
+  envelope patches before calling `setInputs`, so a single-field envelope
+  patch no longer wipes sibling fields.
+- API key in localStorage: this is the production decision for the
+  open-source BYO-key model. Containment stack:
+  · CSP `connect-src` allowlists only `api.anthropic.com` (+ NASA POWER /
+    Open-Meteo / NWS for climate data) — XSS can't exfiltrate the key
+    elsewhere.
+  · `isAnthropicKeyFormat` rejects non-Anthropic keys at submit time.
+  · `isPublicHostname` triggers an extra warning when the dashboard runs
+    on a non-localhost origin.
+  · Session-only toggle in the chatbot lets paranoid users opt for
+    `sessionStorage` (cleared on tab close) instead of `localStorage`.
+  Server-side proxy is out of scope for an open-source client-only tool.
 
 ## Bibliography is the source of truth
 

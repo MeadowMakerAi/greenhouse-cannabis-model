@@ -574,6 +574,10 @@ export default function BuildSheet() {
 import { useLiveDynamics } from "../context/useLiveDynamics";
 import { useSimulation } from "../context/SimulationContext";
 import { dayOfYearToMonth } from "../models/simulationModel";
+import {
+  getFixtureFormFactor,
+  getFixtureKelvin,
+} from "../models/fixtureModel";
 import Greenhouse3DHud from "./Greenhouse3DHud";
 
 function formatHour(h: number) {
@@ -602,6 +606,12 @@ function Live3DScene(props: {
   const { inputs } = useScenario();
   const live = useLiveDynamics();
   const sim = useSimulation();
+  // Pull the active fixture from useDerived so the BuildSheet 3D scene
+  // reacts to fixture-dropdown changes the same way LiveGreenhouseScene does.
+  const derived = useDerived();
+  const activeFixture = derived.fixture;
+  const fixtureFormFactor = getFixtureFormFactor(activeFixture);
+  const fixtureKelvin = getFixtureKelvin(activeFixture);
   const [month, setMonth] = useState(5);
   const [ridgeAzimuth, setRidgeAzimuth] = useState(0);
   const [resetSignal, setResetSignal] = useState(0);
@@ -761,6 +771,11 @@ function Live3DScene(props: {
                 : 0
               : 1
           }
+          fixtureFormFactor={fixtureFormFactor}
+          fixtureKelvin={fixtureKelvin}
+          fixtureWatts={activeFixture.wattsPerFixture}
+          fixtureType={activeFixture.type}
+          fixtureLabel={activeFixture.label}
         />
         {props.syncToSim && <Greenhouse3DHud ridgeAzimuthDeg={ridgeAzimuth} />}
       </div>

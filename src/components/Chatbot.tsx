@@ -14,8 +14,21 @@ import { fixtureKWFromPPFD, type FixtureSpec } from "../models/fixtureModel";
 import { DAYS_IN_MONTH } from "../utils/formatting";
 
 const STORAGE_KEY = "greenhouse-model:anthropicApiKey";
+const SESSION_KEY = "greenhouse-model:anthropicApiKey";
+const SESSION_PREF_KEY = "greenhouse-model:keyPersistencePref";
 const MODEL_KEY = "greenhouse-model:chatbotModel";
 const HISTORY_KEY = "greenhouse-model:chatHistory";
+
+/**
+ * Read the Anthropic key from sessionStorage first (paranoid tab-scoped
+ * preference) then localStorage (default persistent). sessionStorage is
+ * cleared when the tab closes — useful for shared machines or screen-shares.
+ */
+function readStoredKey(): string {
+  return (
+    sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(STORAGE_KEY) ?? ""
+  );
+}
 
 /**
  * Are we running on a public hostname (Vercel, custom domain) or on a local
@@ -62,7 +75,10 @@ export default function Chatbot() {
   const live = useLiveDynamics();
 
   const [open, setOpen] = useState(false);
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem(STORAGE_KEY) ?? "");
+  const [apiKey, setApiKey] = useState<string>(() => readStoredKey());
+  const [sessionOnly, setSessionOnly] = useState<boolean>(
+    () => localStorage.getItem(SESSION_PREF_KEY) === "session",
+  );
   const [keyDraft, setKeyDraft] = useState("");
   const [showKeyConfig, setShowKeyConfig] = useState(false);
   const [model, setModel] = useState<string>(
@@ -116,11 +132,38 @@ export default function Chatbot() {
       return;
     }
     setApiKey(trimmed);
-    if (trimmed) localStorage.setItem(STORAGE_KEY, trimmed);
-    else localStorage.removeItem(STORAGE_KEY);
+    // Honor the user's persistence preference. sessionOnly = clear
+    // localStorage and write to sessionStorage instead, so the key is
+    // gone when the tab closes.
+    if (trimmed) {
+      if (sessionOnly) {
+        sessionStorage.setItem(SESSION_KEY, trimmed);
+        localStorage.removeItem(STORAGE_KEY);
+      } else {
+        localStorage.setItem(STORAGE_KEY, trimmed);
+        sessionStorage.removeItem(SESSION_KEY);
+      }
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(SESSION_KEY);
+    }
     setKeyDraft("");
     setShowKeyConfig(false);
     setError(null);
+  };
+  const togglePersistence = (toSession: boolean) => {
+    setSessionOnly(toSession);
+    localStorage.setItem(SESSION_PREF_KEY, toSession ? "session" : "local");
+    // If a key is already saved, migrate it to the chosen storage.
+    if (apiKey) {
+      if (toSession) {
+        sessionStorage.setItem(SESSION_KEY, apiKey);
+        localStorage.removeItem(STORAGE_KEY);
+      } else {
+        localStorage.setItem(STORAGE_KEY, apiKey);
+        sessionStorage.removeItem(SESSION_KEY);
+      }
+    }
   };
   const clearAllData = () => {
     if (
@@ -131,8 +174,10 @@ export default function Chatbot() {
       return;
     }
     localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(MODEL_KEY);
     localStorage.removeItem(HISTORY_KEY);
+    localStorage.removeItem(SESSION_PREF_KEY);
     setApiKey("");
     setHistory([]);
     setError(null);
@@ -186,9 +231,27 @@ export default function Chatbot() {
         };
       }
       case "set_scenario": {
-        const patches = (input.patches ?? {}) as Record<string, unknown>;
-        setInputs(patches as Partial<typeof inputs>);
-        return { applied: patches };
+        // Deep-merge nested objects so the chatbot can patch a single
+        // envelope field (e.g. baseTransmissionPct) without wiping the
+        // others. Without this guard, `set_scenario({patches: {envelope:
+        // {baseTransmissionPct: 0.65}}})` would replace the entire
+        // envelope object with that one field — Codex P0 from the
+        // pre-launch review.
+        const rawPatches = (input.patches ?? {}) as Record<string, unknown>;
+        const merged: Record<string, unknown> = { ...rawPatches };
+        const envelopePatch = rawPatches.envelope;
+        if (
+          envelopePatch &&
+          typeof envelopePatch === "object" &&
+          !Array.isArray(envelopePatch)
+        ) {
+          merged.envelope = {
+            ...(inputs.envelope as unknown as Record<string, unknown>),
+            ...(envelopePatch as Record<string, unknown>),
+          };
+        }
+        setInputs(merged as Partial<typeof inputs>);
+        return { applied: merged };
       }
       case "list_fixtures":
         return Object.values(allFixtures).map((f) => ({
@@ -428,10 +491,24 @@ export default function Chatbot() {
               </div>
               <p className="text-[11px] leading-snug text-ink-700">
                 The chatbot calls Anthropic directly from your browser using
-                a key you provide. The key is stored in this browser's
-                localStorage only — never committed, never sent anywhere
-                except api.anthropic.com (enforced by the page's CSP).
+                a key you provide. The key is stored in this browser's{" "}
+                <span className="font-semibold">
+                  {sessionOnly ? "sessionStorage (cleared when tab closes)" : "localStorage (persists across tabs/sessions)"}
+                </span>
+                {" "}— never committed, never sent anywhere except
+                api.anthropic.com (enforced by the page's CSP).
               </p>
+              <label className="mt-2 flex items-center gap-2 text-[11px] text-ink-700">
+                <input
+                  type="checkbox"
+                  checked={sessionOnly}
+                  onChange={(e) => togglePersistence(e.target.checked)}
+                />
+                <span>
+                  Session-only — don't keep the key past tab close
+                  {sessionOnly ? " (active)" : ""}
+                </span>
+              </label>
               <ul className="mt-2 space-y-0.5 text-[10.5px] leading-snug text-ink-700">
                 <li>
                   <span className="font-semibold text-leaf-700">Recommended:</span>{" "}
