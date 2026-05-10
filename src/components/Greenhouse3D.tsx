@@ -207,21 +207,14 @@ function RoofVent({
             side={THREE.DoubleSide}
           />
         </mesh>
-        {/* Hinge bar at ridge */}
+        {/* Hinge bar at ridge — the operator linkage on real continuous ridge
+         * vents is concealed inside the gutter rail or end-cap; we don't
+         * render decorative struts because they read as visual clutter
+         * when 10+ segments × 2 leaves are open simultaneously. */}
         <mesh position={[0, 0, 0]}>
           <boxGeometry args={[ventWidth, 0.05, 0.05]} />
           <meshStandardMaterial color="#3d4452" />
         </mesh>
-        {/* Operator arm — a thin diagonal strut visible when open */}
-        {open && (
-          <mesh
-            position={[ventWidth / 2 - 0.1, ventPanelLength * 0.35, 0]}
-            rotation={[0, 0, -Math.PI / 4]}
-          >
-            <cylinderGeometry args={[0.025, 0.025, ventPanelLength * 0.6, 6]} />
-            <meshStandardMaterial color="#6a7280" metalness={0.6} roughness={0.4} />
-          </mesh>
-        )}
       </group>
     </group>
   );
