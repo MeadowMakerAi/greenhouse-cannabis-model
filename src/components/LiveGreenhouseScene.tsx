@@ -36,12 +36,17 @@ export interface LiveGreenhouseSceneProps {
   gridSpacingFt: number;
   /** When true (default), sun + lights + vents follow the simulation clock. */
   syncToSim?: boolean;
+  /** Render the 3D canvas as the page substrate — no card chrome, edge
+   *  vignette blends into surrounding plane. Used on the marquee tabs
+   *  (Live, Cultivation Science) where the scene is the focus. */
+  bleed?: boolean;
 }
 
 export default function LiveGreenhouseScene({
   fixtureCount,
   gridSpacingFt,
   syncToSim = true,
+  bleed = false,
 }: LiveGreenhouseSceneProps) {
   const { inputs } = useScenario();
   const derived = useDerived();
@@ -268,6 +273,7 @@ export default function LiveGreenhouseScene({
           fixtureType={activeFixture.type}
           fixtureLabel={activeFixture.label}
           plantGrowth={syncToSim ? live.snapshot.plant : undefined}
+          bleed={bleed}
         />
         {syncToSim && <Greenhouse3DHud ridgeAzimuthDeg={ridgeAzimuth} />}
       </div>

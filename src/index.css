@@ -4,7 +4,10 @@
 
 :root {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  /* Tabular figures everywhere by default — the senior-creative tell.
+     Prose blocks opt back into proportional via `.proportional-nums`. */
+  font-variant-numeric: tabular-nums;
   color-scheme: light;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
@@ -36,9 +39,18 @@ body,
   h1, h2, h3 {
     letter-spacing: -0.02em;
   }
-  /* Default tabular numerics for any number that lives in a fixed column */
+  /* Tabular is the default at :root. Use this when prose readability needs
+     proportional figures (paragraphs, free copy). */
+  .proportional-nums {
+    font-variant-numeric: proportional-nums;
+  }
+  /* Convenience class: tabular nums + slashed zero for very dense numeric
+     columns where 0/O confusion is possible (telemetry strips, etc.). */
   .tabular {
     font-variant-numeric: tabular-nums;
+  }
+  .tabular-slashed {
+    font-variant-numeric: tabular-nums slashed-zero;
   }
 }
 
@@ -115,6 +127,65 @@ body,
   .card-body-tight {
     @apply px-4 py-3;
   }
+
+  /* ---- 3D scene substrate (Live + Cultivation Science tabs) ----
+     The greenhouse becomes the canvas, not a tile. We don't paint a panel
+     border or background — instead an edge vignette softens where the
+     canvas meets the surrounding chrome. Pattern: Tesla Vision 2026.14,
+     Bookmap (the visualization is the floor, KPIs sit above it). */
+  .scene-bleed::before,
+  .scene-bleed::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .scene-bleed::before {
+    /* Top + bottom soft fade into the page background */
+    inset: 0;
+    background:
+      linear-gradient(180deg, rgba(243, 245, 248, 0.6) 0%, transparent 8%, transparent 92%, rgba(243, 245, 248, 0.5) 100%);
+  }
+  .scene-bleed::after {
+    /* Left + right edge vignette */
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(243, 245, 248, 0.45) 0%, transparent 6%, transparent 94%, rgba(243, 245, 248, 0.45) 100%);
+  }
+
+  /* ---- Editorial sidebar sections (Figma right-panel + Bloomberg) ----
+     Small-caps title, hairline rule, no card chrome, collapsible body via
+     native `<details>`. The whole sidebar is the structure — typography
+     and spacing carry hierarchy, not container outlines. */
+  .sidebar-section {
+    @apply border-b border-ink-200/60;
+  }
+  .sidebar-section:last-of-type {
+    @apply border-b-0;
+  }
+  .sidebar-section-header {
+    @apply flex cursor-pointer items-center gap-2 px-1 py-2.5 transition-colors hover:bg-ink-200/30;
+    list-style: none;
+  }
+  .sidebar-section-header::-webkit-details-marker {
+    display: none;
+  }
+  .sidebar-section-caret {
+    @apply inline-flex h-4 w-4 items-center justify-center text-[10px] text-ink-300 transition-transform duration-150;
+  }
+  .sidebar-section[open] > .sidebar-section-header > .sidebar-section-caret {
+    transform: rotate(90deg);
+    @apply text-ink-500;
+  }
+  .sidebar-section-title {
+    @apply flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.10em] text-ink-700;
+  }
+  .sidebar-section-right {
+    @apply flex flex-shrink-0 items-center gap-1;
+  }
+  .sidebar-section-body {
+    @apply space-y-3 px-1 pb-4 pt-1;
+  }
   /* Accent stripes sit above the inner top-highlight from shadow-e3 so the
      stripe reads as the painted edge of the card, not a separate ribbon.
      Width bumped to 3px so it's legible alongside the new shadow stack. */
@@ -159,20 +230,67 @@ body,
     z-index: 2;
   }
 
-  /* ---- KPI typography ---- */
+  /* ---- KPI typography (editorial)
+     ────────────────────────────────────────────────────────────────────
+     The hero number uses IBM Plex Sans Condensed at clamp(48px, 8vw, 96px),
+     weight 600, negative tracking. Vitals at half that. Ledger values in
+     Inter SemiBold, tabular. Eyebrows in 11px small-caps with dim ink.
+     Pattern is Bloomberg Terminal column header + Stripe hero, not
+     SaaS card-grid. */
+  .kpi-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.10em] text-ink-500;
+  }
+  .kpi-hero {
+    @apply font-display text-ink-900;
+    font-size: clamp(3rem, 7vw, 5.75rem);
+    font-weight: 600;
+    line-height: 0.95;
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-hero-unit {
+    @apply ml-2 align-baseline text-base font-medium text-ink-500;
+  }
+  .kpi-vital {
+    @apply font-display text-ink-900;
+    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    font-weight: 600;
+    line-height: 1.0;
+    letter-spacing: -0.015em;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-vital-unit {
+    @apply ml-1 text-[11px] font-medium text-ink-500;
+  }
+  .kpi-ledger {
+    @apply text-2xl font-semibold tracking-tight text-ink-900;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.05;
+  }
+  .kpi-ledger-text {
+    @apply truncate text-base font-semibold text-ink-900;
+    line-height: 1.2;
+  }
+  .kpi-ledger-unit {
+    @apply ml-1 text-xs font-normal text-ink-500;
+  }
+  .kpi-context-lead {
+    @apply text-xs leading-relaxed text-ink-500;
+  }
+  /* Legacy classes kept for charts/panels still referencing them. */
   .kpi-label {
     @apply text-[10px] font-medium uppercase tracking-[0.08em] text-ink-500;
   }
   .kpi-number {
-    @apply font-mono text-3xl font-semibold tracking-tightest text-ink-900;
+    @apply font-display text-3xl font-semibold tracking-tightest text-ink-900;
     font-variant-numeric: tabular-nums;
   }
   .kpi-number-sm {
-    @apply font-mono text-xl font-semibold tracking-tight text-ink-900;
+    @apply font-display text-xl font-semibold tracking-tight text-ink-900;
     font-variant-numeric: tabular-nums;
   }
   .kpi-number-xl {
-    @apply font-mono text-4xl font-bold tracking-tightest text-ink-900;
+    @apply font-display text-4xl font-bold tracking-tightest text-ink-900;
     font-variant-numeric: tabular-nums;
     line-height: 1;
   }
@@ -245,7 +363,24 @@ body,
     background-image: linear-gradient(180deg, #2c3744 0%, #1a2230 100%);
   }
   .tab-button-star {
-    @apply text-leaf-600;
+    @apply text-leaf-700;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  /* Active starred tab keeps the leaf brand gradient — combines with
+     `.tab-button-active` so the dark gradient fallback stays for non-star
+     active tabs. Pattern from main's b08c080 polish pass. */
+  .tab-button-star.tab-button-active {
+    background-image: linear-gradient(180deg, #2f8f6c 0%, #1f6c50 100%);
+    @apply text-white;
+    text-shadow: none;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 1px 2px rgba(13, 17, 23, 0.18),
+      0 6px 14px -4px rgba(47, 143, 108, 0.45);
+  }
+  .tab-button-star.tab-button-active:hover {
+    @apply text-white;
+    background-image: linear-gradient(180deg, #2f8f6c 0%, #1f6c50 100%);
   }
 
   /* ---- Buttons ---- */

@@ -45,10 +45,42 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-function ScenePanel({ title, subtitle }: { title: string; subtitle?: string }) {
+function ScenePanel({
+  title,
+  subtitle,
+  bleed = false,
+}: {
+  title: string;
+  subtitle?: string;
+  bleed?: boolean;
+}) {
   const d = useDerived();
   const fixtureCount = d.peakFixtureCount > 0 ? d.peakFixtureCount : 36;
   const gridSpacingFt = d.peakSquareGridSpacingFt > 0 ? d.peakSquareGridSpacingFt : 5.3;
+  if (bleed) {
+    // Substrate mode: scene IS the surface. Title rides above as
+    // editorial chrome, no card outline.
+    return (
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between border-b border-ink-200/70 pb-2">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.10em] text-ink-700">
+            {title}
+          </span>
+          {subtitle && (
+            <span className="text-[11px] text-ink-500 proportional-nums">
+              {subtitle}
+            </span>
+          )}
+        </div>
+        <LiveGreenhouseScene
+          fixtureCount={fixtureCount}
+          gridSpacingFt={gridSpacingFt}
+          syncToSim
+          bleed
+        />
+      </div>
+    );
+  }
   return (
     <div className="card">
       <div className="card-header-strong">
@@ -117,7 +149,7 @@ export default function DashboardLayout() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`tab-button ${active ? "tab-button-active" : isStarred ? "tab-button-star" : ""}`}
+                  className={`tab-button ${isStarred ? "tab-button-star" : ""} ${active ? "tab-button-active" : ""}`}
                   type="button"
                 >
                   {t.label}
@@ -129,19 +161,21 @@ export default function DashboardLayout() {
           {tab === "build" && <BuildSheet />}
           {tab === "optimized" && <OptimizedSystemPanel />}
           {tab === "science" && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <ScenePanel
                 title="Greenhouse · live 3D model"
-                subtitle="Synced to simulation clock — sun, lights, vents, fabric all follow your time-range player"
+                subtitle="Synced to sim clock — sun, lights, vents, fabric follow the time-range player"
+                bleed
               />
               <CultivationSciencePanel />
             </div>
           )}
           {tab === "live" && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <ScenePanel
                 title="Greenhouse · live 3D model"
-                subtitle="The full-tab live scene; same component as Build sheet"
+                subtitle="Sun · lights · vents · plant growth all follow the simulation clock"
+                bleed
               />
               <TimeControls />
               <DailyDynamicsChart />

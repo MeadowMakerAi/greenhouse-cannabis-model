@@ -55,6 +55,16 @@ export default {
           "Roboto",
           "sans-serif",
         ],
+        // Condensed display face for hero numerics + section titles.
+        // Pairs with Inter body. Engineering-instrument feel; reads
+        // distinctly from the AI-default Geist/Plus-Jakarta pack.
+        display: [
+          "IBM Plex Sans Condensed",
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
         mono: [
           "JetBrains Mono",
           "ui-monospace",
@@ -68,34 +78,33 @@ export default {
       },
       boxShadow: {
         // Legacy alias — still used by `.recharts-default-tooltip`.
-        // Migrate that callsite to e2 in a follow-up and drop this entry.
         card: "0 1px 2px rgba(13,17,23,0.04), 0 1px 1px rgba(13,17,23,0.04)",
 
-        // Elevation system — light source directly above. Every tier uses
-        // pure vertical drop (no X-offset) plus a top inner highlight, so
-        // surfaces read as floating in a flat-lit room. Keep new tiers
-        // consistent with this convention; if a future design wants
-        // upper-left light, retro-fit X-offsets across the whole stack.
-        // Each tier = (1) a tight contact shadow, (2) an ambient shadow,
-        // (3) inner top highlight to simulate light catching the lip.
-        e0: "inset 0 0 0 1px rgba(13,17,23,0.06)",
+        // Elevation system — OKLCH-based, light source directly above.
+        // Each tier = (1) tight contact shadow, (2) ambient drop with
+        // slight leaf hue (oklch ~0.25 0.04 150) so surfaces feel like
+        // they sit on a brand-tinted plane rather than a vacuum, plus
+        // (3) inner top highlight (white 0.6-0.9) for the lit-edge cue.
+        // OKLCH keeps the hue stable across alpha steps; sRGB stacks
+        // muddy toward gray. (Evil Martians, Koos Looijesteijn.)
+        e0: "inset 0 0 0 1px oklch(0.20 0.02 260 / 0.07)",
         e1:
-          "0 1px 0 rgba(13,17,23,0.03), 0 1px 2px rgba(13,17,23,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+          "0 1px 0 oklch(0.20 0.02 260 / 0.04), 0 1px 2px oklch(0.25 0.04 150 / 0.06), inset 0 1px 0 oklch(1 0 0 / 0.6)",
         e2:
-          "0 1px 0 rgba(13,17,23,0.04), 0 2px 4px rgba(13,17,23,0.05), 0 6px 12px -6px rgba(13,17,23,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
+          "0 1px 0 oklch(0.20 0.02 260 / 0.05), 0 2px 4px oklch(0.25 0.04 150 / 0.07), 0 6px 12px -6px oklch(0.25 0.04 150 / 0.08), inset 0 1px 0 oklch(1 0 0 / 0.7)",
         e3:
-          "0 1px 0 rgba(13,17,23,0.05), 0 4px 8px rgba(13,17,23,0.06), 0 12px 28px -12px rgba(13,17,23,0.10), inset 0 1px 0 rgba(255,255,255,0.85)",
+          "0 1px 0 oklch(0.20 0.02 260 / 0.06), 0 4px 8px oklch(0.25 0.05 150 / 0.08), 0 12px 28px -12px oklch(0.25 0.06 150 / 0.14), inset 0 1px 0 oklch(1 0 0 / 0.85)",
         e4:
-          "0 1px 0 rgba(13,17,23,0.05), 0 8px 16px rgba(13,17,23,0.08), 0 24px 48px -16px rgba(13,17,23,0.18), inset 0 1px 0 rgba(255,255,255,0.9)",
-        // Recessed surface — light from above, inset shadow at the top edge.
+          "0 1px 0 oklch(0.20 0.02 260 / 0.06), 0 8px 16px oklch(0.25 0.05 150 / 0.10), 0 24px 48px -16px oklch(0.25 0.07 150 / 0.20), inset 0 1px 0 oklch(1 0 0 / 0.9)",
+        // Recessed surface — light from above, inset at top edge.
         recessed:
-          "inset 0 1px 2px rgba(13,17,23,0.07), inset 0 0 0 1px rgba(13,17,23,0.04)",
-        // Header bottom shadow — softer than a 1px border, anchors the plane.
+          "inset 0 1px 2px oklch(0.20 0.02 260 / 0.08), inset 0 0 0 1px oklch(0.20 0.02 260 / 0.05)",
+        // Header bottom shadow — softer than a 1px border, anchors plane.
         header:
-          "0 1px 0 rgba(13,17,23,0.04), 0 4px 12px -6px rgba(13,17,23,0.06)",
+          "0 1px 0 oklch(0.20 0.02 260 / 0.05), 0 4px 12px -6px oklch(0.25 0.04 150 / 0.08)",
         // Pressed-into-groove for active tab buttons.
         pressed:
-          "inset 0 1px 2px rgba(13,17,23,0.18), inset 0 0 0 1px rgba(13,17,23,0.10)",
+          "inset 0 1px 2px oklch(0.20 0.02 260 / 0.20), inset 0 0 0 1px oklch(0.20 0.02 260 / 0.12)",
       },
     },
   },

@@ -79,26 +79,45 @@ export function ToggleField({ label, value, onChange, hint }: ToggleProps) {
   );
 }
 
+/**
+ * Editorial sidebar section. No card chrome — a small-caps title + hairline
+ * rule + collapsible body. Pattern is Figma right-panel + Bloomberg Terminal
+ * function block, not the SaaS-default stacked-card sidebar.
+ *
+ * Uses native `<details>` for the toggle so it works without JS state and
+ * preserves keyboard navigation. The marker rotates 90° when open via
+ * `[open]` selector in index.css.
+ */
 export function FieldGroup({
   title,
   description,
   children,
+  defaultOpen = true,
+  rightSlot,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
+  defaultOpen?: boolean;
+  rightSlot?: ReactNode;
 }) {
   return (
-    <div className="card">
-      <div className="card-header">
-        <span>{title}</span>
-      </div>
-      <div className="card-body space-y-3">
+    <details className="sidebar-section" open={defaultOpen}>
+      <summary className="sidebar-section-header">
+        <span className="sidebar-section-caret" aria-hidden>
+          ▸
+        </span>
+        <span className="sidebar-section-title">{title}</span>
+        {rightSlot ? (
+          <span className="sidebar-section-right">{rightSlot}</span>
+        ) : null}
+      </summary>
+      <div className="sidebar-section-body">
         {description ? (
           <p className="text-[11px] leading-snug text-ink-500">{description}</p>
         ) : null}
         <div className="grid grid-cols-2 gap-3">{children}</div>
       </div>
-    </div>
+    </details>
   );
 }

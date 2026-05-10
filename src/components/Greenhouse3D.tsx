@@ -1410,10 +1410,18 @@ export default function Greenhouse3D({
   fixtureKelvin = 3500,
   fixtureWatts = 720,
   fixtureType = "LED",
+  bleed = false,
+  heightOverride,
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
   greenhouseWidthFt?: number;
+  /** When true, drop the panel border/bg and let the canvas read as the
+   *  page substrate (Tesla 2026.14 / Bookmap pattern). Used on Live +
+   *  Cultivation Science tabs where the scene IS the focus. */
+  bleed?: boolean;
+  /** Override the default 760px canvas height. Useful for substrate mode. */
+  heightOverride?: number;
 }) {
   // Canopy footprint (assume same aspect as floor unless explicit dims given)
   const canopyWidth = Math.sqrt(canopyAreaSqFt / aspect);
@@ -1498,8 +1506,12 @@ export default function Greenhouse3D({
   const fixtureMeshWidth =
     fixtureFormFactor === "panel" ? 2.6 : fixtureFormFactor === "bulb" ? 2.2 : 1.4;
 
+  const wrapperClass = bleed
+    ? "scene-bleed relative overflow-hidden"
+    : "relative overflow-hidden rounded border border-ink-300/40 bg-ink-900/[0.02]";
+
   return (
-    <div className="overflow-hidden rounded border border-ink-300/40 bg-ink-900/[0.02]" style={{ height: 760 }}>
+    <div className={wrapperClass} style={{ height: heightOverride ?? 760 }}>
       <Canvas
         shadows
         camera={{ fov: 35, near: 1, far: 1500 }}

@@ -15,13 +15,16 @@ export default function AssumptionPanel() {
   const transmission = netCanopyTransmissionPct(inputs.envelope);
 
   return (
-    <aside className="flex h-full flex-col gap-3 overflow-y-auto bg-ink-900/[0.02] p-3">
-      <div className="card">
-        <div className="card-header">
-          <span>Site</span>
-          <span className="tag tag-warn">{inputs.coordinateStatus}</span>
-        </div>
-        <div className="card-body space-y-2">
+    <aside className="flex h-full flex-col overflow-y-auto px-3 py-1">
+      <details className="sidebar-section" open>
+        <summary className="sidebar-section-header">
+          <span className="sidebar-section-caret" aria-hidden>▸</span>
+          <span className="sidebar-section-title">Site</span>
+          <span className="sidebar-section-right">
+            <span className="tag tag-warn">{inputs.coordinateStatus}</span>
+          </span>
+        </summary>
+        <div className="sidebar-section-body">
           <p className="text-[11px] leading-snug text-ink-500">
             Latitude / longitude drive solar geometry, day-length, and sun-angle calculations. They also feed the NASA POWER and Open-Meteo lookups. Override these directly — climate refresh always uses the values shown here.
           </p>
@@ -72,28 +75,28 @@ export default function AssumptionPanel() {
           <div className="flex gap-2">
             <button
               type="button"
-              className="rounded border border-ink-300 px-2 py-1 text-xs hover:bg-leaf-500/5"
+              className="btn !px-2 !py-0.5 !text-[11px]"
               onClick={() => refreshClimate("nasa-power")}
             >
               NASA POWER
             </button>
             <button
               type="button"
-              className="rounded border border-ink-300 px-2 py-1 text-xs hover:bg-leaf-500/5"
+              className="btn !px-2 !py-0.5 !text-[11px]"
               onClick={() => refreshClimate("open-meteo")}
             >
               Open-Meteo
             </button>
             <button
               type="button"
-              className="rounded border border-ink-300 px-2 py-1 text-xs hover:bg-ink-300/20"
+              className="btn !px-2 !py-0.5 !text-[11px]"
               onClick={() => refreshClimate("fallback")}
             >
               Fallback
             </button>
           </div>
         </div>
-      </div>
+      </details>
 
       <FieldGroup
         title="Geometry · exterior dimensions"
