@@ -31,6 +31,19 @@ export default function OutputSummary() {
 
   return (
     <section className="relative overflow-hidden">
+      {/* Decision-support disclaimer — main's pattern, kept verbatim. The
+          project's CLAUDE.md requires every output disclose its level. */}
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-[0.10em] text-ink-500">
+          Key outputs
+        </div>
+        <div
+          className="rounded-full border border-warn-500/30 bg-warn-500/5 px-2 py-0.5 text-[10px] font-medium text-warn-600"
+          title="Outputs are decision-support only. Validate against stamped engineering before any capex commitment."
+        >
+          ⚠ Screening-level — verify before capex
+        </div>
+      </div>
       {/* Subliminal blueprint grid behind the hero panel — Vercel/Geist
           pattern. 24px cells at 4% opacity. Felt before seen. */}
       <div

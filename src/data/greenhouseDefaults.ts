@@ -9,7 +9,7 @@ export const defaultEnvelope: GreenhouseEnvelope = {
 };
 
 export const defaultSite = {
-  siteAddress: "Cottage Grove farm — Montgomery, NY",
+  siteAddress: "Montgomery, NY",
   nearestWeatherAnchor: "Orange County Airport / KMGJ",
   latitude: 41.475384,
   longitude: -74.244553,
@@ -19,9 +19,9 @@ export const defaultSite = {
 };
 
 /**
- * Site electrical service. Cottage Grove farm currently has single-phase
- * 120/240 only — no 277V or 480V three-phase. This constrains which
- * fixtures can be used without a service upgrade.
+ * Default electrical service: single-phase 120/240V (typical residential
+ * agricultural service in the U.S. — most cannabis greenhouses upgrade to
+ * 277/480V three-phase for commercial-grade fixtures). Override at runtime.
  */
 export const defaultElectricalService = {
   serviceVoltages: [120, 240] as number[],

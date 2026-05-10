@@ -127,7 +127,7 @@ export default function PPFDGapChart() {
         <div className="card-body space-y-3">
           {!d.activeFixtureSupports120V && !d.activeFixtureSupports240V && (
             <div className="rounded border border-warn-500/40 bg-warn-500/10 p-2 text-xs text-warn-500">
-              ⚠ This fixture requires {d.fixture.minVoltage}V or higher. Cottage Grove farm has only {inputs.serviceVoltagePrimary}/{inputs.serviceVoltageSecondary}V single-phase — service upgrade needed before specifying.
+              ⚠ This fixture requires {d.fixture.minVoltage}V or higher. Site has only {inputs.serviceVoltagePrimary}/{inputs.serviceVoltageSecondary}V single-phase — service upgrade needed before specifying.
             </div>
           )}
           {!d.activeFixtureSupports120V && d.activeFixtureSupports240V && (

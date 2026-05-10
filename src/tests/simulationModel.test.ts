@@ -6,6 +6,8 @@ import {
   lightsStateAt,
   ventStateAt,
   indoorTempStep,
+  naturalVentilationCFM,
+  effectiveVentAreaSqFt,
 } from "../models/simulationModel";
 
 describe("sunPositionAt", () => {
@@ -176,5 +178,73 @@ describe("indoorTempStep", () => {
       dtHours: 0.25,
     });
     expect(cooled).toBeLessThan(warm);
+  });
+});
+
+describe("naturalVentilationCFM (stack-effect)", () => {
+  it("returns 0 when indoor ≤ outdoor (no buoyancy)", () => {
+    const q = naturalVentilationCFM({
+      effectiveOpenAreaSqFt: 100,
+      stackHeightFt: 6,
+      indoorTempF: 70,
+      outdoorTempF: 75,
+    });
+    expect(q).toBe(0);
+  });
+
+  it("returns 0 when no opening", () => {
+    const q = naturalVentilationCFM({
+      effectiveOpenAreaSqFt: 0,
+      stackHeightFt: 6,
+      indoorTempF: 90,
+      outdoorTempF: 70,
+    });
+    expect(q).toBe(0);
+  });
+
+  it("CFM scales with √ΔT for fixed area + stack height", () => {
+    const q5 = naturalVentilationCFM({
+      effectiveOpenAreaSqFt: 100,
+      stackHeightFt: 6,
+      indoorTempF: 75,
+      outdoorTempF: 70,
+    });
+    const q20 = naturalVentilationCFM({
+      effectiveOpenAreaSqFt: 100,
+      stackHeightFt: 6,
+      indoorTempF: 90,
+      outdoorTempF: 70,
+    });
+    // Q ∝ √ΔT → q20/q5 ≈ √4 = 2
+    expect(q20 / q5).toBeCloseTo(2, 1);
+  });
+
+  it("typical commercial greenhouse magnitude is plausible", () => {
+    // 100 ft × 30 ft × 6 ft stack, ΔT = 15 °F, ridge + sidewall both open.
+    // Effective area for paired vents ≈ 100 ft² (ridge) ≈ 100 ft² (side) → ~70 ft²
+    const A = effectiveVentAreaSqFt(100, 100);
+    const q = naturalVentilationCFM({
+      effectiveOpenAreaSqFt: A,
+      stackHeightFt: 6,
+      indoorTempF: 90,
+      outdoorTempF: 75,
+    });
+    // ASAE EP406.4: typical 30–60 ACH for well-vented gutter-connected greenhouse.
+    // 100×30×12 = 36,000 ft³ → 30 ACH = 18,000 CFM. Allow a wide band.
+    expect(q).toBeGreaterThan(5000);
+    expect(q).toBeLessThan(80000);
+  });
+});
+
+describe("effectiveVentAreaSqFt (paired-vent harmonic mean)", () => {
+  it("two equal areas → A/√2", () => {
+    expect(effectiveVentAreaSqFt(100, 100)).toBeCloseTo(100 / Math.sqrt(2), 4);
+  });
+  it("one side missing → halves the open side (single-opening penalty)", () => {
+    expect(effectiveVentAreaSqFt(100, 0)).toBe(50);
+    expect(effectiveVentAreaSqFt(0, 80)).toBe(40);
+  });
+  it("zero in both → zero", () => {
+    expect(effectiveVentAreaSqFt(0, 0)).toBe(0);
   });
 });

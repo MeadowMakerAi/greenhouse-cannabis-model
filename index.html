@@ -3,7 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cottage Grove · Greenhouse Cannabis Model</title>
+    <!--
+      Content Security Policy.
+
+      Defense-in-depth for the BYO-API-key model: even if a malicious script
+      somehow runs in the page (XSS, hostile browser extension that injects
+      a script into the document), the browser will refuse to send network
+      requests to anywhere outside this allowlist. The Anthropic key is
+      contained: the only outbound origin permitted is api.anthropic.com.
+
+      connect-src   — fetch / WebSocket targets (only Anthropic + open weather
+                      services + the dev server origin)
+      script-src    — JS sources (self + the Vite dev server inline scripts
+                      via 'unsafe-inline'; tighten further once a backend
+                      can sign hashes)
+      style-src     — CSS sources (Google fonts CDN + inline for Tailwind +
+                      r3f drei runtime style injection)
+      font-src      — fonts.gstatic.com for the Inter/JetBrains Mono pair
+      img-src       — data:/blob: for canvas + R3F textures + spec-sheet
+                      previews; self for any /public assets
+
+      anthropic-dangerous-direct-browser-access is still required by the
+      Anthropic API for browser calls. The CSP doesn't replace that header,
+      it just contains the blast radius if the key ever leaks at runtime.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               connect-src 'self' https://api.anthropic.com https://power.larc.nasa.gov https://api.open-meteo.com https://api.weather.gov ws://localhost:* ws://127.0.0.1:*;
+               script-src 'self' 'unsafe-inline' 'unsafe-eval';
+               style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+               font-src 'self' https://fonts.gstatic.com data:;
+               img-src 'self' data: blob:;
+               worker-src 'self' blob:;
+               base-uri 'self';
+               form-action 'self';"
+    />
+    <title>Greenhouse Cannabis Model</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

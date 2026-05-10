@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { chatTurn, type ChatMessage, type FileAttachment } from "../services/chatbotService";
+import {
+  chatTurn,
+  isAnthropicKeyFormat,
+  type ChatMessage,
+  type FileAttachment,
+} from "../services/chatbotService";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 import { useSimulation } from "../context/SimulationContext";
@@ -10,6 +15,26 @@ import { DAYS_IN_MONTH } from "../utils/formatting";
 
 const STORAGE_KEY = "greenhouse-model:anthropicApiKey";
 const MODEL_KEY = "greenhouse-model:chatbotModel";
+const HISTORY_KEY = "greenhouse-model:chatHistory";
+
+/**
+ * Are we running on a public hostname (Vercel, custom domain) or on a local
+ * dev server? When public, the key-entry panel adds an extra hardened
+ * warning — entering a paid Anthropic key on a publicly-visible URL is
+ * higher-risk than on localhost (closer to "real" attackers).
+ */
+function isPublicHostname(): boolean {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return !(
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "0.0.0.0" ||
+    h.endsWith(".local") ||
+    h.startsWith("192.168.") ||
+    h.startsWith("10.")
+  );
+}
 
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -84,6 +109,12 @@ export default function Chatbot() {
 
   const saveApiKey = (k: string) => {
     const trimmed = k.trim();
+    if (trimmed && !isAnthropicKeyFormat(trimmed)) {
+      setError(
+        "That doesn't look like an Anthropic key. Anthropic keys start with sk-ant- and are typically 90+ characters. Get one at console.anthropic.com/settings/keys.",
+      );
+      return;
+    }
     setApiKey(trimmed);
     if (trimmed) localStorage.setItem(STORAGE_KEY, trimmed);
     else localStorage.removeItem(STORAGE_KEY);
@@ -91,9 +122,27 @@ export default function Chatbot() {
     setShowKeyConfig(false);
     setError(null);
   };
+  const clearAllData = () => {
+    if (
+      !window.confirm(
+        "Forget API key, chat history, and model preference? Cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(MODEL_KEY);
+    localStorage.removeItem(HISTORY_KEY);
+    setApiKey("");
+    setHistory([]);
+    setError(null);
+    setShowKeyConfig(false);
+    setKeyDraft("");
+  };
   const maskedKey = apiKey
     ? `${apiKey.slice(0, 7)}…${apiKey.slice(-4)}`
     : "";
+  const onPublicHost = isPublicHostname();
   const saveModel = (m: string) => {
     setModel(m);
     localStorage.setItem(MODEL_KEY, m);
@@ -370,27 +419,71 @@ export default function Chatbot() {
           </div>
 
           {(!apiKey || showKeyConfig) && (
-            <div className="border-b border-ink-300/40 bg-warn-500/10 p-3 text-xs text-ink-700">
-              <div className="font-semibold">
-                {apiKey ? "Replace Anthropic API key" : "Anthropic API key required"}
+            <div className="border-b border-ink-300/40 bg-warn-500/5 p-3 text-xs text-ink-700">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-sm">🔑</span>
+                <span className="font-semibold text-ink-900">
+                  {apiKey ? "Replace Anthropic API key" : "Bring your own Anthropic API key"}
+                </span>
               </div>
-              <p className="text-[11px] text-ink-500">
-                Stored in this browser's localStorage only. Never committed. Never sent except to Anthropic.
+              <p className="text-[11px] leading-snug text-ink-700">
+                The chatbot calls Anthropic directly from your browser using
+                a key you provide. The key is stored in this browser's
+                localStorage only — never committed, never sent anywhere
+                except api.anthropic.com (enforced by the page's CSP).
               </p>
+              <ul className="mt-2 space-y-0.5 text-[10.5px] leading-snug text-ink-700">
+                <li>
+                  <span className="font-semibold text-leaf-700">Recommended:</span>{" "}
+                  create a <em>dedicated</em> key for this dashboard with a
+                  small daily spend cap (e.g. $5/day) at{" "}
+                  <a
+                    href="https://console.anthropic.com/settings/limits"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    console.anthropic.com/settings/limits
+                  </a>
+                  . Don't paste a production key.
+                </li>
+                <li>
+                  <span className="font-semibold text-warn-500">Heads-up:</span>{" "}
+                  browser extensions with localStorage permission can read
+                  this key. Close other tabs/extensions you don't trust
+                  before pasting. Hide this widget on screen-shares.
+                </li>
+                <li>
+                  <span className="font-semibold text-warn-500">If you fork this repo:</span>{" "}
+                  the key never enters source code, but make sure you don't
+                  commit your browser's localStorage backup. Use a fresh
+                  key per machine.
+                </li>
+              </ul>
+              {onPublicHost && (
+                <div className="mt-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-[10.5px] leading-snug text-warn-500">
+                  <strong>You're on a public hostname ({window.location.hostname}).</strong>{" "}
+                  Pasting a key here means it lives in this browser's
+                  localStorage on a publicly-visible page. Use a strict
+                  daily spend cap and a key dedicated to this dashboard.
+                </div>
+              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (keyDraft.trim()) saveApiKey(keyDraft);
                 }}
-                className="mt-1 flex gap-1"
+                className="mt-2 flex gap-1"
               >
                 <input
                   type="password"
                   placeholder="sk-ant-..."
                   value={keyDraft}
                   onChange={(e) => setKeyDraft(e.target.value)}
+                  autoComplete="off"
                   autoFocus
-                  className="flex-1 rounded border border-ink-300 px-2 py-1 text-xs"
+                  spellCheck={false}
+                  className="flex-1 rounded border border-ink-300 px-2 py-1 font-mono text-xs"
                 />
                 <button
                   type="submit"
@@ -399,15 +492,6 @@ export default function Chatbot() {
                 >
                   Save
                 </button>
-                {apiKey && (
-                  <button
-                    type="button"
-                    onClick={() => saveApiKey("")}
-                    className="rounded border border-warn-500 px-2 py-1 text-xs text-warn-500 hover:bg-warn-500/10"
-                  >
-                    Clear
-                  </button>
-                )}
                 {apiKey && (
                   <button
                     type="button"
@@ -421,19 +505,43 @@ export default function Chatbot() {
                   </button>
                 )}
               </form>
-              {!apiKey && (
-                <p className="mt-1 text-[10px] text-ink-500">
-                  Get a key at{" "}
-                  <a
-                    href="https://console.anthropic.com/settings/keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    console.anthropic.com/settings/keys
-                  </a>
+              {keyDraft.trim() && !isAnthropicKeyFormat(keyDraft.trim()) && (
+                <p className="mt-1 text-[10.5px] text-warn-500">
+                  ⚠ That doesn't match the Anthropic key format
+                  (sk-ant-...). Double-check before saving.
                 </p>
               )}
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-ink-300/30 pt-2 text-[10px] text-ink-500">
+                <a
+                  href="https://console.anthropic.com/settings/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  Get a key
+                </a>
+                <span className="text-ink-300">·</span>
+                <a
+                  href="https://docs.anthropic.com/en/api/client-sdks#browser-direct-access"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  Why browser-direct?
+                </a>
+                {(apiKey || localStorage.getItem(HISTORY_KEY)) && (
+                  <>
+                    <span className="text-ink-300">·</span>
+                    <button
+                      type="button"
+                      onClick={clearAllData}
+                      className="text-warn-500 underline hover:text-warn-600"
+                    >
+                      Forget everything
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -527,14 +635,6 @@ export default function Chatbot() {
               >
                 📎
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf,image/png,image/jpeg,image/webp,image/gif"
-                multiple
-                className="hidden"
-                onChange={(e) => onFilesPicked(e.target.files)}
-              />
               <input
                 type="text"
                 value={draft}

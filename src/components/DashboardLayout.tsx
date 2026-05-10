@@ -107,16 +107,27 @@ export default function DashboardLayout() {
       {/* Header sits on a raised plane (e2 + bottom shadow) so the content
           beneath it reads as the working surface, not a peer. We use solid
           bg-white/95 instead of bg-white/90 + backdrop-blur because the
-          live 3D scene already fights for paint budget on Safari. */}
+          live 3D scene already fights for paint budget on Safari.
+          Monogram keeps main's radial-gradient + green-glow treatment
+          (inline style — radial + custom multi-layer shadow don't compose
+          cleanly as Tailwind utilities for a one-off brand mark). */}
       <header className="col-span-2 relative z-20 border-b border-ink-200/70 bg-white/95 px-5 py-3 shadow-header">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-leaf-400 via-leaf-500 to-leaf-700 text-base font-bold text-white shadow-e2">
-              CG
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold text-white"
+              style={{
+                background:
+                  "radial-gradient(120% 120% at 30% 20%, #43a47e 0%, #2f8f6c 55%, #185640 100%)",
+                boxShadow:
+                  "0 1px 0 rgba(255,255,255,0.25) inset, 0 4px 12px -2px rgba(47,143,108,0.45), 0 1px 2px rgba(13,17,23,0.2)",
+              }}
+            >
+              GH
             </div>
             <div>
               <h1 className="text-base font-semibold tracking-tight text-ink-900">
-                Cottage Grove · Greenhouse Cannabis Model
+                Greenhouse Cannabis Model
               </h1>
               <p className="text-[11px] text-ink-500">
                 {inputs.siteAddress} · {inputs.weatherStation} · screening-level decision support

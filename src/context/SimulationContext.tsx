@@ -141,8 +141,11 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
         }
         if (dayInc > 0) {
           setDayOfYear((d) => {
-            const nd = d + dayInc;
-            return nd > 365 ? nd - 365 : nd;
+            // Modulo wrap so a backgrounded tab producing dayInc >> 365 still
+            // lands on a valid DOY (1..365). Codex P0: prior code only
+            // subtracted one year.
+            const nd = ((d - 1 + dayInc) % 365 + 365) % 365 + 1;
+            return nd;
           });
         }
         return nextH;
@@ -185,7 +188,10 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
         }
       }
       const t = startSimTime + totalSimHours * progress;
-      const newDOY = Math.max(1, Math.min(365, Math.floor(t / 24)));
+      // Wrap rather than clamp so a range that crosses Dec 31 plays through
+      // Jan 1 instead of getting stuck at 365.
+      const rawDOY = Math.floor(t / 24);
+      const newDOY = ((rawDOY - 1) % 365 + 365) % 365 + 1;
       const newHour = ((t % 24) + 24) % 24;
       setDayOfYear(newDOY);
       setHourOfDay(newHour);

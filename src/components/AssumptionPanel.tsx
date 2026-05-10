@@ -283,7 +283,7 @@ export default function AssumptionPanel() {
       <FieldGroup
         title="Site electrical service"
         description={
-          "What's actually available at the meter. Cottage Grove farm currently has single-phase 120/240V only — no 277V or 480V three-phase. Fixtures whose drivers require 208V+ cannot run on 120V branches; fixtures that need 277V+ can't run at all on this service without an upgrade. The model flags incompatibilities and computes amperage and circuit count at the available voltages."
+          "What's actually available at the meter. Default profile is single-phase 120/240V (typical small ag service). Fixtures whose drivers require 208V+ cannot run on 120V branches; fixtures that need 277V+ can't run at all on single-phase service without a service upgrade. The model flags incompatibilities and computes amperage and circuit count at the available voltages."
         }
       >
         <NumberField

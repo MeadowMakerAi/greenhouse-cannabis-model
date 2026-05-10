@@ -161,25 +161,28 @@ export interface ScenarioInputs {
   servicePowerFactor: number; // assumed PF for amperage calc when fixture doesn't provide one
 }
 
-// Auto-derive area + envelope + volume from exterior dimensions
+// Auto-derive area + envelope + volume from exterior dimensions.
+// Codex P0: guard against peak < eave + epsilon so the gable formulas don't
+// produce negative areas or volumes when the user types nonsense values.
 function geometryFromDims(
   length: number,
   width: number,
   eave: number,
-  peak: number,
+  peakRaw: number,
 ) {
-  // Roof slope length: hypotenuse from eave to peak across half the width
-  const slopeLen = Math.sqrt(Math.pow(width / 2, 2) + Math.pow(peak - eave, 2));
-  // Envelope area: 2 sidewalls (L×eave) + 2 end gables (rectangle + triangle)
-  // + 2 roof slopes (L × slopeLen)
+  // Enforce peak ≥ eave + 1 ft. Below that, the structure isn't a ridge roof
+  // any more — collapse to a flat-roofed shape rather than producing negative
+  // gable area or imaginary slope length.
+  const peak = Math.max(peakRaw, eave + 1);
+  const rise = peak - eave;
+  const slopeLen = Math.sqrt(Math.pow(width / 2, 2) + Math.pow(rise, 2));
   const sidewalls = 2 * length * eave;
   const endRectangles = 2 * width * eave;
-  const endGables = 2 * (0.5 * width * (peak - eave));
+  const endGables = 2 * (0.5 * width * rise);
   const roofSlopes = 2 * length * slopeLen;
   const envelope = sidewalls + endRectangles + endGables + roofSlopes;
   const floor = length * width;
-  // Volume: rectangular sidewalls + triangular ridge prism
-  const volume = floor * eave + 0.5 * width * (peak - eave) * length;
+  const volume = floor * eave + 0.5 * width * rise * length;
   return {
     floor,
     envelope,
@@ -358,6 +361,25 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
           merged.eaveHeightFt,
           merged.peakHeightFt,
         );
+        // Auto-scale canopy area with floor footprint so plants, fixtures,
+        // and canopy all follow when the user resizes the greenhouse.
+        // The fixture count downstream is derived from canopy area; plant
+        // grid is derived from canopy dimensions — preserving the prior
+        // canopy:floor ratio means the whole 3D scene rescales coherently.
+        // Skip if the user is explicitly overriding canopyAreaSqFt this call.
+        const lengthOrWidthChanged =
+          "greenhouseLengthFt" in next || "greenhouseWidthFt" in next;
+        if (
+          lengthOrWidthChanged &&
+          !("canopyAreaSqFt" in next) &&
+          prev.greenhouseFloorAreaSqFt > 0
+        ) {
+          const ratio = d.floor / prev.greenhouseFloorAreaSqFt;
+          merged.canopyAreaSqFt = Math.max(
+            50,
+            Math.round(prev.canopyAreaSqFt * ratio),
+          );
+        }
         merged.greenhouseFloorAreaSqFt = Math.round(d.floor);
         merged.greenhouseEnvelopeAreaSqFt = Math.round(d.envelope);
         merged.greenhouseVolumeCuFt = Math.round(d.volume);
