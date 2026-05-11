@@ -333,6 +333,13 @@ export default function Chatbot() {
           const supports120 = f.minVoltage <= 120 && f.maxVoltage >= 120;
           const supports240 = f.minVoltage <= 240 && f.maxVoltage >= 240;
           const pf = f.powerFactor ?? 0.95;
+          // Demand cost folded into the total — Codex P1: ranking on
+          // energy alone is wrong since higher-PPE fixtures cut peak kW
+          // and therefore demand charge as well as kWh.
+          const annualDemandCostUSD =
+            peakKW * inputs.demandChargePerKwMonth * 12;
+          const annualEnergyCostUSD = cost;
+          const annualTotalCostUSD = annualEnergyCostUSD + annualDemandCostUSD;
           return {
             id,
             label: f.label,
@@ -344,7 +351,10 @@ export default function Chatbot() {
             coveragePerFixtureSqFt: +coverageFt2.toFixed(1),
             gridSpacingFt: coverageFt2 > 0 ? +Math.sqrt(coverageFt2).toFixed(1) : 0,
             annualKwh: Math.round(kwh),
-            annualCostUSD: Math.round(cost),
+            annualEnergyCostUSD: Math.round(annualEnergyCostUSD),
+            annualDemandCostUSD: Math.round(annualDemandCostUSD),
+            /** Total = energy + demand. This is the rank-key. */
+            annualCostUSD: Math.round(annualTotalCostUSD),
             supports120V: supports120,
             supports240V: supports240,
             ampsPer120V: supports120 ? +(f.wattsPerFixture / (120 * pf)).toFixed(2) : null,

@@ -25,6 +25,11 @@ interface Row {
   peakKW: number;
   peakFixtureCount: number;
   annualKwh: number;
+  /** Pure energy cost (kWh × $/kWh). */
+  annualEnergyCost: number;
+  /** Demand cost = peakKW × $/kW-month × 12. */
+  annualDemandCost: number;
+  /** Sum of energy + demand — what the utility actually bills. */
   annualCost: number;
   annualPhotonMolDelivered: number; // mol of supplemental PAR delivered annually to canopy
   costPerMolUsd: number;
@@ -67,6 +72,13 @@ export default function FixtureOptimization() {
         1_000_000;
       molDelivered += monthMol;
     });
+    // Demand cost: peakKW × $/kW-month × 12. Codex P1: ranking on
+    // energy alone is wrong whenever fixtures differ in peak-kW since
+    // a higher-PPE fixture with the same PPF target draws fewer kW and
+    // wins on demand even when kWh is similar. This makes the column
+    // visible AND folded into the sort key.
+    const annualDemandCost = peakKW * inputs.demandChargePerKwMonth * 12;
+    const totalAnnualCost = cost + annualDemandCost;
     return {
       id: f.id,
       vendor: f.vendor ? `${f.vendor} ${f.model ?? ""}` : f.label,
@@ -76,14 +88,17 @@ export default function FixtureOptimization() {
       peakKW,
       peakFixtureCount: peakFixtures,
       annualKwh: kwh,
-      annualCost: cost,
+      annualEnergyCost: cost,
+      annualDemandCost,
+      annualCost: totalAnnualCost,
       annualPhotonMolDelivered: molDelivered,
-      costPerMolUsd: molDelivered > 0 ? cost / molDelivered : 0,
+      costPerMolUsd: molDelivered > 0 ? totalAnnualCost / molDelivered : 0,
       efficacyAtCanopy: f.ppe * f.opticalUtilization,
     };
   });
 
-  // Sort by annual cost ascending — cheapest = optimal opex
+  // Sort by total annual bill (energy + demand) ascending — that's what
+  // the utility actually charges, not just kWh.
   const sorted = [...rows].sort((a, b) => a.annualCost - b.annualCost);
   const winner = sorted[0];
 

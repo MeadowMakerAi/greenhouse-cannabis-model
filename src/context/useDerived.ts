@@ -307,6 +307,13 @@ export function useDerived() {
       0,
     );
     const peakInstalledKW = Math.max(...months.map((m) => m.installedKW));
+    // Peak lighting kW — overhead + under-canopy, since both bars run
+    // in the same flower window. Codex P1: dropping under-canopy
+    // under-bills demand by ~underCanopyKW × $/kW for any scenario
+    // with under-canopy enabled (default on).
+    const peakLightingKW = Math.max(
+      ...months.map((m) => m.installedKW + m.underCanopyKW),
+    );
     // Demand charge: utility bills the highest 15-min average kW each
     // month at $/kW. For lights-on cultivation the peak is the installed
     // lighting kW + always-on HVAC base. We use the lighting peak as a
@@ -314,9 +321,18 @@ export function useDerived() {
     // coincidentally. This single line frequently exceeds the energy
     // charge on commercial cannabis accounts (Cannabis Business Times,
     // "10 Tips for Reducing Electricity Usage and Cost", 2024).
-    const peakDemandChargeMonthly = peakInstalledKW * inputs.demandChargePerKwMonth;
+    const peakDemandChargeMonthly = peakLightingKW * inputs.demandChargePerKwMonth;
     const peakDemandChargeAnnual = peakDemandChargeMonthly * 12;
-    const annualEnergyPlusDemand = annualCost + peakDemandChargeAnnual;
+    // Dehumidification electric cost — pulled into the % denominator so
+    // the "% of bill" reading reflects the full modeled electric load,
+    // not just lighting. Codex P2.
+    const annualDehumidKwh = months.reduce(
+      (a, m) => a + m.dehumidKwhPerDay * 30,
+      0,
+    );
+    const annualDehumidCost = annualDehumidKwh * inputs.electricityRatePerKwh;
+    const annualEnergyPlusDemand =
+      annualCost + annualDehumidCost + peakDemandChargeAnnual;
     const demandFractionOfBill =
       annualEnergyPlusDemand > 0
         ? peakDemandChargeAnnual / annualEnergyPlusDemand
@@ -516,6 +532,9 @@ export function useDerived() {
       months,
       annualKwh,
       annualCost,
+      peakLightingKW,
+      annualDehumidKwh,
+      annualDehumidCost,
       peakDemandChargeMonthly,
       peakDemandChargeAnnual,
       annualEnergyPlusDemand,

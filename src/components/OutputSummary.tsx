@@ -142,9 +142,8 @@ export default function OutputSummary() {
           <Ledger
             label="Demand cost"
             value={fmtCurrency(d.peakDemandChargeAnnual)}
-            context={`${fmtInt(d.peakInstalledKW)} kW × $${inputs.demandChargePerKwMonth.toFixed(0)}/kW · ${fmtPct(d.demandFractionOfBill)} of bill`}
+            context={`${fmtInt(d.peakLightingKW)} kW × $${inputs.demandChargePerKwMonth.toFixed(0)}/kW · ${fmtPct(d.demandFractionOfBill)} of electric`}
             warn={d.demandFractionOfBill > 0.4}
-            warnSuppress
           />
           <Ledger
             label="Peak overhead"

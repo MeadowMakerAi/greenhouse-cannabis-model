@@ -51,7 +51,20 @@ export default function OptimizedSystemPanel() {
       peakKW = Math.max(peakKW, sized.installedKW);
       peakFixtures = Math.max(peakFixtures, sized.fixtureCount);
     });
-    return { id: f.id, fixture: f, annualCostUSD: cost, annualKwh: kwh, peakKW, peakFixtures };
+    // Codex P1: fold demand cost into the rank so the recommender
+    // matches what the user sees in the dashboard. Without this, a
+    // lower-PPE fixture with similar kWh could win on energy alone
+    // and lose by hundreds of $ once the utility's demand charge is
+    // applied — silently bad capex advice.
+    const demandCost = peakKW * inputs.demandChargePerKwMonth * 12;
+    return {
+      id: f.id,
+      fixture: f,
+      annualCostUSD: cost + demandCost,
+      annualKwh: kwh,
+      peakKW,
+      peakFixtures,
+    };
   });
 
   const currentCost =

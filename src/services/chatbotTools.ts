@@ -150,7 +150,7 @@ Cannabis flowering is the default. When the user mentions tomato / lettuce / str
 | Strawberry | 17–22 | 300–500 | 65–72 °F | 55–60 °F | 60–75% | mild |
 | Cucumber | 20–25 | 350–550 | 72–80 °F | 65–70 °F | 70–85% | strong |
 
-When switching crop, update: \`cropTargetId\` (closest preset), \`indoorTargetDryBulbF\`, \`targetNightTempF\`, \`targetRHPct\`, \`photoperiodHours\`, \`co2SetpointPpm\`. State the change.
+When switching crop, update: \`cropTargetId\` (closest preset), \`indoorTargetDryBulbF\`, \`targetNightTempF\`, \`targetRHPct\`, \`flowerPhotoperiodHours\` (the actual scenario field — NOT \`photoperiodHours\`), \`co2SetpointPpm\`. State the change.
 
 ## The expensive truth about greenhouse cultivation in the NE-US
 
