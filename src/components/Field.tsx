@@ -24,7 +24,19 @@ export function NumberField({ label, value, onChange, step = 1, min, max, unit, 
         step={step}
         min={min}
         max={max}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
+        onChange={(e) => {
+          const raw = e.target.value;
+          // Empty / partial input → don't call onChange. The displayed value
+          // briefly shows what the user is typing (controlled-input cycle
+          // tolerates this), but state stays at the last valid number.
+          // parseFloat returns NaN for "", "-", ".", etc. — propagating NaN
+          // through setInputs poisoned canopyAreaSqFt and crashed the 3D
+          // scene with a cascade of NaN positions. Codex P1.
+          if (raw === "" || raw === "-" || raw === ".") return;
+          const parsed = parseFloat(raw);
+          if (!Number.isFinite(parsed)) return;
+          onChange(parsed);
+        }}
       />
       {hint ? <p className="mt-1 text-[11px] text-ink-500">{hint}</p> : null}
     </div>

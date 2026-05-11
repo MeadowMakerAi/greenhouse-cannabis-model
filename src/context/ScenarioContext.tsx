@@ -393,6 +393,26 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const setInputs = useCallback((next: Partial<ScenarioInputs>) => {
     setInputsState((prev) => {
       const merged = { ...prev, ...next };
+      // Defensive clamps on critical numeric inputs. Belt-and-suspenders
+      // alongside NumberField's NaN-drop: any path that bypasses the field
+      // (chatbot set_scenario tool, scenario presets, programmatic updates,
+      // or future inputs) still gets safe values. Without these, a single
+      // NaN or 0 propagates through Math.sqrt() and floods the 3D scene
+      // with NaN positions — 100+ console errors, scene goes blank.
+      const clampMin = (key: keyof ScenarioInputs, min: number) => {
+        const v = merged[key] as number;
+        if (!Number.isFinite(v) || v < min) {
+          (merged as Record<string, unknown>)[key] = min;
+        }
+      };
+      clampMin("greenhouseLengthFt", 8);
+      clampMin("greenhouseWidthFt", 8);
+      clampMin("eaveHeightFt", 6);
+      clampMin("peakHeightFt", 7); // geometryFromDims further enforces > eave
+      clampMin("canopyAreaSqFt", 50);
+      clampMin("greenhouseFloorAreaSqFt", 50);
+      clampMin("greenhouseEnvelopeAreaSqFt", 50);
+      clampMin("greenhouseVolumeCuFt", 100);
       // If any exterior dimension changed, re-derive area + envelope + volume
       const dimKeys = [
         "greenhouseLengthFt",
