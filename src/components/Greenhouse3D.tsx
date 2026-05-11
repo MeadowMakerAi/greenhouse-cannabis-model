@@ -286,12 +286,16 @@ function GreenhouseStructure({
         <meshPhysicalMaterial
           color="#cfe9f7"
           transparent
-          opacity={0.35}
-          roughness={0.05}
+          opacity={0.32}
+          roughness={0.04}
           metalness={0}
-          transmission={0.85}
+          transmission={0.88}
           thickness={0.3}
-          ior={1.45}
+          ior={1.51}
+          clearcoat={1}
+          clearcoatRoughness={0.06}
+          attenuationColor="#d5e6f0"
+          attenuationDistance={6}
           side={THREE.DoubleSide}
         />
       </mesh>
@@ -301,10 +305,16 @@ function GreenhouseStructure({
         <meshPhysicalMaterial
           color="#cfe9f7"
           transparent
-          opacity={0.35}
-          transmission={0.85}
+          opacity={0.32}
+          roughness={0.04}
+          metalness={0}
+          transmission={0.88}
           thickness={0.3}
-          ior={1.45}
+          ior={1.51}
+          clearcoat={1}
+          clearcoatRoughness={0.06}
+          attenuationColor="#d5e6f0"
+          attenuationDistance={6}
           side={THREE.DoubleSide}
         />
       </mesh>
@@ -477,10 +487,16 @@ function EndGable({
         <meshPhysicalMaterial
           color="#cfe9f7"
           transparent
-          opacity={0.4}
-          transmission={0.8}
+          opacity={0.36}
+          transmission={0.82}
           thickness={0.3}
-          roughness={0.05}
+          roughness={0.04}
+          metalness={0}
+          ior={1.51}
+          clearcoat={1}
+          clearcoatRoughness={0.06}
+          attenuationColor="#d5e6f0"
+          attenuationDistance={6}
           side={THREE.DoubleSide}
         />
       </mesh>
@@ -523,10 +539,16 @@ function RoofPanel({
       <meshPhysicalMaterial
         color="#cfe9f7"
         transparent
-        opacity={0.35}
-        transmission={0.85}
+        opacity={0.32}
+        transmission={0.88}
         thickness={0.3}
-        roughness={0.05}
+        roughness={0.04}
+        metalness={0}
+        ior={1.51}
+        clearcoat={1}
+        clearcoatRoughness={0.06}
+        attenuationColor="#d5e6f0"
+        attenuationDistance={6}
         side={THREE.DoubleSide}
       />
     </mesh>
@@ -1055,9 +1077,24 @@ function FanLeafCluster({
             position={[0, 0, 0]}
             rotation={[tilt, 0, fanAng]}
           >
-            {/* Each leaflet rendered as a stretched cone pointing +Y in local */}
+            {/* Each leaflet rendered as a stretched cone pointing +Y in local.
+                Physical material with subtle transmission — light passes
+                through the leaflet at grazing angles the way real foliage
+                does. Sheen gives the soft falloff at glancing angles.
+                ~2× memory of meshStandardMaterial but reads as alive. */}
             <coneGeometry args={[leafThick, leafLen * lenScale, 5]} />
-            <meshStandardMaterial color={color} roughness={0.92} side={THREE.DoubleSide} />
+            <meshPhysicalMaterial
+              color={color}
+              roughness={0.88}
+              metalness={0}
+              transmission={0.08}
+              thickness={0.04}
+              ior={1.4}
+              sheen={1}
+              sheenRoughness={0.7}
+              sheenColor="#cfe89a"
+              side={THREE.DoubleSide}
+            />
           </mesh>
         );
       })}

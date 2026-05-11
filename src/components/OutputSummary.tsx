@@ -224,12 +224,27 @@ function Ledger({
   warnSuppress?: boolean;
   verbatim?: boolean;
 }) {
+  // When `warn` AND we're NOT suppressing the color tint, show a small
+  // warn-orange dot before the eyebrow label so the cell is scannable
+  // from a distance. Pattern: ISA-101 alarm cue.
+  const showWarnDot = warn && !warnSuppress;
   return (
     <div className="lg:px-5 lg:first:pl-0 lg:last:pr-0">
-      <div className="kpi-eyebrow">{label}</div>
+      <div className="flex items-center gap-1.5 kpi-eyebrow">
+        {showWarnDot && (
+          <span
+            aria-hidden
+            className="inline-block h-1.5 w-1.5 rounded-full bg-warn-500"
+            style={{
+              boxShadow: "0 0 6px rgba(192,87,58,0.7)",
+            }}
+          />
+        )}
+        <span>{label}</span>
+      </div>
       <div
         className={`mt-0.5 ${verbatim ? "kpi-ledger-text" : "kpi-ledger"} ${
-          warn && !warnSuppress ? "text-warn-600" : "text-ink-900"
+          showWarnDot ? "text-warn-600" : "text-ink-900"
         }`}
       >
         {value}
