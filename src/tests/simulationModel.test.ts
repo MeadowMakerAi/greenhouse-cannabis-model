@@ -5,6 +5,7 @@ import {
   outdoorPPFDFromElevation,
   lightsStateAt,
   ventStateAt,
+  ventStateDecision,
   indoorTempStep,
   naturalVentilationCFM,
   effectiveVentAreaSqFt,
@@ -322,5 +323,91 @@ describe("blackoutActiveAt (photoperiod control)", () => {
     expect(blackoutActiveAt({ ...args, hourOfDay: 14.5 })).toBe(true);
     expect(blackoutActiveAt({ ...args, hourOfDay: 15 })).toBe(false);
     expect(blackoutActiveAt({ ...args, hourOfDay: 20 })).toBe(false);
+  });
+});
+
+describe("ventStateDecision (multi-input, Argus Titan pattern)", () => {
+  const base = {
+    indoorTempF: 78,
+    ventOpenSetpointF: 80,
+    ventCloseSetpointF: 77,
+    currentlyOpen: false,
+  };
+
+  it("temperature trigger opens above setpoint", () => {
+    const d = ventStateDecision({ ...base, indoorTempF: 82 });
+    expect(d.open).toBe(true);
+    expect(d.reason).toBe("thermal-load");
+  });
+
+  it("hysteresis: closes below close setpoint", () => {
+    const d = ventStateDecision({ ...base, indoorTempF: 75, currentlyOpen: true });
+    expect(d.open).toBe(false);
+  });
+
+  it("hysteresis: holds open in deadband if already open", () => {
+    const d = ventStateDecision({ ...base, indoorTempF: 78, currentlyOpen: true });
+    expect(d.open).toBe(true);
+    expect(d.reason).toBe("hysteresis-hold");
+  });
+
+  it("humidity trigger opens when indoor RH > target+5 AND outdoor drier", () => {
+    const d = ventStateDecision({
+      ...base,
+      indoorRHPct: 75,
+      humidityTargetPct: 65,
+      indoorAbsoluteHumidity: 0.012,
+      outdoorAbsoluteHumidity: 0.008,
+    });
+    expect(d.open).toBe(true);
+    expect(d.reason).toBe("humidity-dump");
+  });
+
+  it("humidity trigger does NOT fire when outdoor is wetter than indoor", () => {
+    const d = ventStateDecision({
+      ...base,
+      indoorRHPct: 75,
+      humidityTargetPct: 65,
+      indoorAbsoluteHumidity: 0.008,
+      outdoorAbsoluteHumidity: 0.012,
+    });
+    expect(d.open).toBe(false);
+  });
+
+  it("dewpoint margin trigger opens when canopy is near condensing", () => {
+    const d = ventStateDecision({
+      ...base,
+      indoorTempF: 70,
+      indoorDewpointF: 67,
+      dewpointMarginF: 4,
+    });
+    expect(d.open).toBe(true);
+    expect(d.reason).toBe("dewpoint-margin");
+  });
+
+  it("guard: outdoor hotter than indoor+5 blocks open", () => {
+    const d = ventStateDecision({
+      ...base,
+      indoorTempF: 85,
+      outdoorTempF: 95,
+    });
+    expect(d.open).toBe(false);
+    expect(d.reason).toBe("blocked-outdoor-hot");
+  });
+
+  it("guard: blackout deployed + lights on blocks open (photoperiod)", () => {
+    const d = ventStateDecision({
+      ...base,
+      indoorTempF: 85,
+      blackoutActive: true,
+      lightsOn: true,
+    });
+    expect(d.open).toBe(false);
+    expect(d.reason).toBe("blocked-blackout-photoperiod");
+  });
+
+  it("legacy ventStateAt boolean still works (temp-only)", () => {
+    expect(ventStateAt({ ...base, indoorTempF: 85 })).toBe(true);
+    expect(ventStateAt({ ...base, indoorTempF: 75 })).toBe(false);
   });
 });

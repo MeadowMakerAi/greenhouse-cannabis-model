@@ -13,6 +13,8 @@ import {
   outdoorPPFDFromElevation,
   sunPositionAt,
   ventStateAt,
+  ventStateDecision,
+  type VentReason,
   type SunPosition,
   type LightsState,
 } from "../models/simulationModel";
@@ -21,6 +23,7 @@ import { isShadeActive } from "../models/shadeModel";
 import { vpdFromTempRH } from "../models/vpdModel";
 import {
   absoluteHumidityKgPerKg,
+  dewPointF,
   rhFromAbsoluteHumidity,
 } from "../models/psychrometricModel";
 import { plantGrowthAt, type PlantGrowthState } from "../models/plantGrowthModel";
@@ -53,6 +56,8 @@ export interface LiveSnapshot {
   canopyTotalPPFD: number;
   lights: LightsState;
   ventOpen: boolean;
+  /** Governing reason for the vent state — shown in the HUD systems row */
+  ventReason: VentReason;
   indoorTempF: number;
   shadeActive: boolean;
   /** Blackout curtain deployed (forces photoperiod by blocking natural light) */
@@ -357,6 +362,31 @@ export function useLiveDynamics() {
       ? Math.max(0, Math.min(6, outdoorVPDRaw))
       : 0;
 
+    // ---- Vent decision (multi-input, Argus Titan pattern) ----
+    // Re-evaluate the vent state at the snapshot scope where we know
+    // indoorRH, AH diff, and dewpoint margin. The substep loop above
+    // ran the temp-only fallback for stability; this richer decision
+    // overrides for HUD display and feeds the reason into the systems row.
+    const indoorDP = dewPointF(fullSnap.indoorTempF, indoorRH);
+    const ventDecision = ventStateDecision({
+      indoorTempF: fullSnap.indoorTempF,
+      ventOpenSetpointF: inputs.indoorTargetDryBulbF + 2,
+      ventCloseSetpointF: inputs.indoorTargetDryBulbF - 1,
+      currentlyOpen: fullSnap.ventOpen,
+      indoorRHPct: indoorRH,
+      humidityTargetPct: inputs.ventHumidityTargetPct,
+      indoorAbsoluteHumidity: absoluteHumidityKgPerKg(
+        fahrenheitToCelsius(fullSnap.indoorTempF),
+        indoorRH,
+      ),
+      outdoorAbsoluteHumidity: outdoorAH,
+      indoorDewpointF: indoorDP,
+      dewpointMarginF: inputs.ventDewpointMarginF,
+      outdoorTempF: fullSnap.outdoor.outdoorTempF,
+      blackoutActive: fullSnap.blackoutActive,
+      lightsOn: fullSnap.lights.on,
+    });
+
     // ---- Plant growth state ----
     // Use the average DLI achieved so far across the cycle so far
     const plant = plantGrowthAt({
@@ -381,7 +411,8 @@ export function useLiveDynamics() {
       canopyNaturalPPFD: fullSnap.canopyNaturalPPFD,
       canopyTotalPPFD: fullSnap.canopyTotalPPFD,
       lights: fullSnap.lights,
-      ventOpen: fullSnap.ventOpen,
+      ventOpen: ventDecision.open,
+      ventReason: ventDecision.reason,
       indoorTempF: fullSnap.indoorTempF,
       shadeActive: fullSnap.shadeActive,
       blackoutActive: fullSnap.blackoutActive,

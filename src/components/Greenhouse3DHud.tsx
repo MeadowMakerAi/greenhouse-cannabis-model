@@ -1,7 +1,33 @@
 import { useScenario } from "../context/ScenarioContext";
 import { useSimulation } from "../context/SimulationContext";
 import { useLiveDynamics } from "../context/useLiveDynamics";
-import { dayOfYearToMonth } from "../models/simulationModel";
+import { dayOfYearToMonth, type VentReason } from "../models/simulationModel";
+
+/**
+ * Human-readable label for the vent state reason — feeds the synchronized
+ * systems row so the user can read WHY the vents are in their current state,
+ * not just whether they're open. Argus Titan exposes the same kind of
+ * "governing trigger" label on its operator HMI.
+ */
+function ventReasonLabel(reason: VentReason): string {
+  switch (reason) {
+    case "thermal-load":
+      return "thermal load";
+    case "humidity-dump":
+      return "humidity dump";
+    case "dewpoint-margin":
+      return "dewpoint guard";
+    case "hysteresis-hold":
+      return "holding";
+    case "blocked-outdoor-hot":
+      return "blocked: outdoor hot";
+    case "blocked-blackout-photoperiod":
+      return "blocked: photoperiod";
+    case "off":
+    default:
+      return "balanced";
+  }
+}
 
 const MONTH_LONG = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -148,11 +174,61 @@ export default function Greenhouse3DHud({
                 {snapshot.ventOpen ? "open" : "closed"}
               </span>
             </div>
-            <div className="text-[10px] text-ink-500">
-              {snapshot.shadeActive ? "shade deployed" : "shade retracted"}
+            <div
+              className="truncate text-[10px] text-ink-500"
+              title={ventReasonLabel(snapshot.ventReason)}
+            >
+              {ventReasonLabel(snapshot.ventReason)}
             </div>
-            <div className={`text-[10px] ${snapshot.blackoutActive ? "text-ink-900" : "text-ink-500"}`}>
-              {snapshot.blackoutActive ? "● blackout closed" : "○ blackout open"}
+          </div>
+        </div>
+        {/* Synchronized systems row — governing reason for every subsystem so
+         * the user reads the greenhouse as a coordinated machine, not three
+         * independent indicators. */}
+        <div className="mt-2 grid grid-cols-3 gap-2 border-t border-ink-300/30 pt-2 text-[10px]">
+          <div className="min-w-0">
+            <div className="uppercase tracking-wider text-ink-500">Thermal</div>
+            <div
+              className={`flex items-center gap-1 ${
+                snapshot.indoorTempF < 60 ? "text-ink-900" : "text-ink-500"
+              }`}
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  snapshot.indoorTempF < 60 ? "bg-leaf-500" : "bg-ink-300"
+                }`}
+              />
+              {snapshot.indoorTempF < 60 ? "screen deployed" : "screen retracted"}
+            </div>
+          </div>
+          <div className="min-w-0">
+            <div className="uppercase tracking-wider text-ink-500">Shade</div>
+            <div
+              className={`flex items-center gap-1 ${
+                snapshot.shadeActive ? "text-ink-900" : "text-ink-500"
+              }`}
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  snapshot.shadeActive ? "bg-sun-500" : "bg-ink-300"
+                }`}
+              />
+              {snapshot.shadeActive ? "deployed" : "retracted"}
+            </div>
+          </div>
+          <div className="min-w-0">
+            <div className="uppercase tracking-wider text-ink-500">Blackout</div>
+            <div
+              className={`flex items-center gap-1 ${
+                snapshot.blackoutActive ? "text-ink-900" : "text-ink-500"
+              }`}
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  snapshot.blackoutActive ? "bg-ink-900" : "bg-ink-300"
+                }`}
+              />
+              {snapshot.blackoutActive ? "deployed" : "retracted"}
             </div>
           </div>
         </div>

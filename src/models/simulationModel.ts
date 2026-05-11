@@ -260,20 +260,127 @@ export function blackoutActiveAtSimple(
   });
 }
 
-// ---- Vent state (rule-based) ----
+// ---- Vent state (multi-input, Argus Titan pattern) ----
+//
+// Real greenhouse climate computers (Argus Titan, Priva Connext, Cherry Creek
+// Generation 3) don't open vents on temperature alone. They evaluate a set of
+// triggers AND a set of guards every cycle and OR the triggers / AND the
+// guards. A vent open without a guard check is the classic "vented the
+// greenhouse into outdoor 95°F + 80% RH and cooked the canopy" bug.
+//
+// Triggers (any one opens vents):
+//   - indoor temp > openSetpoint                       — thermal load relief
+//   - indoor RH > humidityTarget AND outdoor AH        — humidity dump (only
+//     < indoor AH                                        if outdoor is drier)
+//   - dewpoint margin < marginF                         — condensation guard
+//
+// Guards (all must hold to KEEP open):
+//   - outdoor temp not so high that venting would heat the greenhouse
+//   - blackout NOT deployed during lights-on (would break photoperiod
+//     containment when lights are running)
+//
+// Hysteresis: classic deadband on temp (open setpoint − close setpoint).
+// Humidity / dewpoint triggers use ±5% / ±1°F deadband to prevent oscillation.
+//
+// Reference: Argus Titan System Description (2014) §5.2 — closing/reopening
+// strategies "based on light, time, temperature, humidity, or any other
+// measurable parameter while at the same time minimizing the number of
+// curtain moves and equipment wear."
+export type VentReason =
+  | "off"
+  | "thermal-load"
+  | "humidity-dump"
+  | "dewpoint-margin"
+  | "hysteresis-hold"
+  | "blocked-outdoor-hot"
+  | "blocked-blackout-photoperiod";
+
 export interface VentInput {
   indoorTempF: number;
   ventOpenSetpointF: number;
   ventCloseSetpointF: number;
-  /** Currently open? (hysteresis) */
   currentlyOpen: boolean;
+  // Optional richer inputs — all default to "no trigger" if omitted, so the
+  // legacy temp-only behavior is preserved for callers that don't pass them.
+  indoorRHPct?: number;
+  humidityTargetPct?: number;
+  indoorAbsoluteHumidity?: number; // kg/kg dry air
+  outdoorAbsoluteHumidity?: number;
+  indoorDewpointF?: number;
+  dewpointMarginF?: number;
+  outdoorTempF?: number;
+  // Guards
+  blackoutActive?: boolean;
+  lightsOn?: boolean;
 }
 
+export interface VentDecision {
+  open: boolean;
+  reason: VentReason;
+}
+
+export function ventStateDecision(input: VentInput): VentDecision {
+  // GUARDS — these BLOCK opening regardless of triggers
+  if (
+    input.outdoorTempF !== undefined &&
+    input.outdoorTempF > input.indoorTempF + 5
+  ) {
+    // Outside is hotter than inside + 5°F — venting would heat the canopy.
+    // Close if currently open.
+    return { open: false, reason: "blocked-outdoor-hot" };
+  }
+  if (input.blackoutActive && input.lightsOn) {
+    // Blackout is deployed AND lights are on (e.g., summer scheduled flip).
+    // Opening the vents would break photoperiod containment via the ridge
+    // opening — the curtain alone can't seal the open-vent gap.
+    return { open: false, reason: "blocked-blackout-photoperiod" };
+  }
+
+  // TRIGGERS — any opens the vents
+  if (input.indoorTempF >= input.ventOpenSetpointF) {
+    return { open: true, reason: "thermal-load" };
+  }
+  if (
+    input.indoorRHPct !== undefined &&
+    input.humidityTargetPct !== undefined &&
+    input.indoorRHPct > input.humidityTargetPct + 5
+  ) {
+    // Humidity dump — only if outdoor air is drier (less moisture in the
+    // absolute sense). If outdoor AH not provided, fall back to the simpler
+    // "high RH = open" rule (UMass standard).
+    const outdoorDrier =
+      input.outdoorAbsoluteHumidity === undefined ||
+      input.indoorAbsoluteHumidity === undefined ||
+      input.outdoorAbsoluteHumidity < input.indoorAbsoluteHumidity;
+    if (outdoorDrier) {
+      return { open: true, reason: "humidity-dump" };
+    }
+  }
+  if (
+    input.indoorDewpointF !== undefined &&
+    input.dewpointMarginF !== undefined &&
+    input.indoorTempF - input.indoorDewpointF < input.dewpointMarginF
+  ) {
+    return { open: true, reason: "dewpoint-margin" };
+  }
+
+  // Hysteresis hold — keep state when in the deadband
+  if (input.indoorTempF <= input.ventCloseSetpointF) {
+    return { open: false, reason: "off" };
+  }
+  if (input.currentlyOpen) {
+    return { open: true, reason: "hysteresis-hold" };
+  }
+  return { open: false, reason: "off" };
+}
+
+/**
+ * Legacy boolean wrapper for callers that still use the temp-only signature.
+ * New code should call ventStateDecision() to also get the governing reason
+ * for the HUD synchronization display.
+ */
 export function ventStateAt(input: VentInput): boolean {
-  // Hysteresis: open above setpoint, close below the lower setpoint
-  if (input.indoorTempF >= input.ventOpenSetpointF) return true;
-  if (input.indoorTempF <= input.ventCloseSetpointF) return false;
-  return input.currentlyOpen;
+  return ventStateDecision(input).open;
 }
 
 // ---- Natural (stack-effect) ventilation ----

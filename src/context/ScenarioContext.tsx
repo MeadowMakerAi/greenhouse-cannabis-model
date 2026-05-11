@@ -134,6 +134,21 @@ export interface ScenarioInputs {
   rootZoneTargetTempF: number;
   thermalScreenEnabled: boolean;
   thermalScreenNightUValue: number;
+  /** Curtain track elevation above floor (ft). Per Svensson / Argus install
+   *  practice, multiple curtains live on adjacent tracks separated by 6-12 in.
+   *  Operator-configurable so the model can compare single- / double- / triple-
+   *  screen layouts without changing the structural geometry. */
+  thermalScreenElevationFt: number;
+  shadeElevationFt: number;
+  blackoutElevationFt: number;
+
+  // Vent control — multi-input per Argus Titan
+  /** Indoor RH (%) at which vents will open to dump moisture. Standard
+   *  commercial setpoint 65–75%. */
+  ventHumidityTargetPct: number;
+  /** Dewpoint margin (°F) below which vents open pre-emptively to prevent
+   *  condensation on canopy. Botrytis threshold ≈ 4°F (Punja, UMass). */
+  ventDewpointMarginF: number;
 
   // Cultivation phase + cycles
   cultivationPhase: "vegetative" | "earlyFlower" | "midFlower" | "lateFlower";
@@ -263,6 +278,11 @@ export const defaultScenario: ScenarioInputs = {
   rootZoneTargetTempF: defaultClimateControl.radiant.rootZoneTargetTempF,
   thermalScreenEnabled: defaultClimateControl.radiant.thermalScreenEnabled,
   thermalScreenNightUValue: defaultClimateControl.radiant.thermalScreenNightUValue,
+  thermalScreenElevationFt: defaultClimateControl.curtainLayers.thermalScreenElevationFt,
+  shadeElevationFt: defaultClimateControl.curtainLayers.shadeElevationFt,
+  blackoutElevationFt: defaultClimateControl.curtainLayers.blackoutElevationFt,
+  ventHumidityTargetPct: defaultClimateControl.ventControl.ventHumidityTargetPct,
+  ventDewpointMarginF: defaultClimateControl.ventControl.ventDewpointMarginF,
   cultivationPhase: "midFlower",
   cyclesPerYear: 3,
   cropStartDayOfYear: 100, // April 10 — clone planted
