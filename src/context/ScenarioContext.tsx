@@ -67,7 +67,29 @@ export interface ScenarioInputs {
   flowerPhotoperiodHours: number;
   flowerWindowStartHr: number;
   flowerWindowEndHr: number;
+
+  // Blackout / light-deprivation system
   blackoutEnabled: boolean;
+  /** "auto" follows the lights-on window; "scheduled" uses explicit close/open
+   *  hours; "always" stays closed for fully artificial flowering; "off" is the
+   *  same as blackoutEnabled=false but lets the user keep the system specified
+   *  in the BOM while toggling behavior. */
+  blackoutDeployMode: "auto" | "scheduled" | "always" | "off";
+  /** Minutes before lights-off the curtain begins closing. Commercial systems
+   *  use 15–30 min to ensure full closure before the photoperiod-critical
+   *  moment. */
+  blackoutPreCloseMin: number;
+  /** Explicit close hour for "scheduled" deploy mode (0–24). */
+  blackoutScheduledCloseHour: number;
+  /** Explicit open hour for "scheduled" deploy mode (0–24). */
+  blackoutScheduledOpenHour: number;
+  /** Envelope U-value (BTU/hr·ft²·°F) when blackout is deployed. Acts as an
+   *  additional thermal layer — typical commercial blackout fabric provides
+   *  ~25–40 % heat-loss reduction (Ludvig Svensson Obscura B+W: 0.45;
+   *  Tempest combined blackout+thermal: 0.30). Used in the energy balance. */
+  blackoutClosedUValue: number;
+  /** Fabric reference for the BOM (manufacturer + part). */
+  blackoutFabricLabel: string;
 
   // Targets
   cropTargetId: keyof typeof cropTargets;

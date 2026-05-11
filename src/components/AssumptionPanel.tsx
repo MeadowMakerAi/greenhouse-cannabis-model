@@ -278,6 +278,63 @@ export default function AssumptionPanel() {
           onChange={(b) => setInputs({ blackoutEnabled: b })}
           hint="Light-deprivation system — opaque pulldown curtains that seal the canopy during the dark phase. REQUIRED for flowering cannabis outside the natural 12-hr-dark season; even brief light leak (sun, street, full moon) can revert flowering plants to veg. Commercial spec: <0.05% PAR transmission (Ludvig Svensson Obscura / SLS Tempest)."
         />
+        {inputs.blackoutEnabled && (
+          <>
+            <SelectField
+              label="Deploy mode"
+              value={inputs.blackoutDeployMode}
+              onChange={(v) =>
+                setInputs({
+                  blackoutDeployMode: v as
+                    | "auto"
+                    | "scheduled"
+                    | "always"
+                    | "off",
+                })
+              }
+              options={[
+                { value: "auto", label: "Auto — follow lights window" },
+                { value: "scheduled", label: "Scheduled — explicit hours" },
+                { value: "always", label: "Always closed (sealed mode)" },
+                { value: "off", label: "Disabled (override)" },
+              ]}
+              hint="Auto closes the curtain just before lights-off and reopens at lights-on. Scheduled lets you decouple curtain timing from the lights window (e.g. midday light-dep flips). Always-closed is fully artificial flowering."
+            />
+            <NumberField
+              label="Pre-close lead"
+              value={inputs.blackoutPreCloseMin}
+              onChange={(n) => setInputs({ blackoutPreCloseMin: n })}
+              unit="min"
+              hint="Minutes before close hour the curtain begins traversing. Commercial systems use 15–30 min to guarantee full closure before the photoperiod-critical moment."
+            />
+            {inputs.blackoutDeployMode === "scheduled" && (
+              <>
+                <NumberField
+                  label="Scheduled close"
+                  value={inputs.blackoutScheduledCloseHour}
+                  onChange={(n) => setInputs({ blackoutScheduledCloseHour: n })}
+                  unit="hr"
+                  hint="Clock hour curtain closes (scheduled mode only)."
+                />
+                <NumberField
+                  label="Scheduled open"
+                  value={inputs.blackoutScheduledOpenHour}
+                  onChange={(n) => setInputs({ blackoutScheduledOpenHour: n })}
+                  unit="hr"
+                  hint="Clock hour curtain opens (scheduled mode only)."
+                />
+              </>
+            )}
+            <NumberField
+              label="Closed U-value"
+              value={inputs.blackoutClosedUValue}
+              onChange={(n) => setInputs({ blackoutClosedUValue: n })}
+              unit="BTU/hr·ft²·°F"
+              step={0.05}
+              hint="Envelope U when curtain deployed. Obscura B+W ≈ 0.45; Tempest combined blackout+thermal ≈ 0.30. Acts as an additional thermal layer — drops cooling/heating load when deployed."
+            />
+          </>
+        )}
       </FieldGroup>
 
       <FieldGroup

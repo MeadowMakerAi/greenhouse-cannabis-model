@@ -29,13 +29,26 @@ function Row({ label, value, hint }: RowProps) {
   );
 }
 
-function Section({ title, children, badge }: { title: string; badge?: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  badge,
+  hint,
+}: {
+  title: string;
+  badge?: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="card">
       <div className="card-header">
         <span>{title}</span>
         {badge && <span className="tag tag-muted">{badge}</span>}
       </div>
+      {hint && (
+        <p className="px-4 pt-2 text-[11px] leading-snug text-ink-500">{hint}</p>
+      )}
       <div className="card-body py-1">{children}</div>
     </div>
   );
@@ -475,6 +488,73 @@ export default function BuildSheet() {
             </>
           ) : (
             <Row label="Status" value="Disabled" />
+          )}
+        </Section>
+
+        <Section
+          title="Blackout / light-deprivation"
+          hint="Motorized opaque curtain system that seals the volume against natural light during the dark phase of the photoperiod. Required for any cannabis flower cycle that doesn't naturally fall into a 12-hr-dark window. Acts as a secondary thermal layer when deployed."
+        >
+          {inputs.blackoutEnabled ? (
+            (() => {
+              // Fabric area = horizontal at gutter level + two sidewall pull-downs.
+              const length = inputs.greenhouseLengthFt;
+              const width = inputs.greenhouseWidthFt;
+              const eave = inputs.eaveHeightFt;
+              const horizontalSqFt = length * width;
+              const sidewallSqFt = 2 * length * eave;
+              const endwallSqFt = 2 * width * eave;
+              const fabricSqFt = Math.round(horizontalSqFt + sidewallSqFt + endwallSqFt);
+              // Drive: 1 motor per ~5000 sq ft of fabric, minimum 1.
+              const driveCount = Math.max(1, Math.ceil(fabricSqFt / 5000));
+              // Track: 2 × length (gutter rails) + 2 × width (endwall rails) +
+              // bunching allowance (~10 %) for sidewall guide tracks.
+              const trackLinearFt = Math.round((2 * length + 2 * width) * 1.1);
+              // Cost band: fabric $3.50/sf, motors $2k each, track $25/ft, controls $4k.
+              const fabricCost = fabricSqFt * 3.5;
+              const motorCost = driveCount * 2000;
+              const trackCost = trackLinearFt * 25;
+              const controlsCost = 4000;
+              const totalLow = Math.round(
+                (fabricCost + motorCost + trackCost + controlsCost) * 0.85,
+              );
+              const totalHigh = Math.round(
+                (fabricCost + motorCost + trackCost + controlsCost) * 1.25,
+              );
+              const modeLabel =
+                inputs.blackoutDeployMode === "auto"
+                  ? `Auto — follows lights window (close ${inputs.blackoutPreCloseMin} min before lights-off)`
+                  : inputs.blackoutDeployMode === "scheduled"
+                  ? `Scheduled — close ${inputs.blackoutScheduledCloseHour}:00, open ${inputs.blackoutScheduledOpenHour}:00`
+                  : inputs.blackoutDeployMode === "always"
+                  ? "Always closed (fully artificial flowering)"
+                  : "Disabled (mode override)";
+              return (
+                <>
+                  <Row label="Fabric" value={inputs.blackoutFabricLabel} hint="Industry-standard light-tight blackout. Sub <0.05 % PAR transmission." />
+                  <Row label="Deploy mode" value={modeLabel} />
+                  <Row
+                    label="Fabric area"
+                    value={`${fmtInt(fabricSqFt)} ft²`}
+                    hint={`${fmtInt(Math.round(horizontalSqFt))} ft² horizontal gutter-to-gutter + ${fmtInt(Math.round(sidewallSqFt))} ft² sidewalls + ${fmtInt(Math.round(endwallSqFt))} ft² endwalls`}
+                  />
+                  <Row label="Drive motors" value={`${driveCount} (≈1 per 5,000 ft² of fabric)`} />
+                  <Row label="Track" value={`${fmtInt(trackLinearFt)} linear ft`} />
+                  <Row
+                    label="Closed U-value"
+                    value={`${inputs.blackoutClosedUValue.toFixed(2)} BTU/hr·ft²·°F`}
+                    hint={`Glazing alone is ${inputs.envelopeUValueBTUhrFtF.toFixed(2)}; blackout drops it ~${Math.round((1 - inputs.blackoutClosedUValue / inputs.envelopeUValueBTUhrFtF) * 100)} % when deployed (acts as a thermal layer).`}
+                  />
+                  <Row
+                    label="Capex band"
+                    value={`$${fmtInt(totalLow)} – $${fmtInt(totalHigh)}`}
+                    hint="Fabric + motors + track + controls. Excludes structural reinforcement (often needed for the gutter rail)."
+                  />
+                </>
+              );
+            })()
+          ) : (
+            <Row label="Status" value="Not specified" hint="Required for cannabis flower outside the natural 12-hr-dark window. Enable in the photoperiod panel." />
           )}
         </Section>
 

@@ -49,7 +49,18 @@ export const defaultPhotoperiod = {
   flowerPhotoperiodHours: 12,
   flowerWindowStartHr: 7,
   flowerWindowEndHr: 19,
+  // Blackout / light-deprivation system
   blackoutEnabled: true,
+  blackoutDeployMode: "auto" as const,
+  blackoutPreCloseMin: 15,
+  blackoutScheduledCloseHour: 19,
+  blackoutScheduledOpenHour: 7,
+  // Ludvig Svensson Obscura B+W: industry-standard blackout, 0.45 BTU/hr·ft²·°F
+  // when deployed (~30% U-value reduction vs single-poly glazing alone).
+  // SLS Tempest combined blackout+thermal goes to 0.30 if dual-purpose. We
+  // default to Obscura because it's the most common dedicated-blackout pick.
+  blackoutClosedUValue: 0.45,
+  blackoutFabricLabel: "Ludvig Svensson Obscura B+W (or equivalent)",
 };
 
 export const defaultEconomics = {

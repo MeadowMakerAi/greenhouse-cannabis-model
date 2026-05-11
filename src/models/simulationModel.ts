@@ -176,21 +176,88 @@ export function lightsStateAt(input: LightsScheduleInput): LightsState {
 // and retract at lights-on. This is not optional; it's how you flower
 // a long-day plant outside its natural latitude/season window.
 //
-// In the simulation, when blackout is enabled and the current hour is
-// OUTSIDE the flower window, we set canopyNaturalPPFD to zero (the
-// curtain blocks the sun) and the indoor environment is fully artificial.
-// The blackout also acts as a secondary thermal/CO₂ retention layer.
-export function blackoutActiveAt(
+// Deploy modes:
+//   "auto"      — follows the lights-on window from the photoperiod inputs.
+//                 Curtain begins closing `preCloseMin` minutes before
+//                 lights-off and stays closed until lights-on.
+//   "scheduled" — explicit close/open hours, decoupled from the lights
+//                 window. Lets the user run e.g. midday light-deprivation
+//                 cycles or mismatched curtain/lighting schedules.
+//   "always"    — curtain stays closed 24/7. Fully artificial flowering
+//                 mode (sealed cannabis operations).
+//   "off"       — curtain disabled regardless of `enabled` flag. Lets the
+//                 user keep blackout specified in the BOM while toggling
+//                 behavior for what-if comparisons.
+//
+// In the simulation, when the curtain is deployed we:
+//   - set canopyNaturalPPFD to zero (fabric blocks the sun, commercial
+//     spec <0.05% PAR transmission)
+//   - reduce the envelope U-value to `closedUValue` (acts as a thermal
+//     layer — comparable to a thermal screen)
+export type BlackoutDeployMode = "auto" | "scheduled" | "always" | "off";
+
+export interface BlackoutInput {
+  hourOfDay: number;
+  enabled: boolean;
+  mode: BlackoutDeployMode;
+  windowStartHour: number; // lights-on hour (auto mode)
+  windowEndHour: number; // lights-off hour (auto mode)
+  scheduledCloseHour: number; // explicit close (scheduled mode)
+  scheduledOpenHour: number; // explicit open (scheduled mode)
+  /** Minutes the curtain begins closing before the close hour. */
+  preCloseMin: number;
+}
+
+function inWrappedWindow(
+  hour: number,
+  closeHr: number,
+  openHr: number,
+): boolean {
+  // Returns true when `hour` is in the "closed" interval [closeHr, openHr)
+  // accounting for wrap across midnight (close > open means the closed
+  // window crosses 24:00).
+  if (closeHr <= openHr) {
+    return hour >= closeHr && hour < openHr;
+  }
+  return hour >= closeHr || hour < openHr;
+}
+
+export function blackoutActiveAt(input: BlackoutInput): boolean {
+  if (!input.enabled || input.mode === "off") return false;
+  if (input.mode === "always") return true;
+  const preCloseHr = Math.max(0, input.preCloseMin) / 60;
+  if (input.mode === "scheduled") {
+    // Treat the close window as [scheduledCloseHour − preCloseHr, scheduledOpenHour).
+    const effClose = (input.scheduledCloseHour - preCloseHr + 24) % 24;
+    return inWrappedWindow(input.hourOfDay, effClose, input.scheduledOpenHour);
+  }
+  // "auto" — close before lights-off, open at lights-on. The CLOSED interval
+  // is the inverse of the lights-on window with the pre-close lead applied
+  // to the closing edge only.
+  const effClose = (input.windowEndHour - preCloseHr + 24) % 24;
+  return inWrappedWindow(input.hourOfDay, effClose, input.windowStartHour);
+}
+
+/**
+ * Compatibility wrapper for the legacy positional signature so callers and
+ * tests that still use the 4-arg form keep working with the default mode.
+ */
+export function blackoutActiveAtSimple(
   hourOfDay: number,
   windowStartHour: number,
   windowEndHour: number,
   enabled: boolean,
 ): boolean {
-  if (!enabled) return false;
-  const inLightWindow =
-    hourOfDay >= windowStartHour && hourOfDay < windowEndHour;
-  // Blackout deploys when lights are OFF (the dark phase).
-  return !inLightWindow;
+  return blackoutActiveAt({
+    hourOfDay,
+    enabled,
+    mode: "auto",
+    windowStartHour,
+    windowEndHour,
+    scheduledCloseHour: windowEndHour,
+    scheduledOpenHour: windowStartHour,
+    preCloseMin: 0,
+  });
 }
 
 // ---- Vent state (rule-based) ----

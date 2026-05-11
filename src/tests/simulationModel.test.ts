@@ -251,26 +251,76 @@ describe("effectiveVentAreaSqFt (paired-vent harmonic mean)", () => {
 });
 
 describe("blackoutActiveAt (photoperiod control)", () => {
+  const base = {
+    windowStartHour: 7,
+    windowEndHour: 19,
+    scheduledCloseHour: 19,
+    scheduledOpenHour: 7,
+    preCloseMin: 0,
+  };
   it("returns false when blackout is disabled regardless of hour", () => {
-    expect(blackoutActiveAt(2, 7, 19, false)).toBe(false);
-    expect(blackoutActiveAt(12, 7, 19, false)).toBe(false);
-    expect(blackoutActiveAt(23, 7, 19, false)).toBe(false);
+    for (const h of [2, 12, 23]) {
+      expect(blackoutActiveAt({ ...base, hourOfDay: h, enabled: false, mode: "auto" })).toBe(false);
+    }
   });
-  it("returns false during the lights-on window (curtain retracted)", () => {
-    expect(blackoutActiveAt(7, 7, 19, true)).toBe(false);
-    expect(blackoutActiveAt(12, 7, 19, true)).toBe(false);
-    expect(blackoutActiveAt(18.99, 7, 19, true)).toBe(false);
+  it("returns false when mode='off' regardless of enabled flag", () => {
+    expect(blackoutActiveAt({ ...base, hourOfDay: 2, enabled: true, mode: "off" })).toBe(false);
+    expect(blackoutActiveAt({ ...base, hourOfDay: 22, enabled: true, mode: "off" })).toBe(false);
   });
-  it("returns true outside the lights-on window (curtain deployed)", () => {
-    expect(blackoutActiveAt(0, 7, 19, true)).toBe(true);
-    expect(blackoutActiveAt(5, 7, 19, true)).toBe(true);
-    expect(blackoutActiveAt(19, 7, 19, true)).toBe(true);
-    expect(blackoutActiveAt(22, 7, 19, true)).toBe(true);
+  it("returns true at every hour when mode='always'", () => {
+    for (const h of [0, 7, 12, 19, 23]) {
+      expect(blackoutActiveAt({ ...base, hourOfDay: h, enabled: true, mode: "always" })).toBe(true);
+    }
   });
-  it("transitions at the window boundary inclusively at start, exclusively at end", () => {
-    // At exactly windowStart, lights are on → blackout open
-    expect(blackoutActiveAt(7, 7, 19, true)).toBe(false);
-    // At exactly windowEnd, lights are off → blackout closed
-    expect(blackoutActiveAt(19, 7, 19, true)).toBe(true);
+  it("auto mode: false during lights-on window", () => {
+    for (const h of [7, 12, 18.99]) {
+      expect(blackoutActiveAt({ ...base, hourOfDay: h, enabled: true, mode: "auto" })).toBe(false);
+    }
+  });
+  it("auto mode: true outside lights-on window", () => {
+    for (const h of [0, 5, 19, 22]) {
+      expect(blackoutActiveAt({ ...base, hourOfDay: h, enabled: true, mode: "auto" })).toBe(true);
+    }
+  });
+  it("auto mode: pre-close lead shifts the closing edge earlier", () => {
+    // 30-min pre-close → curtain closes at 18:30 instead of 19:00
+    const args = { ...base, enabled: true, mode: "auto" as const, preCloseMin: 30 };
+    expect(blackoutActiveAt({ ...args, hourOfDay: 18.25 })).toBe(false);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 18.5 })).toBe(true);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 18.75 })).toBe(true);
+  });
+  it("scheduled mode: uses explicit close/open hours regardless of lights window", () => {
+    // Lights window 6-22, but blackout scheduled 20-6 (midnight wrap)
+    const args = {
+      windowStartHour: 6,
+      windowEndHour: 22,
+      scheduledCloseHour: 20,
+      scheduledOpenHour: 6,
+      preCloseMin: 0,
+      enabled: true,
+      mode: "scheduled" as const,
+    };
+    expect(blackoutActiveAt({ ...args, hourOfDay: 12 })).toBe(false);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 20 })).toBe(true);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 23 })).toBe(true);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 3 })).toBe(true);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 6 })).toBe(false);
+  });
+  it("scheduled mode: same-day close window (close < open) doesn't wrap", () => {
+    // Midday light-dep flip: 11am-3pm dark, otherwise light
+    const args = {
+      windowStartHour: 6,
+      windowEndHour: 22,
+      scheduledCloseHour: 11,
+      scheduledOpenHour: 15,
+      preCloseMin: 0,
+      enabled: true,
+      mode: "scheduled" as const,
+    };
+    expect(blackoutActiveAt({ ...args, hourOfDay: 8 })).toBe(false);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 11 })).toBe(true);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 14.5 })).toBe(true);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 15 })).toBe(false);
+    expect(blackoutActiveAt({ ...args, hourOfDay: 20 })).toBe(false);
   });
 });

@@ -116,12 +116,16 @@ export function useLiveDynamics() {
         shadeTriggerOutdoorTempF: inputs.shadeTriggerOutdoorTempF,
         shadeTriggerSolarWm2: inputs.shadeTriggerSolarWm2,
       });
-      const blackoutActive = blackoutActiveAt(
+      const blackoutActive = blackoutActiveAt({
         hourOfDay,
-        inputs.flowerWindowStartHr,
-        inputs.flowerWindowEndHr,
-        inputs.blackoutEnabled,
-      );
+        enabled: inputs.blackoutEnabled,
+        mode: inputs.blackoutDeployMode,
+        windowStartHour: inputs.flowerWindowStartHr,
+        windowEndHour: inputs.flowerWindowEndHr,
+        scheduledCloseHour: inputs.blackoutScheduledCloseHour,
+        scheduledOpenHour: inputs.blackoutScheduledOpenHour,
+        preCloseMin: inputs.blackoutPreCloseMin,
+      });
       const canopyNaturalPPFDRaw = canopyPPFDFromOutdoor(
         outdoorPPFD,
         transmission,
@@ -169,10 +173,27 @@ export function useLiveDynamics() {
       );
       const peakRidgeArea =
         2 * 4 * inputs.greenhouseLengthFt * 0.88 * Math.sin((38 * Math.PI) / 180);
-      const envelopeUValueNow =
-        inputs.thermalScreenEnabled && (hourOfDay < 6 || hourOfDay > 19)
-          ? inputs.thermalScreenNightUValue
-          : inputs.envelopeUValueBTUhrFtF;
+      // Envelope U-value with curtain layers compounded.
+      //
+      // Each deployed fabric (thermal screen, blackout) adds a stagnant-air
+      // layer between glazing and canopy, dropping effective U. We model the
+      // dominant (lowest) U-value rather than serial conduction because the
+      // curtains share an air gap and a series sum overcounts insulation.
+      // When both are deployed simultaneously we take the smaller of the two
+      // and apply a small additional credit (10 %) for the dual-layer air
+      // pocket — conservative vs Wageningen/UMass dual-screen references.
+      const thermalActive =
+        inputs.thermalScreenEnabled && (hourOfDay < 6 || hourOfDay > 19);
+      let envelopeUValueNow = inputs.envelopeUValueBTUhrFtF;
+      if (thermalActive && blackoutActive) {
+        envelopeUValueNow =
+          Math.min(inputs.thermalScreenNightUValue, inputs.blackoutClosedUValue) *
+          0.9;
+      } else if (thermalActive) {
+        envelopeUValueNow = inputs.thermalScreenNightUValue;
+      } else if (blackoutActive) {
+        envelopeUValueNow = inputs.blackoutClosedUValue;
+      }
       const peakCoolingCapBTUhr = Math.max(
         ...derived.months.map((m) => m.totalCoolingBTUhr),
       );
