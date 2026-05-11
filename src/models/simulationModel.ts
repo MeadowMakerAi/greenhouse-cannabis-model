@@ -167,6 +167,32 @@ export function lightsStateAt(input: LightsScheduleInput): LightsState {
   return { on: true, reason: "supplementing", dimLevel };
 }
 
+// ---- Blackout system ----
+//
+// Cannabis is photoperiodic. To force flowering and prevent reversion to
+// veg, the dark phase must be UNINTERRUPTED — no natural light, no street
+// light leak, no full moon. Commercial cannabis greenhouses deploy
+// motorized blackout curtains that close at the start of the dark phase
+// and retract at lights-on. This is not optional; it's how you flower
+// a long-day plant outside its natural latitude/season window.
+//
+// In the simulation, when blackout is enabled and the current hour is
+// OUTSIDE the flower window, we set canopyNaturalPPFD to zero (the
+// curtain blocks the sun) and the indoor environment is fully artificial.
+// The blackout also acts as a secondary thermal/CO₂ retention layer.
+export function blackoutActiveAt(
+  hourOfDay: number,
+  windowStartHour: number,
+  windowEndHour: number,
+  enabled: boolean,
+): boolean {
+  if (!enabled) return false;
+  const inLightWindow =
+    hourOfDay >= windowStartHour && hourOfDay < windowEndHour;
+  // Blackout deploys when lights are OFF (the dark phase).
+  return !inLightWindow;
+}
+
 // ---- Vent state (rule-based) ----
 export interface VentInput {
   indoorTempF: number;

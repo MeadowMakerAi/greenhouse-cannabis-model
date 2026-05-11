@@ -273,10 +273,10 @@ export default function AssumptionPanel() {
           hint="Clock hour overhead lights turn off."
         />
         <ToggleField
-          label="Blackout"
+          label="Blackout curtains"
           value={inputs.blackoutEnabled}
           onChange={(b) => setInputs({ blackoutEnabled: b })}
-          hint="Pulldown curtains forcing 12h dark in long-day months."
+          hint="Light-deprivation system — opaque pulldown curtains that seal the canopy during the dark phase. REQUIRED for flowering cannabis outside the natural 12-hr-dark season; even brief light leak (sun, street, full moon) can revert flowering plants to veg. Commercial spec: <0.05% PAR transmission (Ludvig Svensson Obscura / SLS Tempest)."
         />
       </FieldGroup>
 

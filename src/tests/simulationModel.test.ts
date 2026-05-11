@@ -8,6 +8,7 @@ import {
   indoorTempStep,
   naturalVentilationCFM,
   effectiveVentAreaSqFt,
+  blackoutActiveAt,
 } from "../models/simulationModel";
 
 describe("sunPositionAt", () => {
@@ -246,5 +247,30 @@ describe("effectiveVentAreaSqFt (paired-vent harmonic mean)", () => {
   });
   it("zero in both → zero", () => {
     expect(effectiveVentAreaSqFt(0, 0)).toBe(0);
+  });
+});
+
+describe("blackoutActiveAt (photoperiod control)", () => {
+  it("returns false when blackout is disabled regardless of hour", () => {
+    expect(blackoutActiveAt(2, 7, 19, false)).toBe(false);
+    expect(blackoutActiveAt(12, 7, 19, false)).toBe(false);
+    expect(blackoutActiveAt(23, 7, 19, false)).toBe(false);
+  });
+  it("returns false during the lights-on window (curtain retracted)", () => {
+    expect(blackoutActiveAt(7, 7, 19, true)).toBe(false);
+    expect(blackoutActiveAt(12, 7, 19, true)).toBe(false);
+    expect(blackoutActiveAt(18.99, 7, 19, true)).toBe(false);
+  });
+  it("returns true outside the lights-on window (curtain deployed)", () => {
+    expect(blackoutActiveAt(0, 7, 19, true)).toBe(true);
+    expect(blackoutActiveAt(5, 7, 19, true)).toBe(true);
+    expect(blackoutActiveAt(19, 7, 19, true)).toBe(true);
+    expect(blackoutActiveAt(22, 7, 19, true)).toBe(true);
+  });
+  it("transitions at the window boundary inclusively at start, exclusively at end", () => {
+    // At exactly windowStart, lights are on → blackout open
+    expect(blackoutActiveAt(7, 7, 19, true)).toBe(false);
+    // At exactly windowEnd, lights are off → blackout closed
+    expect(blackoutActiveAt(19, 7, 19, true)).toBe(true);
   });
 });

@@ -51,6 +51,9 @@ interface Props {
   shadeActive?: boolean;
   /** Shade transmission % (0-100) */
   shadeTransmissionPct?: number;
+  /** Blackout curtain deployed — opaque black fabric at gutter level + sidewall
+   *  pull-downs. Cannabis photoperiod control: forces uninterrupted dark phase. */
+  blackoutActive?: boolean;
   /** Roof vents open */
   roofVentsOpen?: boolean;
   /** Live sun position (azimuth/elevation in degrees from N) — when supplied, overrides month-based sun */
@@ -144,6 +147,78 @@ function ShadeCloth({
           color="#5a6a40"
           side={THREE.DoubleSide}
           opacity={opacity}
+          transparent
+          roughness={0.95}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+function BlackoutCurtain({
+  length,
+  width,
+  height,
+  eave,
+}: {
+  length: number;
+  width: number;
+  height: number;
+  eave: number;
+}) {
+  /* Commercial light-deprivation system. Two parts:
+   *  1) Horizontal blackout curtain at gutter level — opaque black fabric
+   *     stretched gutter-to-gutter (Ludvig Svensson Obscura / SLS Tempest
+   *     standard installation). Sits below the rafters, above the canopy.
+   *  2) Sidewall pull-down curtains — opaque panels that drop from the
+   *     gutter rail down to the floor, sealing the volume against any
+   *     light leak from neighboring buildings, street lights, full moon.
+   *
+   * The fabric is non-light-transmitting (commercial spec: < 0.05% PAR
+   * transmission). Rendered with low opacity transparency only so the user
+   * can still see the plants underneath in the 3D view — the simulation
+   * treats it as fully opaque (canopyNaturalPPFD = 0 in useLiveDynamics). */
+  return (
+    <group>
+      {/* Curtain track rails (top, gutter-line) */}
+      <mesh position={[0, height + 0.08, width / 2 - 0.4]}>
+        <boxGeometry args={[length, 0.06, 0.06]} />
+        <meshStandardMaterial color="#1a1d22" metalness={0.6} />
+      </mesh>
+      <mesh position={[0, height + 0.08, -width / 2 + 0.4]}>
+        <boxGeometry args={[length, 0.06, 0.06]} />
+        <meshStandardMaterial color="#1a1d22" metalness={0.6} />
+      </mesh>
+      {/* Horizontal blackout fabric — opaque black, slight transparency for
+       * visibility only (real curtain is light-tight) */}
+      <mesh position={[0, height, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[length * 0.95, width * 0.92]} />
+        <meshStandardMaterial
+          color="#0d0e10"
+          side={THREE.DoubleSide}
+          opacity={0.78}
+          transparent
+          roughness={0.95}
+        />
+      </mesh>
+      {/* Sidewall pull-down — south wall */}
+      <mesh position={[0, eave / 2 + 0.5, width / 2 - 0.08]}>
+        <planeGeometry args={[length * 0.95, eave]} />
+        <meshStandardMaterial
+          color="#0d0e10"
+          side={THREE.DoubleSide}
+          opacity={0.72}
+          transparent
+          roughness={0.95}
+        />
+      </mesh>
+      {/* Sidewall pull-down — north wall */}
+      <mesh position={[0, eave / 2 + 0.5, -width / 2 + 0.08]}>
+        <planeGeometry args={[length * 0.95, eave]} />
+        <meshStandardMaterial
+          color="#0d0e10"
+          side={THREE.DoubleSide}
+          opacity={0.72}
           transparent
           roughness={0.95}
         />
@@ -252,6 +327,7 @@ function GreenhouseStructure({
   shadeActive,
   shadeTransmissionPct,
   roofVentsOpen,
+  blackoutActive,
 }: {
   length: number;
   width: number;
@@ -261,6 +337,7 @@ function GreenhouseStructure({
   shadeActive?: boolean;
   shadeTransmissionPct?: number;
   roofVentsOpen?: boolean;
+  blackoutActive?: boolean;
 }) {
   // Truss spacing — typical greenhouse 6-8 ft
   const trussSpacing = 6;
@@ -449,6 +526,20 @@ function GreenhouseStructure({
           width={width}
           height={eave + 0.4}
           transmissionPct={shadeTransmissionPct ?? 70}
+        />
+      )}
+
+      {/* Blackout curtain — horizontal at gutter level + sidewall pull-downs.
+       * Deploys during the dark phase of the photoperiod to block ALL natural
+       * light from reaching flowering plants (cannabis is photoperiodic — any
+       * light leak during dark can revert flowering plants to veg). The
+       * simulation treats canopyNaturalPPFD as 0 when blackoutActive. */}
+      {blackoutActive && (
+        <BlackoutCurtain
+          length={length}
+          width={width}
+          height={eave - 0.05}
+          eave={eave}
         />
       )}
     </group>
@@ -1624,6 +1715,7 @@ export default function Greenhouse3D({
   shadeActive = false,
   shadeTransmissionPct = 70,
   roofVentsOpen = false,
+  blackoutActive = false,
   liveSunAzimuthDeg,
   liveSunElevationDeg,
   lightsDimLevel = 1,
@@ -1880,6 +1972,7 @@ export default function Greenhouse3D({
               shadeActive={shadeActive}
               shadeTransmissionPct={shadeTransmissionPct}
               roofVentsOpen={roofVentsOpen}
+              blackoutActive={blackoutActive}
             />
 
             <CanopyAndPlants

@@ -151,6 +151,9 @@ export default function Greenhouse3DHud({
             <div className="text-[10px] text-ink-500">
               {snapshot.shadeActive ? "shade deployed" : "shade retracted"}
             </div>
+            <div className={`text-[10px] ${snapshot.blackoutActive ? "text-ink-900" : "text-ink-500"}`}>
+              {snapshot.blackoutActive ? "● blackout closed" : "○ blackout open"}
+            </div>
           </div>
         </div>
         <div className="mt-2 border-t border-ink-300/30 pt-2">

@@ -3,6 +3,7 @@ import { useScenario } from "./ScenarioContext";
 import { useSimulation } from "./SimulationContext";
 import { useDerived } from "./useDerived";
 import {
+  blackoutActiveAt,
   canopyPPFDFromOutdoor,
   diurnalState,
   effectiveVentAreaSqFt,
@@ -54,6 +55,8 @@ export interface LiveSnapshot {
   ventOpen: boolean;
   indoorTempF: number;
   shadeActive: boolean;
+  /** Blackout curtain deployed (forces photoperiod by blocking natural light) */
+  blackoutActive: boolean;
   /** Indoor RH (estimated — held to target setpoint when dehum active) */
   indoorRH: number;
   /** Indoor leaf-vs-air VPD (kPa) */
@@ -113,12 +116,24 @@ export function useLiveDynamics() {
         shadeTriggerOutdoorTempF: inputs.shadeTriggerOutdoorTempF,
         shadeTriggerSolarWm2: inputs.shadeTriggerSolarWm2,
       });
-      const canopyNaturalPPFD = canopyPPFDFromOutdoor(
+      const blackoutActive = blackoutActiveAt(
+        hourOfDay,
+        inputs.flowerWindowStartHr,
+        inputs.flowerWindowEndHr,
+        inputs.blackoutEnabled,
+      );
+      const canopyNaturalPPFDRaw = canopyPPFDFromOutdoor(
         outdoorPPFD,
         transmission,
         shadeActive,
         inputs.shadeTransmissionPct,
       );
+      // Blackout curtain blocks ALL natural light during the dark phase.
+      // Cannabis photoperiod requires uninterrupted dark — any light leak
+      // can revert flowering plants to veg. Curtains are 95-99% opaque in
+      // commercial installs; we model as binary 0 for the simulation since
+      // residual leak (<1%) is below the plant's perception threshold.
+      const canopyNaturalPPFD = blackoutActive ? 0 : canopyNaturalPPFDRaw;
       const lights = lightsStateAt({
         hourOfDay,
         photoperiodHours: inputs.flowerPhotoperiodHours,
@@ -221,6 +236,7 @@ export function useLiveDynamics() {
         ventOpen,
         indoorTempF,
         shadeActive,
+        blackoutActive,
       };
     };
 
@@ -347,6 +363,7 @@ export function useLiveDynamics() {
       ventOpen: fullSnap.ventOpen,
       indoorTempF: fullSnap.indoorTempF,
       shadeActive: fullSnap.shadeActive,
+      blackoutActive: fullSnap.blackoutActive,
       indoorRH,
       indoorVPD,
       outdoorVPD,
