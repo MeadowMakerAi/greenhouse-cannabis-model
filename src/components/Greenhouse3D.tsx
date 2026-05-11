@@ -1,8 +1,20 @@
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Grid, Sky } from "@react-three/drei";
-import { EffectComposer, Bloom, ToneMapping, Vignette } from "@react-three/postprocessing";
-import { ToneMappingMode } from "postprocessing";
+import {
+  OrbitControls,
+  Grid,
+  Sky,
+  Environment,
+  Lightformer,
+} from "@react-three/drei";
+import {
+  EffectComposer,
+  Bloom,
+  ToneMapping,
+  Vignette,
+  SSAO,
+} from "@react-three/postprocessing";
+import { BlendFunction, ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
 import {
   solarDeclinationDeg,
@@ -1731,11 +1743,63 @@ export default function Greenhouse3D({
             elevationDeg={liveSunElevationDeg ?? 60}
           />
           <Atmosphere elevationDeg={liveSunElevationDeg ?? 60} />
-          {/* Note: drei <Environment preset="warehouse" /> was previously
-            * used here for subtle image-based lighting (intensity 0.18),
-            * but it pulls an HDRI from raw.githack.com which would
-            * require widening the CSP. The contribution at 0.18 is
-            * minor; ElegantSky + Atmosphere + direct lights cover it. */}
+
+          {/* Custom IBL: place rectangular Lightformers shaped like the
+              ridge bays + side glazing so the metal/glass/leaf materials
+              get realistic indirect reflections without an HDRI fetch
+              (no CSP widening). resolution=128 + frames=1 = bake once
+              cost. The Lightformer rectangles are ~ridge length × bay
+              width, lifted above the peak so they wash light downward
+              the way ridge skylights do. This is what makes the
+              fixtures, gutters, and plant tops look "production lit"
+              rather than directional-only. */}
+          <Environment frames={1} resolution={128}>
+            {/* Top — broad warm skylight wash (sun-tinted) */}
+            <Lightformer
+              form="rect"
+              intensity={2.0}
+              color="#fff4dc"
+              position={[0, peakHeightFt + 30, 0]}
+              rotation-x={Math.PI / 2}
+              scale={[Math.max(floorLength, 30), Math.max(floorWidth, 20), 1]}
+            />
+            {/* Ridge-line skylight (cool sky) */}
+            <Lightformer
+              form="rect"
+              intensity={1.4}
+              color="#dfe9f4"
+              position={[0, peakHeightFt + 8, 0]}
+              rotation-x={Math.PI / 2}
+              scale={[floorLength * 0.85, 4, 1]}
+            />
+            {/* East glaze fill — cool reflective bounce */}
+            <Lightformer
+              form="rect"
+              intensity={0.9}
+              color="#b8c7d9"
+              position={[floorLength * 0.7, eaveHeightFt * 0.7, 0]}
+              rotation-y={-Math.PI / 2}
+              scale={[floorWidth * 1.2, eaveHeightFt * 1.2, 1]}
+            />
+            {/* West glaze fill — warm ground bounce */}
+            <Lightformer
+              form="rect"
+              intensity={0.7}
+              color="#d8c3a0"
+              position={[-floorLength * 0.7, eaveHeightFt * 0.5, 0]}
+              rotation-y={Math.PI / 2}
+              scale={[floorWidth * 1.2, eaveHeightFt * 1.2, 1]}
+            />
+            {/* Floor bounce — warm leaf-tinted upward fill */}
+            <Lightformer
+              form="rect"
+              intensity={0.5}
+              color="#9aaa6a"
+              position={[0, 0.5, 0]}
+              rotation-x={-Math.PI / 2}
+              scale={[floorLength, floorWidth, 1]}
+            />
+          </Environment>
 
           <CameraRig
             floorLength={floorLength}
@@ -1834,14 +1898,38 @@ export default function Greenhouse3D({
             maxPolarAngle={Math.PI / 2 - 0.05}
           />
 
+          {/* Post-process chain.
+              · SSAO at half-res adds contact darkening between leaves,
+                under fixtures, in canopy gaps — the single biggest
+                "depth feels real" upgrade. ~1.5-2.5ms paint cost.
+              · Bloom is selective: luminanceThreshold raised to 0.92
+                so only actual emissive surfaces (lit fixtures, sun
+                mesh) bloom — not glass or white labels. Default 0.65
+                was too generous; the new value reads "lights are
+                on" rather than "everything is glowing."
+              · Vignette grounds the frame.
+              · ACES Filmic tone mapping last — applies after all
+                effects so the LDR conversion sees the full HDR
+                range. */}
           <EffectComposer multisampling={2}>
+            <SSAO
+              blendFunction={BlendFunction.MULTIPLY}
+              samples={20}
+              radius={0.12}
+              intensity={22}
+              luminanceInfluence={0.6}
+              worldDistanceThreshold={50}
+              worldDistanceFalloff={5}
+              worldProximityThreshold={6}
+              worldProximityFalloff={1}
+            />
             <Bloom
-              intensity={0.35}
-              luminanceThreshold={0.65}
-              luminanceSmoothing={0.85}
+              intensity={0.55}
+              luminanceThreshold={0.92}
+              luminanceSmoothing={0.6}
               mipmapBlur
             />
-            <Vignette eskil={false} offset={0.18} darkness={0.55} />
+            <Vignette eskil={false} offset={0.22} darkness={0.6} />
             <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
           </EffectComposer>
         </Suspense>

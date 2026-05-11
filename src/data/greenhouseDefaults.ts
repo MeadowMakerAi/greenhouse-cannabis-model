@@ -54,6 +54,17 @@ export const defaultPhotoperiod = {
 
 export const defaultEconomics = {
   electricityRatePerKwh: 0.16,
+  /**
+   * Utility demand charge ($/kW of peak 15-min demand, billed monthly).
+   * Commercial/industrial rate schedules charge separately for energy
+   * (kWh) and demand (peak kW). For high-load cannabis cultivation,
+   * demand charges frequently rival or exceed energy charges — yet
+   * almost no screening model surfaces them. Default $14/kW/month is
+   * typical for NYSEG / ConEd / National Grid commercial tariffs.
+   * Source: Cannabis Business Times — "10 Tips for Reducing Electricity
+   * Usage and Cost in Cannabis Cultivation" (cannabisbusinesstimes.com).
+   */
+  demandChargePerKwMonth: 14.0,
 };
 
 export const defaultSolarConversion = {

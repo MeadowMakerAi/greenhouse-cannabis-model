@@ -132,12 +132,19 @@ export default function OutputSummary() {
           <div className="absolute left-0 top-0 h-px w-24 bg-leaf-600" />
         </div>
 
-        {/* ── Bottom: 5-col ledger row ── */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-4 sm:grid-cols-3 lg:grid-cols-5 lg:gap-x-0 lg:divide-x lg:divide-ink-200/70">
+        {/* ── Bottom: 6-col ledger row ── */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-0 lg:divide-x lg:divide-ink-200/70">
           <Ledger
-            label="Annual cost"
+            label="Energy cost"
             value={fmtCurrency(d.annualCost)}
             context={`@ $${inputs.electricityRatePerKwh.toFixed(2)}/kWh`}
+          />
+          <Ledger
+            label="Demand cost"
+            value={fmtCurrency(d.peakDemandChargeAnnual)}
+            context={`${fmtInt(d.peakInstalledKW)} kW × $${inputs.demandChargePerKwMonth.toFixed(0)}/kW · ${fmtPct(d.demandFractionOfBill)} of bill`}
+            warn={d.demandFractionOfBill > 0.4}
+            warnSuppress
           />
           <Ledger
             label="Peak overhead"
@@ -156,10 +163,11 @@ export default function OutputSummary() {
             warnSuppress
           />
           <Ledger
-            label="PPFD target"
-            value={fmtInt(d.target.targetTopCanopyPPFD)}
-            unit="µmol/m²/s"
-            context={`for ${d.target.targetDLI} DLI`}
+            label="Yield / cycle"
+            value={d.gramsPerSqFtPerCycle.toFixed(1)}
+            unit="g/ft²"
+            context={d.yieldTierLabel}
+            warn={d.yieldTierNeedsEvidence}
           />
           <Ledger
             label="Fixture"

@@ -153,6 +153,10 @@ export interface ScenarioInputs {
 
   // Economics
   electricityRatePerKwh: number;
+  /** $/kW-month — utility peak-demand charge billed against the highest
+   *  15-min average draw. Often rivals the energy charge on commercial
+   *  cultivation accounts. */
+  demandChargePerKwMonth: number;
 
   // Electrical service
   serviceVoltagePrimary: number; // 120 or 240, primary branch voltage
@@ -266,6 +270,7 @@ export const defaultScenario: ScenarioInputs = {
   targetRHPct: defaultClimateControl.dehumid.targetRHPct,
   leafTempOffsetC: defaultVPDTargets.leafTempOffsetC,
   electricityRatePerKwh: defaultEconomics.electricityRatePerKwh,
+  demandChargePerKwMonth: defaultEconomics.demandChargePerKwMonth,
   serviceVoltagePrimary: defaultElectricalService.serviceVoltages[1] ?? 240,
   serviceVoltageSecondary: defaultElectricalService.serviceVoltages[0] ?? 120,
   branchCircuitAmps: defaultElectricalService.branchCircuitAmps,

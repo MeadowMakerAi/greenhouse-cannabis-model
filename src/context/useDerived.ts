@@ -307,6 +307,20 @@ export function useDerived() {
       0,
     );
     const peakInstalledKW = Math.max(...months.map((m) => m.installedKW));
+    // Demand charge: utility bills the highest 15-min average kW each
+    // month at $/kW. For lights-on cultivation the peak is the installed
+    // lighting kW + always-on HVAC base. We use the lighting peak as a
+    // screening-level lower bound; real demand is higher if HVAC peaks
+    // coincidentally. This single line frequently exceeds the energy
+    // charge on commercial cannabis accounts (Cannabis Business Times,
+    // "10 Tips for Reducing Electricity Usage and Cost", 2024).
+    const peakDemandChargeMonthly = peakInstalledKW * inputs.demandChargePerKwMonth;
+    const peakDemandChargeAnnual = peakDemandChargeMonthly * 12;
+    const annualEnergyPlusDemand = annualCost + peakDemandChargeAnnual;
+    const demandFractionOfBill =
+      annualEnergyPlusDemand > 0
+        ? peakDemandChargeAnnual / annualEnergyPlusDemand
+        : 0;
     const peakElectricalWatts = Math.max(...months.map((m) => m.electricalWatts));
     const peakFixtureCount = Math.max(...months.map((m) => m.fixtureCount));
     const peakWattsPerSqFt = Math.max(...months.map((m) => m.wattsPerSqFt));
@@ -404,6 +418,38 @@ export function useDerived() {
     const energyUseIntensity_kWhPerGram =
       yieldOut.totalAnnualKg > 0 ? totalAnnualKwh / (yieldOut.totalAnnualKg * 1000) : 0;
 
+    // ---- Yield realism classifier ----
+    // Industry benchmarks for commercial cannabis (CannaMLS buyer's
+    // checklist 2025, Cannabis Business Times "Measuring Yield"):
+    //   indoor avg ~40 g/sq ft/harvest
+    //   top operators 50-70
+    //   "elite" rare at 100+
+    //   greenhouse industry avg ~18 g/sq ft (Next Big Crop)
+    // We classify the projected g/ft²/cycle into one of three tiers
+    // so the user can see — before they take a number to a lender —
+    // whether their projection requires harvest evidence to defend.
+    const gramsPerSqFtPerCycle = yieldOut.gramsPerM2PerCycle / 10.7639;
+    let yieldTier: "startup" | "established" | "aspirational" | "elite";
+    let yieldTierLabel: string;
+    let yieldTierNeedsEvidence: boolean;
+    if (gramsPerSqFtPerCycle <= 35) {
+      yieldTier = "startup";
+      yieldTierLabel = "Startup-tier yield";
+      yieldTierNeedsEvidence = false;
+    } else if (gramsPerSqFtPerCycle <= 70) {
+      yieldTier = "established";
+      yieldTierLabel = "Established-operator tier";
+      yieldTierNeedsEvidence = false;
+    } else if (gramsPerSqFtPerCycle <= 100) {
+      yieldTier = "aspirational";
+      yieldTierLabel = "Aspirational — needs harvest evidence";
+      yieldTierNeedsEvidence = true;
+    } else {
+      yieldTier = "elite";
+      yieldTierLabel = "Elite-only — strongly justify";
+      yieldTierNeedsEvidence = true;
+    }
+
     // ---- Pathogen pressure summary across all months ----
     const peakBotrytis = Math.max(...months.map((m) => m.botrytisScore));
     const peakPM = Math.max(...months.map((m) => m.powderyMildewScore));
@@ -470,6 +516,14 @@ export function useDerived() {
       months,
       annualKwh,
       annualCost,
+      peakDemandChargeMonthly,
+      peakDemandChargeAnnual,
+      annualEnergyPlusDemand,
+      demandFractionOfBill,
+      gramsPerSqFtPerCycle,
+      yieldTier,
+      yieldTierLabel,
+      yieldTierNeedsEvidence,
       peakInstalledKW,
       peakElectricalWatts,
       peakFixtureCount,
