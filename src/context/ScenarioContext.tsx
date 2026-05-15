@@ -26,6 +26,10 @@ import type { MonthlyClimate, GreenhouseEnvelope } from "../models/solarModel";
 import type { FixtureSpec } from "../models/fixtureModel";
 import { fetchNasaPowerMonthly } from "../services/nasaPowerClient";
 import { fetchOpenMeteoMonthly } from "../services/openMeteoClient";
+import {
+  decodeScenarioFromHash,
+  writeShareHash,
+} from "../utils/scenarioUrl";
 
 const CUSTOM_FIXTURE_KEY = "greenhouse-model:customFixtures:v1";
 
@@ -361,8 +365,23 @@ function saveCustomFixtures(list: FixtureSpec[]) {
   }
 }
 
+/**
+ * Hydrate from a `#s=...` share URL fragment if present. Runs once at
+ * provider mount. Each share link encodes only the delta vs defaults,
+ * so we layer it onto `defaultScenario` and let `setInputs` re-derive
+ * geometry/envelope/volume downstream.
+ */
+function initialScenarioFromHashOrDefault(): ScenarioInputs {
+  if (typeof window === "undefined") return defaultScenario;
+  const patch = decodeScenarioFromHash(window.location.hash);
+  if (!patch) return defaultScenario;
+  return { ...defaultScenario, ...patch } as ScenarioInputs;
+}
+
 export function ScenarioProvider({ children }: { children: ReactNode }) {
-  const [inputs, setInputsState] = useState<ScenarioInputs>(defaultScenario);
+  const [inputs, setInputsState] = useState<ScenarioInputs>(
+    initialScenarioFromHashOrDefault,
+  );
   const [customFixtures, setCustomFixtures] = useState<FixtureSpec[]>(() =>
     loadCustomFixtures(),
   );
@@ -499,6 +518,30 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     },
     [inputs.latitude, inputs.longitude],
   );
+
+  // Keep the URL fragment in sync with scenario inputs so the page is
+  // shareable at any moment. Debounced ~250 ms so a slider drag doesn't
+  // flood replaceState. Uses replaceState (not pushState) — the back
+  // button shouldn't iterate every input change.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = window.setTimeout(() => {
+      writeShareHash(inputs);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [inputs]);
+
+  // If the user pastes a different share URL into the address bar
+  // mid-session and the browser fires `hashchange`, re-hydrate.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHashChange = () => {
+      const patch = decodeScenarioFromHash(window.location.hash);
+      if (patch) setInputsState((prev) => ({ ...prev, ...patch }));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   // Try NASA POWER once on mount; silently fall back if it fails.
   useEffect(() => {

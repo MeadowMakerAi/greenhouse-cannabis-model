@@ -24,6 +24,7 @@ import DailyDynamicsChart from "./DailyDynamicsChart";
 import InsightsPanel from "./InsightsPanel";
 import LiveGreenhouseScene from "./LiveGreenhouseScene";
 import ScenarioPresets from "./ScenarioPresets";
+import ShareLinkButton from "./ShareLinkButton";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 
@@ -177,7 +178,10 @@ export default function DashboardLayout() {
               </p>
             </div>
           </div>
-          <ScenarioPresets />
+          <div className="flex items-center gap-2">
+            <ShareLinkButton />
+            <ScenarioPresets />
+          </div>
         </div>
       </header>
       {/* Sidebar = recessed trough. Slightly cooler bg + inset top shadow
