@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   chatTurn,
-  isAnthropicKeyFormat,
+  isProviderKeyValid,
+  PROVIDER_CONFIGS,
   type ChatMessage,
   type FileAttachment,
+  type ProviderId,
 } from "../services/chatbotService";
+import { PROVIDER_ORDER } from "../services/providers";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 import { useSimulation } from "../context/SimulationContext";
@@ -13,29 +16,47 @@ import { useLiveDynamics } from "../context/useLiveDynamics";
 import { fixtureKWFromPPFD, type FixtureSpec } from "../models/fixtureModel";
 import { DAYS_IN_MONTH } from "../utils/formatting";
 
-const STORAGE_KEY = "greenhouse-model:anthropicApiKey";
-const SESSION_KEY = "greenhouse-model:anthropicApiKey";
+const KEY_STORAGE_PREFIX = "greenhouse-model:apiKey:";
+const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
 const SESSION_PREF_KEY = "greenhouse-model:keyPersistencePref";
-const MODEL_KEY = "greenhouse-model:chatbotModel";
+const PROVIDER_KEY = "greenhouse-model:chatbotProvider";
+const MODEL_KEY_PREFIX = "greenhouse-model:chatbotModel:";
 const HISTORY_KEY = "greenhouse-model:chatHistory";
+const LEGACY_KEY = "greenhouse-model:anthropicApiKey";
+const LEGACY_MODEL_KEY = "greenhouse-model:chatbotModel";
 
-/**
- * Read the Anthropic key from sessionStorage first (paranoid tab-scoped
- * preference) then localStorage (default persistent). sessionStorage is
- * cleared when the tab closes — useful for shared machines or screen-shares.
- */
-function readStoredKey(): string {
-  return (
-    sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(STORAGE_KEY) ?? ""
-  );
+function storedKeyFor(providerId: ProviderId): string {
+  const sess = sessionStorage.getItem(KEY_SESSION_PREFIX + providerId);
+  if (sess) return sess;
+  const local = localStorage.getItem(KEY_STORAGE_PREFIX + providerId);
+  if (local) return local;
+  // Migrate the v1 single-provider Anthropic key on first read.
+  if (providerId === "anthropic") {
+    const legacy = localStorage.getItem(LEGACY_KEY) ?? "";
+    if (legacy) {
+      localStorage.setItem(KEY_STORAGE_PREFIX + "anthropic", legacy);
+      localStorage.removeItem(LEGACY_KEY);
+      return legacy;
+    }
+  }
+  return "";
 }
 
-/**
- * Are we running on a public hostname (Vercel, custom domain) or on a local
- * dev server? When public, the key-entry panel adds an extra hardened
- * warning — entering a paid Anthropic key on a publicly-visible URL is
- * higher-risk than on localhost (closer to "real" attackers).
- */
+function storedModelFor(providerId: ProviderId): string {
+  const cur = localStorage.getItem(MODEL_KEY_PREFIX + providerId);
+  if (cur) return cur;
+  // Migrate v1 single-model key for Anthropic.
+  if (providerId === "anthropic") {
+    const legacy = localStorage.getItem(LEGACY_MODEL_KEY);
+    if (legacy) {
+      localStorage.setItem(MODEL_KEY_PREFIX + "anthropic", legacy);
+      localStorage.removeItem(LEGACY_MODEL_KEY);
+      return legacy;
+    }
+  }
+  return PROVIDER_CONFIGS[providerId].defaultModel;
+}
+
 function isPublicHostname(): boolean {
   if (typeof window === "undefined") return false;
   const h = window.location.hostname;
@@ -53,19 +74,12 @@ async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   let binary = "";
-  // Chunk to avoid stack overflow for large files
   const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {
     binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
   }
   return btoa(binary);
 }
-
-const MODEL_OPTIONS = [
-  { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (balanced — recommended)" },
-  { value: "claude-opus-4-7", label: "Opus 4.7 (deep reasoning, slower)" },
-  { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (fast, lighter)" },
-];
 
 export default function Chatbot() {
   const { inputs, setInputs, customFixtures, addCustomFixture } = useScenario();
@@ -75,15 +89,17 @@ export default function Chatbot() {
   const live = useLiveDynamics();
 
   const [open, setOpen] = useState(false);
-  const [apiKey, setApiKey] = useState<string>(() => readStoredKey());
+  const [providerId, setProviderId] = useState<ProviderId>(
+    () => (localStorage.getItem(PROVIDER_KEY) as ProviderId) || "anthropic",
+  );
+  const cfg = PROVIDER_CONFIGS[providerId];
+  const [apiKey, setApiKey] = useState<string>(() => storedKeyFor(providerId));
   const [sessionOnly, setSessionOnly] = useState<boolean>(
     () => localStorage.getItem(SESSION_PREF_KEY) === "session",
   );
   const [keyDraft, setKeyDraft] = useState("");
   const [showKeyConfig, setShowKeyConfig] = useState(false);
-  const [model, setModel] = useState<string>(
-    () => localStorage.getItem(MODEL_KEY) ?? "claude-sonnet-4-6",
-  );
+  const [model, setModel] = useState<string>(() => storedModelFor(providerId));
   const [draft, setDraft] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
@@ -91,6 +107,17 @@ export default function Chatbot() {
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const switchProvider = (next: ProviderId) => {
+    setProviderId(next);
+    localStorage.setItem(PROVIDER_KEY, next);
+    setApiKey(storedKeyFor(next));
+    setModel(storedModelFor(next));
+    setError(null);
+    setKeyDraft("");
+    // If switching to a provider without a key, surface the config panel.
+    setShowKeyConfig(PROVIDER_CONFIGS[next].requiresKey && !storedKeyFor(next));
+  };
 
   const onFilesPicked = async (files: FileList | null) => {
     if (!files) return;
@@ -125,73 +152,98 @@ export default function Chatbot() {
 
   const saveApiKey = (k: string) => {
     const trimmed = k.trim();
-    if (trimmed && !isAnthropicKeyFormat(trimmed)) {
+    if (trimmed && cfg.requiresKey && !isProviderKeyValid(providerId, trimmed)) {
       setError(
-        "That doesn't look like an Anthropic key. Anthropic keys start with sk-ant- and are typically 90+ characters. Get one at console.anthropic.com/settings/keys.",
+        `That doesn't look like a ${cfg.label} key${
+          cfg.keyHint ? ` (${cfg.keyHint})` : ""
+        }. Double-check at ${cfg.keyUrl ?? "the provider's console"}.`,
       );
       return;
     }
     setApiKey(trimmed);
-    // Honor the user's persistence preference. sessionOnly = clear
-    // localStorage and write to sessionStorage instead, so the key is
-    // gone when the tab closes.
+    const localK = KEY_STORAGE_PREFIX + providerId;
+    const sessK = KEY_SESSION_PREFIX + providerId;
     if (trimmed) {
       if (sessionOnly) {
-        sessionStorage.setItem(SESSION_KEY, trimmed);
-        localStorage.removeItem(STORAGE_KEY);
+        sessionStorage.setItem(sessK, trimmed);
+        localStorage.removeItem(localK);
       } else {
-        localStorage.setItem(STORAGE_KEY, trimmed);
-        sessionStorage.removeItem(SESSION_KEY);
+        localStorage.setItem(localK, trimmed);
+        sessionStorage.removeItem(sessK);
       }
     } else {
-      localStorage.removeItem(STORAGE_KEY);
-      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(localK);
+      sessionStorage.removeItem(sessK);
     }
     setKeyDraft("");
     setShowKeyConfig(false);
     setError(null);
   };
+
   const togglePersistence = (toSession: boolean) => {
     setSessionOnly(toSession);
     localStorage.setItem(SESSION_PREF_KEY, toSession ? "session" : "local");
-    // If a key is already saved, migrate it to the chosen storage.
     if (apiKey) {
+      const localK = KEY_STORAGE_PREFIX + providerId;
+      const sessK = KEY_SESSION_PREFIX + providerId;
       if (toSession) {
-        sessionStorage.setItem(SESSION_KEY, apiKey);
-        localStorage.removeItem(STORAGE_KEY);
+        sessionStorage.setItem(sessK, apiKey);
+        localStorage.removeItem(localK);
       } else {
-        localStorage.setItem(STORAGE_KEY, apiKey);
-        sessionStorage.removeItem(SESSION_KEY);
+        localStorage.setItem(localK, apiKey);
+        sessionStorage.removeItem(sessK);
       }
     }
   };
+
   const clearAllData = () => {
     if (
       !window.confirm(
-        "Forget API key, chat history, and model preference? Cannot be undone.",
+        "Forget all API keys, chat history, and model preferences? Cannot be undone.",
       )
     ) {
       return;
     }
-    localStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(MODEL_KEY);
-    localStorage.removeItem(HISTORY_KEY);
+    for (const id of PROVIDER_ORDER) {
+      localStorage.removeItem(KEY_STORAGE_PREFIX + id);
+      sessionStorage.removeItem(KEY_SESSION_PREFIX + id);
+      localStorage.removeItem(MODEL_KEY_PREFIX + id);
+    }
+    localStorage.removeItem(LEGACY_KEY);
+    localStorage.removeItem(LEGACY_MODEL_KEY);
+    localStorage.removeItem(PROVIDER_KEY);
     localStorage.removeItem(SESSION_PREF_KEY);
+    localStorage.removeItem(HISTORY_KEY);
     setApiKey("");
     setHistory([]);
     setError(null);
     setShowKeyConfig(false);
     setKeyDraft("");
   };
+
   const maskedKey = apiKey
-    ? `${apiKey.slice(0, 7)}…${apiKey.slice(-4)}`
+    ? `${apiKey.slice(0, Math.min(7, apiKey.length - 4))}…${apiKey.slice(-4)}`
     : "";
   const onPublicHost = isPublicHostname();
+
   const saveModel = (m: string) => {
     setModel(m);
-    localStorage.setItem(MODEL_KEY, m);
+    localStorage.setItem(MODEL_KEY_PREFIX + providerId, m);
   };
+
+  const unsupportedAttachmentWarning = useMemo(() => {
+    if (attachments.length === 0) return null;
+    const hasPdf = attachments.some((a) => a.mediaType === "application/pdf");
+    const hasImage = attachments.some((a) => a.mediaType.startsWith("image/"));
+    const problems: string[] = [];
+    if (hasPdf && !cfg.supportsPdf) {
+      problems.push(`${cfg.label} does not support PDF attachments — they will be dropped before sending. Switch to Anthropic or Gemini to ingest PDFs.`);
+    }
+    if (hasImage && !cfg.supportsImages) {
+      problems.push(`${cfg.label} does not support image attachments.`);
+    }
+    return problems.length ? problems.join(" ") : null;
+  }, [attachments, cfg]);
 
   const toolHandler = async (name: string, input: Record<string, unknown>) => {
     switch (name) {
@@ -231,12 +283,6 @@ export default function Chatbot() {
         };
       }
       case "set_scenario": {
-        // Deep-merge nested objects so the chatbot can patch a single
-        // envelope field (e.g. baseTransmissionPct) without wiping the
-        // others. Without this guard, `set_scenario({patches: {envelope:
-        // {baseTransmissionPct: 0.65}}})` would replace the entire
-        // envelope object with that one field — Codex P0 from the
-        // pre-launch review.
         const rawPatches = (input.patches ?? {}) as Record<string, unknown>;
         const merged: Record<string, unknown> = { ...rawPatches };
         const envelopePatch = rawPatches.envelope;
@@ -333,9 +379,6 @@ export default function Chatbot() {
           const supports120 = f.minVoltage <= 120 && f.maxVoltage >= 120;
           const supports240 = f.minVoltage <= 240 && f.maxVoltage >= 240;
           const pf = f.powerFactor ?? 0.95;
-          // Demand cost folded into the total — Codex P1: ranking on
-          // energy alone is wrong since higher-PPE fixtures cut peak kW
-          // and therefore demand charge as well as kWh.
           const annualDemandCostUSD =
             peakKW * inputs.demandChargePerKwMonth * 12;
           const annualEnergyCostUSD = cost;
@@ -353,7 +396,6 @@ export default function Chatbot() {
             annualKwh: Math.round(kwh),
             annualEnergyCostUSD: Math.round(annualEnergyCostUSD),
             annualDemandCostUSD: Math.round(annualDemandCostUSD),
-            /** Total = energy + demand. This is the rank-key. */
             annualCostUSD: Math.round(annualTotalCostUSD),
             supports120V: supports120,
             supports240V: supports240,
@@ -384,27 +426,58 @@ export default function Chatbot() {
   const send = async () => {
     const hasInput = draft.trim() || attachments.length > 0;
     if (!hasInput || busy) return;
-    const userMsg = draft.trim() || (attachments.length > 0 ? "Please analyze the attached spec sheet and update the model accordingly." : "");
-    const sentAttachments = attachments;
+    // Filter out attachments the selected provider can't handle so we
+    // don't send images to text-only Groq/Ollama, or PDFs to OpenAI/
+    // OpenRouter/Groq/Ollama. The UI warning was only advisory before —
+    // this is the actual gate.
+    const dropped: { name: string; reason: string }[] = [];
+    const sentAttachments = attachments.filter((a) => {
+      if (a.mediaType === "application/pdf" && !cfg.supportsPdf) {
+        dropped.push({ name: a.name, reason: "PDFs not supported by this provider" });
+        return false;
+      }
+      if (a.mediaType.startsWith("image/") && !cfg.supportsImages) {
+        dropped.push({ name: a.name, reason: "images not supported by this provider" });
+        return false;
+      }
+      return true;
+    });
+    const baseUserMsg = draft.trim() || (sentAttachments.length > 0 ? "Please analyze the attached spec sheet and update the model accordingly." : "");
+    const droppedNote =
+      dropped.length > 0
+        ? `[Dropped ${dropped.length} attachment(s) before sending: ` +
+          dropped.map((d) => `${d.name} (${d.reason})`).join("; ") +
+          `. Switch to Anthropic or Gemini to ingest these.]\n\n`
+        : "";
+    const userMsg = droppedNote + baseUserMsg;
     setDraft("");
     setAttachments([]);
     setError(null);
-    if (!apiKey) {
-      setError("Configure an Anthropic API key first.");
+    if (cfg.requiresKey && !apiKey) {
+      setError(`Configure a ${cfg.label} API key first.`);
       return;
     }
-    const attachLabel =
-      sentAttachments.length > 0
-        ? ` 📎 ${sentAttachments.map((a) => a.name).join(", ")}`
-        : "";
+    if (!baseUserMsg && sentAttachments.length === 0) {
+      // Everything was dropped and there's no text — nothing to send.
+      setError(
+        `Cannot send: all attachments are unsupported by ${cfg.label} and no message was typed.`,
+      );
+      return;
+    }
+    const attachLabels: string[] = [
+      ...sentAttachments.map((a) => `📎 ${a.name}`),
+      ...dropped.map((d) => `⚠ dropped ${d.name}`),
+    ];
+    const attachLabel = attachLabels.length ? ` ${attachLabels.join(", ")}` : "";
     const userMessage: ChatMessage = {
       role: "user",
-      content: userMsg + attachLabel,
+      content: baseUserMsg + attachLabel,
     };
     setHistory((h) => [...h, userMessage]);
     setBusy(true);
     try {
       const reply = await chatTurn({
+        providerId,
         apiKey,
         model,
         history,
@@ -427,7 +500,6 @@ export default function Chatbot() {
 
   void customFixtures;
 
-
   return (
     <>
       <input
@@ -448,12 +520,12 @@ export default function Chatbot() {
         </button>
       )}
       {open && (
-        <div className="fixed bottom-4 right-4 z-50 flex h-[640px] w-[440px] flex-col rounded-xl border border-ink-300/40 bg-white shadow-2xl">
+        <div className="fixed bottom-4 right-4 z-50 flex h-[640px] w-[460px] flex-col rounded-xl border border-ink-300/40 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-ink-300/40 px-3 py-2">
             <div>
               <div className="text-sm font-semibold">Greenhouse model assistant</div>
               <div className="text-[10px] text-ink-500">
-                {model}
+                {cfg.label} · {model}
                 {apiKey ? (
                   <>
                     {" · "}
@@ -466,16 +538,40 @@ export default function Chatbot() {
                       key {maskedKey}
                     </button>
                   </>
+                ) : cfg.requiresKey ? (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      onClick={() => setShowKeyConfig(true)}
+                      className="text-warn-500 hover:underline"
+                    >
+                      no key set
+                    </button>
+                  </>
                 ) : null}
               </div>
             </div>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap items-center gap-1">
+              <select
+                value={providerId}
+                onChange={(e) => switchProvider(e.target.value as ProviderId)}
+                className="rounded border border-ink-300 px-1 py-0.5 text-[10px]"
+                title="Provider"
+              >
+                {PROVIDER_ORDER.map((id) => (
+                  <option key={id} value={id}>
+                    {PROVIDER_CONFIGS[id].label}
+                  </option>
+                ))}
+              </select>
               <select
                 value={model}
                 onChange={(e) => saveModel(e.target.value)}
                 className="rounded border border-ink-300 px-1 py-0.5 text-[10px]"
+                title="Model"
               >
-                {MODEL_OPTIONS.map((o) => (
+                {cfg.models.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -491,63 +587,44 @@ export default function Chatbot() {
             </div>
           </div>
 
-          {(!apiKey || showKeyConfig) && (
+          {((cfg.requiresKey && !apiKey) || showKeyConfig) && (
             <div className="border-b border-ink-300/40 bg-warn-500/5 p-3 text-xs text-ink-700">
               <div className="mb-1 flex items-center gap-2">
                 <span className="text-sm">🔑</span>
                 <span className="font-semibold text-ink-900">
-                  {apiKey ? "Replace Anthropic API key" : "Bring your own Anthropic API key"}
+                  {apiKey
+                    ? `Replace ${cfg.label} API key`
+                    : `Bring your own ${cfg.label} API key`}
                 </span>
               </div>
-              <p className="text-[11px] leading-snug text-ink-700">
-                The chatbot calls Anthropic directly from your browser using
-                a key you provide. The key is stored in this browser's{" "}
-                <span className="font-semibold">
-                  {sessionOnly ? "sessionStorage (cleared when tab closes)" : "localStorage (persists across tabs/sessions)"}
-                </span>
-                {" "}— never committed, never sent anywhere except
-                api.anthropic.com (enforced by the page's CSP).
-              </p>
-              <label className="mt-2 flex items-center gap-2 text-[11px] text-ink-700">
-                <input
-                  type="checkbox"
-                  checked={sessionOnly}
-                  onChange={(e) => togglePersistence(e.target.checked)}
-                />
-                <span>
-                  Session-only — don't keep the key past tab close
-                  {sessionOnly ? " (active)" : ""}
-                </span>
-              </label>
-              <ul className="mt-2 space-y-0.5 text-[10.5px] leading-snug text-ink-700">
-                <li>
-                  <span className="font-semibold text-leaf-700">Recommended:</span>{" "}
-                  create a <em>dedicated</em> key for this dashboard with a
-                  small daily spend cap (e.g. $5/day) at{" "}
-                  <a
-                    href="https://console.anthropic.com/settings/limits"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    console.anthropic.com/settings/limits
-                  </a>
-                  . Don't paste a production key.
-                </li>
-                <li>
-                  <span className="font-semibold text-warn-500">Heads-up:</span>{" "}
-                  browser extensions with localStorage permission can read
-                  this key. Close other tabs/extensions you don't trust
-                  before pasting. Hide this widget on screen-shares.
-                </li>
-                <li>
-                  <span className="font-semibold text-warn-500">If you fork this repo:</span>{" "}
-                  the key never enters source code, but make sure you don't
-                  commit your browser's localStorage backup. Use a fresh
-                  key per machine.
-                </li>
-              </ul>
-              {onPublicHost && (
+              {cfg.note && (
+                <p className="mb-2 text-[11px] leading-snug text-ink-700">{cfg.note}</p>
+              )}
+              {cfg.requiresKey && (
+                <p className="text-[11px] leading-snug text-ink-700">
+                  The chatbot calls {cfg.label} directly from your browser using
+                  a key you provide. The key is stored in this browser's{" "}
+                  <span className="font-semibold">
+                    {sessionOnly ? "sessionStorage (cleared when tab closes)" : "localStorage (persists across tabs/sessions)"}
+                  </span>
+                  {" "}— never committed, never sent to any host other than the
+                  provider (enforced by the page's CSP).
+                </p>
+              )}
+              {cfg.requiresKey && (
+                <label className="mt-2 flex items-center gap-2 text-[11px] text-ink-700">
+                  <input
+                    type="checkbox"
+                    checked={sessionOnly}
+                    onChange={(e) => togglePersistence(e.target.checked)}
+                  />
+                  <span>
+                    Session-only — don't keep the key past tab close
+                    {sessionOnly ? " (active)" : ""}
+                  </span>
+                </label>
+              )}
+              {onPublicHost && cfg.requiresKey && (
                 <div className="mt-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-[10.5px] leading-snug text-warn-500">
                   <strong>You're on a public hostname ({window.location.hostname}).</strong>{" "}
                   Pasting a key here means it lives in this browser's
@@ -555,79 +632,70 @@ export default function Chatbot() {
                   daily spend cap and a key dedicated to this dashboard.
                 </div>
               )}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (keyDraft.trim()) saveApiKey(keyDraft);
-                }}
-                className="mt-2 flex gap-1"
-              >
-                <input
-                  type="password"
-                  placeholder="sk-ant-..."
-                  value={keyDraft}
-                  onChange={(e) => setKeyDraft(e.target.value)}
-                  autoComplete="off"
-                  autoFocus
-                  spellCheck={false}
-                  className="flex-1 rounded border border-ink-300 px-2 py-1 font-mono text-xs"
-                />
-                <button
-                  type="submit"
-                  disabled={!keyDraft.trim()}
-                  className="rounded bg-leaf-500 px-2 py-1 text-xs font-semibold text-white hover:bg-leaf-600 disabled:opacity-50"
+              {cfg.requiresKey && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (keyDraft.trim()) saveApiKey(keyDraft);
+                  }}
+                  className="mt-2 flex gap-1"
                 >
-                  Save
-                </button>
-                {apiKey && (
+                  <input
+                    type="password"
+                    placeholder={cfg.keyHint ?? "API key"}
+                    value={keyDraft}
+                    onChange={(e) => setKeyDraft(e.target.value)}
+                    autoComplete="off"
+                    autoFocus
+                    spellCheck={false}
+                    className="flex-1 rounded border border-ink-300 px-2 py-1 font-mono text-xs"
+                  />
                   <button
-                    type="button"
-                    onClick={() => {
-                      setShowKeyConfig(false);
-                      setKeyDraft("");
-                    }}
-                    className="rounded border border-ink-300 px-2 py-1 text-xs hover:bg-ink-300/20"
+                    type="submit"
+                    disabled={!keyDraft.trim()}
+                    className="rounded bg-leaf-500 px-2 py-1 text-xs font-semibold text-white hover:bg-leaf-600 disabled:opacity-50"
                   >
-                    Cancel
+                    Save
                   </button>
-                )}
-              </form>
-              {keyDraft.trim() && !isAnthropicKeyFormat(keyDraft.trim()) && (
+                  {apiKey && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowKeyConfig(false);
+                        setKeyDraft("");
+                      }}
+                      className="rounded border border-ink-300 px-2 py-1 text-xs hover:bg-ink-300/20"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </form>
+              )}
+              {keyDraft.trim() && !isProviderKeyValid(providerId, keyDraft.trim()) && (
                 <p className="mt-1 text-[10.5px] text-warn-500">
-                  ⚠ That doesn't match the Anthropic key format
-                  (sk-ant-...). Double-check before saving.
+                  ⚠ That doesn't match the {cfg.label} key format
+                  {cfg.keyHint ? ` (${cfg.keyHint})` : ""}.
                 </p>
               )}
               <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-ink-300/30 pt-2 text-[10px] text-ink-500">
-                <a
-                  href="https://console.anthropic.com/settings/keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  Get a key
-                </a>
-                <span className="text-ink-300">·</span>
-                <a
-                  href="https://docs.anthropic.com/en/api/client-sdks#browser-direct-access"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  Why browser-direct?
-                </a>
-                {(apiKey || localStorage.getItem(HISTORY_KEY)) && (
-                  <>
-                    <span className="text-ink-300">·</span>
-                    <button
-                      type="button"
-                      onClick={clearAllData}
-                      className="text-warn-500 underline hover:text-warn-600"
-                    >
-                      Forget everything
-                    </button>
-                  </>
+                {cfg.keyUrl && (
+                  <a
+                    href={cfg.keyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    Get a {cfg.label} key
+                  </a>
                 )}
+                {cfg.keyUrl && <span className="text-ink-300">·</span>}
+                <button
+                  type="button"
+                  onClick={clearAllData}
+                  className="text-warn-500 underline hover:text-warn-600"
+                >
+                  Forget all keys & history
+                </button>
               </div>
             </div>
           )}
@@ -642,6 +710,13 @@ export default function Chatbot() {
                   <div>· "What if I swap to the Gavita Pro RS 2400e? Compare to current."</div>
                   <div>· "Why are vents closed at 4pm but open at 2pm?"</div>
                   <div>· "Bump CO₂ to 1200 ppm and re-check yield projection."</div>
+                </div>
+                <div className="mt-2 rounded border border-leaf-500/30 bg-leaf-50/40 p-2 text-[10.5px] text-ink-700">
+                  <strong>Hitting rate limits or no Anthropic key?</strong>{" "}
+                  Switch the provider dropdown above to{" "}
+                  <span className="font-mono">Google Gemini</span> — free
+                  tier, 1M-token context, native PDF support. Or pick
+                  Groq / OpenRouter for free text-only models.
                 </div>
               </div>
             )}
@@ -693,6 +768,11 @@ export default function Chatbot() {
               onFilesPicked(e.dataTransfer.files);
             }}
           >
+            {unsupportedAttachmentWarning && (
+              <div className="mb-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-[10.5px] text-warn-500">
+                ⚠ {unsupportedAttachmentWarning}
+              </div>
+            )}
             {attachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1">
                 {attachments.map((a, i) => (

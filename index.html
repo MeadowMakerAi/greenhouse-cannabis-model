@@ -9,10 +9,12 @@
       Defense-in-depth for the BYO-API-key model: even if a malicious script
       somehow runs in the page (XSS, hostile browser extension that injects
       a script into the document), the browser will refuse to send network
-      requests to anywhere outside this allowlist. The Anthropic key is
-      contained: the only outbound origin permitted is api.anthropic.com.
+      requests to anywhere outside this allowlist. Each provider's key is
+      contained: outbound requests are only permitted to the canonical host
+      for the provider the user selected.
 
-      connect-src   — fetch / WebSocket targets (only Anthropic + open weather
+      connect-src   — fetch / WebSocket targets (Anthropic + Google Gemini +
+                      OpenAI + OpenRouter + Groq + local Ollama + weather
                       services + the dev server origin)
       script-src    — JS sources (self + the Vite dev server inline scripts
                       via 'unsafe-inline'; tighten further once a backend
@@ -30,7 +32,7 @@
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self';
-               connect-src 'self' https://api.anthropic.com https://power.larc.nasa.gov https://api.open-meteo.com https://api.weather.gov ws://localhost:* ws://127.0.0.1:*;
+               connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com https://openrouter.ai https://api.groq.com http://localhost:11434 http://127.0.0.1:11434 https://power.larc.nasa.gov https://api.open-meteo.com https://api.weather.gov ws://localhost:* ws://127.0.0.1:*;
                script-src 'self' 'unsafe-inline' 'unsafe-eval';
                style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
                font-src 'self' https://fonts.gstatic.com data:;
