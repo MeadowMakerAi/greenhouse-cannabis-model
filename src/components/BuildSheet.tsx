@@ -5,7 +5,7 @@ import { fixtureKWFromPPFD } from "../models/fixtureModel";
 import { generateRecommendations, type FixtureCostRow } from "../models/optimizationModel";
 import { DAYS_IN_MONTH, MONTH_NAMES, fmt1, fmtCurrency, fmtInt } from "../utils/formatting";
 import GreenhousePlanView from "./GreenhousePlanView";
-import Greenhouse3D from "./Greenhouse3D";
+import Greenhouse3D from "./Greenhouse3DLazy";
 import { useState } from "react";
 
 const DEHUM_UNIT_CAPACITY_PINTS_DAY = 200; // representative commercial unit (e.g. Anden A210)

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Greenhouse3D from "./Greenhouse3D";
+import Greenhouse3D from "./Greenhouse3DLazy";
 import Greenhouse3DHud from "./Greenhouse3DHud";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
