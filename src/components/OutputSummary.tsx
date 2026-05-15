@@ -2,6 +2,7 @@ import { ResponsiveContainer, Area, AreaChart } from "recharts";
 import { useDerived } from "../context/useDerived";
 import { useScenario } from "../context/ScenarioContext";
 import { fmtCurrency, fmtInt, fmt1, fmtPct } from "../utils/formatting";
+import Citation, { CITATIONS } from "./Citation";
 
 /**
  * Editorial KPI strip — hero metric + supporting ledger row.
@@ -34,8 +35,14 @@ export default function OutputSummary() {
       {/* Decision-support disclaimer — main's pattern, kept verbatim. The
           project's CLAUDE.md requires every output disclose its level. */}
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-[10px] uppercase tracking-[0.10em] text-ink-500">
-          Key outputs
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.10em] text-ink-500">
+          <span>Key outputs</span>
+          <span
+            className="inline-flex items-center gap-1 rounded-full border border-leaf-500/30 bg-leaf-50 px-1.5 py-[1px] text-[9px] font-medium normal-case tracking-normal text-leaf-700"
+            title="Every coefficient sourced — Guelph, Wageningen, Mississippi, UBC, ASABE, ASHRAE, NASA POWER. Click the [src] tag next to any number, or see CITATIONS.md in the repo."
+          >
+            📖 peer-reviewed coefficients
+          </span>
         </div>
         <div
           className="rounded-full border border-warn-500/30 bg-warn-500/5 px-2 py-0.5 text-[10px] font-medium text-warn-600"
@@ -117,6 +124,7 @@ export default function OutputSummary() {
               value={`${onTarget ? d.target.targetDLI : "—"}`}
               unit="mol/m²/d"
               context={d.target.label}
+              citationId="yield-dli"
             />
             <Vital
               label="Net transmission"
@@ -160,6 +168,7 @@ export default function OutputSummary() {
             context="screening estimate"
             warn={d.peakCoolingTons > 0}
             warnSuppress
+            citationId="kaspro-energy-balance"
           />
           <Ledger
             label="Yield / cycle"
@@ -167,6 +176,7 @@ export default function OutputSummary() {
             unit="g/ft²"
             context={d.yieldTierLabel}
             warn={d.yieldTierNeedsEvidence}
+            citationId="yield-dli"
           />
           <Ledger
             label="Fixture"
@@ -186,15 +196,20 @@ function Vital({
   value,
   unit,
   context,
+  citationId,
 }: {
   label: string;
   value: string;
   unit?: string;
   context?: string;
+  citationId?: keyof typeof CITATIONS;
 }) {
   return (
     <div className="min-w-[8rem]">
-      <div className="kpi-eyebrow">{label}</div>
+      <div className="kpi-eyebrow flex items-center gap-1">
+        <span>{label}</span>
+        {citationId && <Citation id={citationId} />}
+      </div>
       <div className="kpi-vital">
         {value}
         {unit && <span className="kpi-vital-unit">{unit}</span>}
@@ -214,6 +229,7 @@ function Ledger({
   warn,
   warnSuppress,
   verbatim,
+  citationId,
 }: {
   label: string;
   value: string;
@@ -222,6 +238,7 @@ function Ledger({
   warn?: boolean;
   warnSuppress?: boolean;
   verbatim?: boolean;
+  citationId?: keyof typeof CITATIONS;
 }) {
   // When `warn` AND we're NOT suppressing the color tint, show a small
   // warn-orange dot before the eyebrow label so the cell is scannable
@@ -240,6 +257,7 @@ function Ledger({
           />
         )}
         <span>{label}</span>
+        {citationId && <Citation id={citationId} />}
       </div>
       <div
         className={`mt-0.5 ${verbatim ? "kpi-ledger-text" : "kpi-ledger"} ${
