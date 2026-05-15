@@ -3,6 +3,8 @@ import { useDerived } from "../context/useDerived";
 import { useScenario } from "../context/ScenarioContext";
 import { fmtCurrency, fmtInt, fmt1, fmtPct } from "../utils/formatting";
 import Citation, { CITATIONS } from "./Citation";
+import SensitivitySlider from "./SensitivitySlider";
+import type { ReactNode } from "react";
 
 /**
  * Editorial KPI strip — hero metric + supporting ledger row.
@@ -19,7 +21,7 @@ import Citation, { CITATIONS } from "./Citation";
  *     the structure is the typography, not the container.
  */
 export default function OutputSummary() {
-  const { inputs } = useScenario();
+  const { inputs, setInputs } = useScenario();
   const d = useDerived();
 
   const monthly = d.months.map((m, i) => ({
@@ -146,12 +148,36 @@ export default function OutputSummary() {
             label="Energy cost"
             value={fmtCurrency(d.annualCost)}
             context={`@ $${inputs.electricityRatePerKwh.toFixed(2)}/kWh`}
+            extra={
+              <SensitivitySlider
+                label="Electricity rate"
+                value={inputs.electricityRatePerKwh}
+                min={0.06}
+                max={0.32}
+                step={0.005}
+                unit="/kWh"
+                format={(v) => `$${v.toFixed(3)}`}
+                onChange={(v) => setInputs({ electricityRatePerKwh: v })}
+              />
+            }
           />
           <Ledger
             label="Demand cost"
             value={fmtCurrency(d.peakDemandChargeAnnual)}
             context={`${fmtInt(d.peakLightingKW)} kW × $${inputs.demandChargePerKwMonth.toFixed(0)}/kW · ${fmtPct(d.demandFractionOfBill)} of electric`}
             warn={d.demandFractionOfBill > 0.4}
+            extra={
+              <SensitivitySlider
+                label="Demand charge"
+                value={inputs.demandChargePerKwMonth}
+                min={0}
+                max={30}
+                step={0.5}
+                unit="/kW-mo"
+                format={(v) => `$${v.toFixed(1)}`}
+                onChange={(v) => setInputs({ demandChargePerKwMonth: v })}
+              />
+            }
           />
           <Ledger
             label="Peak overhead"
@@ -230,6 +256,7 @@ function Ledger({
   warnSuppress,
   verbatim,
   citationId,
+  extra,
 }: {
   label: string;
   value: string;
@@ -239,6 +266,9 @@ function Ledger({
   warnSuppress?: boolean;
   verbatim?: boolean;
   citationId?: keyof typeof CITATIONS;
+  /** Optional extra slot below the context line — used for sensitivity
+   *  sliders that mutate the coupled input live. */
+  extra?: ReactNode;
 }) {
   // When `warn` AND we're NOT suppressing the color tint, show a small
   // warn-orange dot before the eyebrow label so the cell is scannable
@@ -270,6 +300,7 @@ function Ledger({
       {context && (
         <div className="kpi-context proportional-nums">{context}</div>
       )}
+      {extra}
     </div>
   );
 }
