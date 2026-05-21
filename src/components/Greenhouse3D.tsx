@@ -2144,7 +2144,10 @@ export default function Greenhouse3D({
               · ACES Filmic tone mapping last — applies after all
                 effects so the LDR conversion sees the full HDR
                 range. */}
-          <EffectComposer multisampling={2}>
+          {/* enableNormalPass is required: SSAO reads the scene normal
+              buffer. Without it the SSAO effect silently no-ops and logs
+              "enable the NormalPass" every frame the scene mounts. */}
+          <EffectComposer multisampling={2} enableNormalPass>
             <SSAO
               blendFunction={BlendFunction.MULTIPLY}
               samples={20}
