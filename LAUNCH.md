@@ -66,8 +66,8 @@ This is a strong combination if structured right. The risk is dilution: most cer
 >
 > The premise: most cannabis cultivation tooling is vendor pseudo-science. I wanted decision-support I'd actually trust. Now any operator can fork it, plug in their facility, and get the same answers — for free, in a browser, no install.
 >
-> [DEMO LINK]
-> [GITHUB LINK]
+> Live demo: https://greenhouse-cannabis-model.vercel.app
+> GitHub: https://github.com/MeadowMakerAi/greenhouse-cannabis-model
 >
 > Outputs are screening-level — they don't replace a sealed CFD run before a real capex commit. But two weeks + a frontier coding agent can now ship what was a $30-50K consulting deliverable a year ago. That's the part of this I think matters most.
 >
