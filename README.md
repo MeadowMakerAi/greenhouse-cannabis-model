@@ -10,12 +10,15 @@ agent.
 > engineering. Validate against a sealed CFD / engineering review before
 > any capex commitment.
 
+**▶ Live demo: <https://greenhouse-cannabis-model.vercel.app>** — no signup,
+no install. Runs entirely in the browser.
+
 ## Quick start
 
 ```bash
 npm install
 npm run dev          # http://localhost:5180
-npm test             # 128 unit tests across the model layer
+npm test             # 145 unit tests across the model layer
 npm run build        # type-check + production bundle
 ```
 
@@ -181,9 +184,10 @@ any capex commitment.
 ## Status
 
 - TypeScript compile: clean
-- Vitest: **128/128 tests pass**
+- Vitest: **145/145 tests pass**
 - Vite production build: succeeds
-- Live demo: `npm run dev` → <http://localhost:5180>
+- Live demo: <https://greenhouse-cannabis-model.vercel.app> (hosted) ·
+  `npm run dev` → <http://localhost:5180> (local)
 
 ## Acknowledgments
 
