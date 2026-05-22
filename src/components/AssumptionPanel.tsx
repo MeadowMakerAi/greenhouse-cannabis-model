@@ -243,7 +243,7 @@ export default function AssumptionPanel() {
           hint="Drives VPD targets and humidity-risk thresholds."
         />
         <SelectField
-          label="Light target (bud quality)"
+          label="Light target"
           value={inputs.cropTargetId}
           onChange={(v) => setInputs({ cropTargetId: v as keyof typeof cropTargets })}
           options={Object.values(cropTargets).map((t) => ({

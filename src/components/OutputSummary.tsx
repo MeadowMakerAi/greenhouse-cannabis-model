@@ -19,7 +19,7 @@ import type { ReactNode } from "react";
  *     rest. (Honesty correction 2026-05-22 — was mislabeled "operating
  *     cost", which a cultivator reads as full opex.)
  *   • Three groups answer the grower's three questions, in order:
- *       ① Light for quality — can I hit indoor-grade light, and what
+ *       ① Light target — can I hit indoor-grade light, and what
  *         supplement does it take?
  *       ② Harvest — what does it yield?
  *       ③ Power to run it — what does the electricity cost?
@@ -114,7 +114,7 @@ export default function OutputSummary() {
 
         {/* ── Three decision groups ── */}
         <div className="grid grid-cols-1 gap-x-6 gap-y-6 pt-4 sm:grid-cols-3 sm:gap-x-0 sm:divide-x sm:divide-ink-200/70">
-          <Group title="① Light for quality">
+          <Group title="① Light target">
             <Stat
               value={onTarget ? `${d.target.targetDLI}` : "—"}
               unit="DLI target"
