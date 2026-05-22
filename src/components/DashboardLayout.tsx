@@ -6,6 +6,7 @@ import AnnualDLIChart from "./AnnualDLIChart";
 import PPFDGapChart from "./PPFDGapChart";
 import FixtureKWByMonth from "./FixtureKWByMonth";
 import FixtureOptimization from "./FixtureOptimization";
+import MarginalLightPanel from "./MarginalLightPanel";
 import LightingScenarioChart from "./LightingScenarioChart";
 import UnderCanopyLightingPanel from "./UnderCanopyLightingPanel";
 import ShadeClothControlPanel from "./ShadeClothControlPanel";
@@ -515,6 +516,7 @@ export default function DashboardLayout() {
               <div className="space-y-3">
                 <PPFDGapChart />
                 <FixtureKWByMonth />
+                <MarginalLightPanel />
                 <FixtureOptimization />
               </div>
             )}
