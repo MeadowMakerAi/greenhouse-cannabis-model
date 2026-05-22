@@ -1,22 +1,18 @@
 import { useDerived } from "../context/useDerived";
 import { useScenario } from "../context/ScenarioContext";
-import { projectYield } from "../models/yieldModel";
+import { yieldRealismCases } from "../data/yieldRealism";
+import { marginalLightEconomics } from "../models/marginalLightModel";
 import { fmtCurrency } from "../utils/formatting";
 import Citation from "./Citation";
 
 /**
  * "Is more light worth it?" — marginal economics of supplemental light.
  *
- * Somersault item 3. Cannabis yield rises ~linearly with light, with no
- * plateau in the practical range (Rodriguez-Morrison 2021). So hitting the
- * DLI target is a floor, not the answer — above it, the real question is
- * whether the NEXT increment of light pays for itself.
- *
- * Marginal yield comes from the project's own yield curve (projectYield
- * called twice, base vs bumped) — never a borrowed coefficient. Marginal
- * cost is the supplemental-lighting energy to deliver the extra DLI:
- *   extra kWh = ΔDLI · canopy m² · 365 d · 1e6 / efficacy(µmol/J) / 3.6e6
- * Energy only — demand charges add more, so the $/g shown is a floor.
+ * Somersault item 3. The marginal math lives in models/marginalLightModel
+ * (pure + tested); this component only renders it. Cannabis yield rises
+ * ~linearly with light with no plateau in range (Rodriguez-Morrison 2021),
+ * so hitting the DLI target is a floor — the real question is whether the
+ * NEXT increment of light pays for itself.
  */
 const G_PER_LB = 453.592;
 
@@ -24,33 +20,20 @@ export default function MarginalLightPanel() {
   const { inputs } = useScenario();
   const d = useDerived();
 
-  const canopyM2 = inputs.canopyAreaSqFt / 10.7639;
-  const efficacy = d.fixture.ppe; // µmol/J
-
-  const yieldArgs = {
-    meanFlowerDayTempF: inputs.indoorTargetDryBulbF,
-    co2Ppm: inputs.co2SetpointPpm,
-    co2Enabled: inputs.co2Enabled,
-    cyclesPerYear: inputs.cyclesPerYear,
-    canopyAreaSqFt: inputs.canopyAreaSqFt,
-  };
-  const baseKg = projectYield({
+  const steps = marginalLightEconomics({
     annualDLIMolM2: d.annualDLIMolM2,
-    ...yieldArgs,
-  }).totalAnnualKg;
-
-  const steps = [5, 10, 15].map((deltaDLI) => {
-    const bumpedKg = projectYield({
-      annualDLIMolM2: d.annualDLIMolM2 + deltaDLI * 365,
-      ...yieldArgs,
-    }).totalAnnualKg;
-    const extraGrams = Math.max(0, (bumpedKg - baseKg) * 1000);
-    const extraMolPhotons = deltaDLI * canopyM2 * 365;
-    const extraKwh =
-      efficacy > 0 ? (extraMolPhotons * 1e6) / efficacy / 3.6e6 : 0;
-    const extraCost = extraKwh * inputs.electricityRatePerKwh;
-    const costPerExtraGram = extraGrams > 0 ? extraCost / extraGrams : 0;
-    return { deltaDLI, extraGrams, extraCost, costPerExtraGram };
+    canopyAreaSqFt: inputs.canopyAreaSqFt,
+    fixtureEfficacy: d.fixture.ppe,
+    electricityRatePerKwh: inputs.electricityRatePerKwh,
+    yieldArgs: {
+      meanFlowerDayTempF: inputs.indoorTargetDryBulbF,
+      co2Ppm: inputs.co2SetpointPpm,
+      co2Enabled: inputs.co2Enabled,
+      cyclesPerYear: inputs.cyclesPerYear,
+      canopyAreaSqFt: inputs.canopyAreaSqFt,
+      realismFactor: yieldRealismCases[inputs.yieldRealismCase].multiplier,
+    },
+    deltaDLISteps: [5, 10, 15],
   });
 
   const firstStep = steps[0];
