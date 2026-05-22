@@ -246,9 +246,14 @@ export default function DashboardLayout() {
             {TAB_GROUPS.map((group) => (
               <div
                 key={group.id}
+                role="group"
+                aria-label={group.label}
                 className="flex flex-wrap items-center gap-1.5"
               >
-                <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">
+                <span
+                  aria-hidden
+                  className="px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400"
+                >
                   {group.label}
                 </span>
                 {group.tabIds.map((tabId) => {

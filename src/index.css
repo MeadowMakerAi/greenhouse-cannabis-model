@@ -400,9 +400,6 @@ body,
      Container is recessed (sits in a groove). Inactive tabs are flush.
      Hovered tabs get a faint raised pill. Active tab is dark + e2 shadow,
      reading as a control floating in the trough. */
-  .tab-bar {
-    @apply flex flex-wrap gap-1.5 rounded-xl bg-ink-100/70 p-1.5 shadow-recessed;
-  }
   .tab-button {
     @apply rounded-lg px-3 py-1.5 text-sm font-medium text-ink-500 transition duration-150 hover:bg-white hover:text-ink-900 hover:shadow-e1 active:shadow-pressed active:bg-ink-100;
   }
