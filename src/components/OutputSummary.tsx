@@ -6,17 +6,22 @@ import SensitivitySlider from "./SensitivitySlider";
 import type { ReactNode } from "react";
 
 /**
- * KPI strip — operating-economics crown + three decision groups.
+ * KPI strip — power-economics crown + three decision groups.
  *
  * Information architecture (per /somersault round-2, 2026-05-22):
- *   • Crown: operating cost per gram — the single "does this pencil"
- *     number, fused from annual power cost ÷ annual harvest. Power
- *     only; capex is NOT modeled here (Build sheet carries a capex band).
+ *   • Crown: power cost per gram — annual electricity cost (lighting,
+ *     climate, dehumidification) ÷ annual harvest. Electricity ONLY —
+ *     it excludes labor, nutrients, growing media, packaging, and
+ *     capex. It is one slice of true cost per gram, not the whole
+ *     thing. The model is an energy/climate model; it is honest about
+ *     sizing the power slice precisely and not pretending to know the
+ *     rest. (Honesty correction 2026-05-22 — was mislabeled "operating
+ *     cost", which a cultivator reads as full opex.)
  *   • Three groups answer the grower's three questions, in order:
  *       ① Light for quality — can I hit indoor-grade light, and what
  *         supplement does it take?
  *       ② Harvest — what does it yield?
- *       ③ What it costs — what do I pay to run it?
+ *       ③ Power to run it — what does the electricity cost?
  *   Light drives bud density / structure / yield, NOT cannabinoid % —
  *   see cropTargets.ts and CITATIONS "yield-dli".
  */
@@ -69,15 +74,15 @@ export default function OutputSummary() {
       />
 
       <div className="relative">
-        {/* ── Crown: operating cost per gram ── */}
+        {/* ── Crown: power cost per gram ── */}
         <div className="pb-4">
           <div className="kpi-eyebrow">
-            <span className="text-leaf-700">●</span> Operating cost per gram
+            <span className="text-leaf-700">●</span> Power cost per gram
           </div>
           <div className="mt-1 flex flex-wrap items-end gap-x-4 gap-y-1">
             <div
               className="kpi-hero"
-              title="Annual power cost (energy + demand + dehumidification) divided by annual dry-flower harvest. Power only — equipment and build-out (capex) are not included; see the Build sheet for a capex band."
+              title="Annual electricity cost — lighting, climate, and dehumidification — divided by annual dry-flower harvest. This is the POWER slice only. It excludes labor, nutrients, growing media, packaging, testing, and build-out (capex). Your true all-in cost per gram is meaningfully higher; this is the one slice an energy/climate model can size precisely."
             >
               ${costPerGram.toFixed(2)}
               <span className="kpi-hero-unit">/gram</span>
@@ -88,9 +93,11 @@ export default function OutputSummary() {
             </div>
           </div>
           <div className="kpi-context mt-1 proportional-nums">
-            Power cost only — energy + demand + dehumidification ÷ annual
-            harvest. Build-out capex is not modeled here; see the Build sheet
-            for a capex band.
+            Electricity only — lighting, climate, and dehumidification ÷
+            annual harvest. <span className="font-medium text-ink-700">Not</span> labor,
+            nutrients, growing media, packaging, or build-out (capex). True
+            cost per gram is higher — this is the power slice the model sizes
+            precisely.
           </div>
         </div>
 
@@ -141,16 +148,16 @@ export default function OutputSummary() {
             </Line>
           </Group>
 
-          <Group title="③ What it costs">
+          <Group title="③ Power to run it">
             <Stat
               value={fmtCurrency(d.annualEnergyPlusDemand)}
               unit="/yr"
               warn={d.demandFractionOfBill > 0.4}
             />
             <Line>
-              Power to run it — energy + demand charges + dehumidification.
-              {" "}
-              {fmtPct(d.demandFractionOfBill)} of that is peak-demand charges.
+              Electricity only — lighting, climate, and dehumidification.{" "}
+              {fmtPct(d.demandFractionOfBill)} of it is peak-demand charges.
+              Labor, nutrients, and media are not in this figure.
             </Line>
             <div className="space-y-1.5 pt-1">
               <SensitivitySlider

@@ -99,9 +99,11 @@ export default function MarginalLightPanel() {
         <p className="text-[11px] leading-relaxed text-ink-600">
           Adding 5 more DLI costs about{" "}
           <span className="font-semibold text-ink-900">
-            ${firstStep.costPerExtraGram.toFixed(2)} per extra gram
+            ${firstStep.costPerExtraGram.toFixed(2)} in electricity per extra
+            gram
           </span>{" "}
-          of dry flower.{" "}
+          of dry flower (just the power for the extra fixtures — no added
+          labor or nutrients).{" "}
           {worthIt
             ? "Wholesale flower runs well above that, so more light keeps paying for itself."
             : "Compare that against your wholesale price per gram before adding fixtures."}{" "}
