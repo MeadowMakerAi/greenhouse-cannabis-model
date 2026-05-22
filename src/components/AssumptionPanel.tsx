@@ -57,7 +57,7 @@ export default function AssumptionPanel() {
               hint="Above sea level. Affects atmospheric clarity at margins."
             />
             <div>
-              <label className="field-label">Weather anchor</label>
+              <label className="field-label">Weather station name</label>
               <input
                 type="text"
                 value={inputs.weatherStation}
@@ -166,7 +166,7 @@ export default function AssumptionPanel() {
         }
       >
         <NumberField
-          label="Glazing trans."
+          label="Glazing light transmission"
           value={inputs.envelope.baseTransmissionPct}
           onChange={(n) =>
             setInputs({ envelope: { ...inputs.envelope, baseTransmissionPct: n } })
@@ -175,7 +175,7 @@ export default function AssumptionPanel() {
           hint="Material-only PAR transmission. Single poly ~80, glass ~88, double poly ~70."
         />
         <NumberField
-          label="Roof factor"
+          label="Roof shape & condensation loss"
           value={inputs.envelope.roofTransmissionPct}
           onChange={(n) =>
             setInputs({ envelope: { ...inputs.envelope, roofTransmissionPct: n } })
@@ -202,7 +202,7 @@ export default function AssumptionPanel() {
           hint="Soiling & material yellowing. Typical 5–8% for aged glazing."
         />
         <NumberField
-          label="Internal obstruction"
+          label="Equipment shading"
           value={inputs.envelope.internalObstructionLossPct}
           onChange={(n) =>
             setInputs({ envelope: { ...inputs.envelope, internalObstructionLossPct: n } })
@@ -211,7 +211,7 @@ export default function AssumptionPanel() {
           hint="Hangers, pipes, equipment shading canopy. 3–8% typical."
         />
         <NumberField
-          label="kWh→PAR DLI factor"
+          label="Sunlight-to-PAR factor"
           value={inputs.solarToPARFactor}
           onChange={(n) => setInputs({ solarToPARFactor: n })}
           step={0.05}
@@ -329,7 +329,7 @@ export default function AssumptionPanel() {
               </>
             )}
             <NumberField
-              label="Closed U-value"
+              label="Curtain-closed U-value"
               value={inputs.blackoutClosedUValue}
               onChange={(n) => setInputs({ blackoutClosedUValue: n })}
               unit="BTU/hr·ft²·°F"
@@ -430,21 +430,21 @@ export default function AssumptionPanel() {
           onChange={(b) => setInputs({ underCanopyEnabled: b })}
         />
         <NumberField
-          label="UC PPFD"
+          label="Under-canopy PPFD"
           value={inputs.underCanopyPPFD}
           onChange={(n) => setInputs({ underCanopyPPFD: n })}
           unit="µmol/m²/s"
           hint="Intensity at lower-canopy zone. 100–200 typical."
         />
         <NumberField
-          label="Coverage"
+          label="Under-canopy coverage"
           value={inputs.underCanopyCoveragePct}
           onChange={(n) => setInputs({ underCanopyCoveragePct: n })}
           unit="%"
           hint="Fraction of canopy footprint actually lit by UC bars."
         />
         <NumberField
-          label="UC PPE"
+          label="Under-canopy efficacy"
           value={inputs.underCanopyPPE}
           onChange={(n) => setInputs({ underCanopyPPE: n })}
           step={0.05}
@@ -452,7 +452,7 @@ export default function AssumptionPanel() {
           hint="Under-canopy fixture efficacy. Modern bars 2.4–2.8."
         />
         <NumberField
-          label="UC photoperiod"
+          label="Under-canopy hours"
           value={inputs.underCanopyPhotoperiodHours}
           onChange={(n) => setInputs({ underCanopyPhotoperiodHours: n })}
           unit="hr"
@@ -482,7 +482,7 @@ export default function AssumptionPanel() {
           onChange={(b) => setInputs({ co2Enabled: b })}
         />
         <NumberField
-          label="Setpoint"
+          label="CO₂ setpoint"
           value={inputs.co2SetpointPpm}
           onChange={(n) => setInputs({ co2SetpointPpm: n })}
           unit="ppm"
@@ -529,7 +529,7 @@ export default function AssumptionPanel() {
           onChange={(b) => setInputs({ shadeEnabled: b })}
         />
         <NumberField
-          label="Transmission"
+          label="Shade transmission"
           value={inputs.shadeTransmissionPct}
           onChange={(n) => setInputs({ shadeTransmissionPct: n })}
           unit="%"
@@ -669,7 +669,7 @@ export default function AssumptionPanel() {
           hint="Energy curtain deployed at night; cuts envelope U by ~40%"
         />
         <NumberField
-          label="Screen night U"
+          label="Thermal-screen U-value"
           value={inputs.thermalScreenNightUValue}
           onChange={(n) => setInputs({ thermalScreenNightUValue: n })}
           step={0.05}
@@ -683,7 +683,7 @@ export default function AssumptionPanel() {
           hint="Hot-gas reheat DX, combined cooling+dehum COP 3–4"
         />
         <NumberField
-          label="HP combined COP"
+          label="Heat-pump COP"
           value={inputs.heatPumpCombinedCOP}
           onChange={(n) => setInputs({ heatPumpCombinedCOP: n })}
           step={0.1}
@@ -706,7 +706,7 @@ export default function AssumptionPanel() {
           onChange={(b) => setInputs({ dehumidificationEnabled: b })}
         />
         <NumberField
-          label="Transp. rate"
+          label="Plant transpiration"
           value={inputs.plantTranspirationGalPerDayPer1000SqFt}
           onChange={(n) => setInputs({ plantTranspirationGalPerDayPer1000SqFt: n })}
           unit="gal/day/1000ft²"
@@ -727,7 +727,7 @@ export default function AssumptionPanel() {
           hint="Fraction of irrigation that drains; small portion evaporates from media."
         />
         <NumberField
-          label="Dehum. eff."
+          label="Dehumidifier efficiency"
           value={inputs.dehumidifierEfficiencyPintsPerKwh}
           onChange={(n) => setInputs({ dehumidifierEfficiencyPintsPerKwh: n })}
           step={0.5}
