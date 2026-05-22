@@ -242,14 +242,17 @@ export default function AssumptionPanel() {
           hint="Drives VPD targets and humidity-risk thresholds."
         />
         <SelectField
-          label="DLI target preset"
+          label="Light target (bud quality)"
           value={inputs.cropTargetId}
           onChange={(v) => setInputs({ cropTargetId: v as keyof typeof cropTargets })}
           options={Object.values(cropTargets).map((t) => ({
             value: t.id,
             label: `${t.label} · ${t.targetDLI} DLI`,
           }))}
-          hint="Sets canopy-level DLI target the model sizes lighting toward."
+          hint={
+            cropTargets[inputs.cropTargetId]?.description ??
+            "The canopy light level the model sizes lighting toward."
+          }
         />
         <NumberField
           label="Photoperiod"

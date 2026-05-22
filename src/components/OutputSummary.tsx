@@ -122,17 +122,23 @@ export default function OutputSummary() {
           <div className="flex items-stretch gap-5 self-stretch">
             <div className="hidden w-px self-stretch bg-ink-200/70 md:block" />
             <Vital
-              label="DLI target"
+              label="Light needed (DLI)"
               value={`${onTarget ? d.target.targetDLI : "—"}`}
               unit="mol/m²/d"
-              context={d.target.label}
+              context={
+                onTarget
+                  ? `${d.target.label} · ≈${d.target.targetTopCanopyPPFD} µmol/m²/s at 12-h flower`
+                  : d.target.label
+              }
+              tooltip="DLI is the whole day's light added up (mol/m²/day). PPFD is the brightness at any one instant (µmol/m²/s) — the number a PAR meter reads. This is the minimum light to grow indoor-grade bud density; above it, more light means more yield, not more potency."
               citationId="yield-dli"
             />
             <Vital
-              label="Net transmission"
+              label="Light reaching plants"
               value={fmtPct(d.transmission)}
               unit=""
-              context="glaze × roof × structure × soil"
+              context="of outdoor sun · glaze × roof × structure × soil"
+              tooltip="The share of outdoor sunlight that actually reaches the canopy once glazing, roof shape, structural shading, and dirt/aging losses stack up."
             />
           </div>
         </div>
@@ -145,7 +151,7 @@ export default function OutputSummary() {
         {/* ── Bottom: 6-col ledger row ── */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-0 lg:divide-x lg:divide-ink-200/70">
           <Ledger
-            label="Energy cost"
+            label="Lighting bill"
             value={fmtCurrency(d.annualCost)}
             context={`@ $${inputs.electricityRatePerKwh.toFixed(2)}/kWh`}
             extra={
@@ -162,7 +168,7 @@ export default function OutputSummary() {
             }
           />
           <Ledger
-            label="Demand cost"
+            label="Demand charges"
             value={fmtCurrency(d.peakDemandChargeAnnual)}
             context={`${fmtInt(d.peakLightingKW)} kW × $${inputs.demandChargePerKwMonth.toFixed(0)}/kW · ${fmtPct(d.demandFractionOfBill)} of electric`}
             warn={d.demandFractionOfBill > 0.4}
@@ -180,7 +186,7 @@ export default function OutputSummary() {
             }
           />
           <Ledger
-            label="Peak overhead"
+            label="Lighting draw (peak)"
             value={fmt1(d.peakInstalledKW)}
             unit="kW"
             context={`${fmtInt(d.peakFixtureCount)} × ${
@@ -188,7 +194,7 @@ export default function OutputSummary() {
             }W · ${d.peakWattsPerSqFt.toFixed(1)} W/ft²`}
           />
           <Ledger
-            label="Peak cooling"
+            label="Cooling needed"
             value={fmt1(d.peakCoolingTons)}
             unit="tons"
             context="screening estimate"
@@ -197,7 +203,7 @@ export default function OutputSummary() {
             citationId="kaspro-energy-balance"
           />
           <Ledger
-            label="Yield / cycle"
+            label="Harvest / cycle"
             value={d.gramsPerSqFtPerCycle.toFixed(1)}
             unit="g/ft²"
             context={d.yieldTierLabel}
@@ -223,15 +229,18 @@ function Vital({
   unit,
   context,
   citationId,
+  tooltip,
 }: {
   label: string;
   value: string;
   unit?: string;
   context?: string;
   citationId?: keyof typeof CITATIONS;
+  /** Plain-language hover explainer — what the number means, how to read it. */
+  tooltip?: string;
 }) {
   return (
-    <div className="min-w-[8rem]">
+    <div className="min-w-[8rem]" title={tooltip}>
       <div className="kpi-eyebrow flex items-center gap-1">
         <span>{label}</span>
         {citationId && <Citation id={citationId} />}
