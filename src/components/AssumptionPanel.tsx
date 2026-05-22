@@ -1,6 +1,7 @@
 import { useScenario } from "../context/ScenarioContext";
 import { useAllFixtures } from "../context/useAllFixtures";
 import { cropTargets } from "../data/cropTargets";
+import { yieldRealismCases, type YieldRealismCase } from "../data/yieldRealism";
 import { netCanopyTransmissionPct } from "../models/solarModel";
 import { fmtPct } from "../utils/formatting";
 import { FieldGroup, NumberField, SelectField, ToggleField } from "./Field";
@@ -588,6 +589,21 @@ export default function AssumptionPanel() {
           step={0.5}
           unit="cycles"
           hint="Greenhouse 2–3, indoor sealed 4–5"
+        />
+        <SelectField
+          label="Yield realism"
+          value={inputs.yieldRealismCase}
+          onChange={(v) =>
+            setInputs({ yieldRealismCase: v as YieldRealismCase })
+          }
+          options={Object.values(yieldRealismCases).map((c) => ({
+            value: c.id,
+            label: c.label,
+          }))}
+          hint={
+            yieldRealismCases[inputs.yieldRealismCase]?.description ??
+            "Scales the yield projection from the model's dialed-in ceiling to a realistic planning scenario."
+          }
         />
       </FieldGroup>
 

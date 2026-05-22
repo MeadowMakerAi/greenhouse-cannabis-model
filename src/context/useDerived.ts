@@ -3,6 +3,7 @@ import { useScenario } from "./ScenarioContext";
 import { useAllFixtures } from "./useAllFixtures";
 import { fixtureLibrary } from "../data/fixtureLibrary";
 import { cropTargets } from "../data/cropTargets";
+import { yieldRealismCases } from "../data/yieldRealism";
 import { computeMonthlySolar, netCanopyTransmissionPct } from "../models/solarModel";
 import { dliToPPFD, ppfdToDLI } from "../models/dliModel";
 import { fixtureKWFromPPFD } from "../models/fixtureModel";
@@ -405,6 +406,7 @@ export function useDerived() {
       co2Enabled: inputs.co2Enabled,
       cyclesPerYear: inputs.cyclesPerYear,
       canopyAreaSqFt: inputs.canopyAreaSqFt,
+      realismFactor: yieldRealismCases[inputs.yieldRealismCase].multiplier,
     });
 
     // ---- Crop steering alignment ----

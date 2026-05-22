@@ -127,6 +127,29 @@ describe("yieldModel", () => {
     expect(r80.dliFactor).toBeGreaterThan(r70.dliFactor);
     expect(r80.dliFactor / r70.dliFactor).toBeLessThan(80 / 70);
   });
+
+  it("realismFactor scales the projection linearly and defaults to 1.0", () => {
+    const base = {
+      annualDLIMolM2: 40 * 365,
+      meanFlowerDayTempF: 79,
+      co2Ppm: 420,
+      co2Enabled: false,
+      cyclesPerYear: 3,
+      canopyAreaSqFt: 1000,
+    };
+    const dialedIn = projectYield(base); // no realismFactor → defaults to 1.0
+    // explicit 1.0 matches the default
+    expect(
+      projectYield({ ...base, realismFactor: 1 }).gramsPerM2PerCycle,
+    ).toBeCloseTo(dialedIn.gramsPerM2PerCycle, 5);
+    // a haircut scales the projection by exactly that factor
+    expect(
+      projectYield({ ...base, realismFactor: 0.7 }).gramsPerM2PerCycle,
+    ).toBeCloseTo(dialedIn.gramsPerM2PerCycle * 0.7, 5);
+    expect(
+      projectYield({ ...base, realismFactor: 0.55 }).totalAnnualKg,
+    ).toBeCloseTo(dialedIn.totalAnnualKg * 0.55, 5);
+  });
 });
 
 describe("cropSteeringModel", () => {

@@ -37,6 +37,12 @@ export interface YieldInput {
   cyclesPerYear: number;
   /** Canopy area sqft for absolute yield */
   canopyAreaSqFt: number;
+  /**
+   * Yield-realism multiplier on the dialed-in projection (default 1.0).
+   * The model's baseline assumes a dialed-in operation; real operations
+   * run 20-50% below it. See data/yieldRealism.ts.
+   */
+  realismFactor?: number;
 }
 
 export interface YieldOutput {
@@ -110,8 +116,15 @@ export function projectYield(input: YieldInput): YieldOutput {
     co2Factor = 1.05;
   }
 
+  // Realism haircut — the projection above is the dialed-in ceiling;
+  // this scales it to the operator's chosen planning scenario.
+  const realismFactor = input.realismFactor ?? 1;
   const gramsPerM2PerCycle =
-    BASELINE_G_PER_M2_PER_CYCLE * dliFactor * tempFactor * co2Factor;
+    BASELINE_G_PER_M2_PER_CYCLE *
+    dliFactor *
+    tempFactor *
+    co2Factor *
+    realismFactor;
   const gramsPerM2PerYear = gramsPerM2PerCycle * input.cyclesPerYear;
   const canopyM2 = input.canopyAreaSqFt * M2_PER_FT2;
   const totalAnnualKg = (gramsPerM2PerYear * canopyM2) / 1000;

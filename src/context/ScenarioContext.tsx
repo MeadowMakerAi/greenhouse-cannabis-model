@@ -10,6 +10,7 @@ import {
 import { fallbackMontgomeryClimate } from "../data/fallbackMontgomeryClimate";
 import { fixtureLibrary, underCanopyFixtureDefault } from "../data/fixtureLibrary";
 import { cropTargets } from "../data/cropTargets";
+import type { YieldRealismCase } from "../data/yieldRealism";
 import {
   defaultEconomics,
   defaultElectricalService,
@@ -97,6 +98,8 @@ export interface ScenarioInputs {
 
   // Targets
   cropTargetId: keyof typeof cropTargets;
+  /** Yield-realism planning scenario — scales the dialed-in projection. */
+  yieldRealismCase: YieldRealismCase;
 
   // Solar conversion
   solarToPARFactor: number;
@@ -252,6 +255,7 @@ export const defaultScenario: ScenarioInputs = {
   envelope: defaultEnvelope,
   ...defaultPhotoperiod,
   cropTargetId: "commercialPremium",
+  yieldRealismCase: "base",
   solarToPARFactor: defaultSolarConversion.solarToPARFactor,
   fixtureId: "ledHighEfficiency",
   underCanopyEnabled: true,

@@ -3,6 +3,7 @@ import { useScenario } from "../context/ScenarioContext";
 import { fmtCurrency, fmtInt, fmt1, fmtPct } from "../utils/formatting";
 import Citation, { CITATIONS } from "./Citation";
 import SensitivitySlider from "./SensitivitySlider";
+import { yieldRealismCases } from "../data/yieldRealism";
 import type { ReactNode } from "react";
 
 /**
@@ -33,6 +34,7 @@ export default function OutputSummary() {
   const costPerGram =
     annualGrams > 0 ? d.annualEnergyPlusDemand / annualGrams : 0;
   const annualLb = d.yieldProjection.totalAnnualKg * 2.2046;
+  const realism = yieldRealismCases[inputs.yieldRealismCase];
   // Natural sun delivered to the flower window, averaged across the year.
   const naturalDLI =
     d.months.reduce((a, m) => a + m.flowerWindowDLI, 0) / d.months.length;
@@ -89,7 +91,11 @@ export default function OutputSummary() {
             </div>
             <div className="kpi-context-lead mb-1">
               {fmt1(d.gramsPerSqFtPerCycle)} g/ft² per cycle ·{" "}
-              {fmtInt(annualLb)} lb/yr · {inputs.cyclesPerYear} cycles/yr
+              {fmtInt(annualLb)} lb/yr · at{" "}
+              <span className="font-medium text-ink-700">
+                {realism.label}
+              </span>{" "}
+              yield
             </div>
           </div>
           <div className="kpi-context mt-1 proportional-nums">
@@ -142,6 +148,12 @@ export default function OutputSummary() {
               {inputs.cyclesPerYear} cycles.
             </Line>
             <Line>{d.yieldTierLabel}.</Line>
+            <Line>
+              Planning at{" "}
+              <span className="font-medium text-ink-700">{realism.label}</span>{" "}
+              yield — set the scenario in the sidebar. The model's dialed-in
+              ceiling is higher.
+            </Line>
             <Line>
               {fmt1(d.energyUseIntensity_kWhPerGram)} kWh of power per gram
               harvested.
