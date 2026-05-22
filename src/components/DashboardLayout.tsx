@@ -29,7 +29,6 @@ import ShareLinkButton from "./ShareLinkButton";
 import GreenhouseIsoView from "./GreenhouseIsoView";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
-import { fmt1, fmtPct } from "../utils/formatting";
 
 const TABS = [
   { id: "build", label: "★ Build sheet", title: "Build sheet", subtitle: "Procurement-grade BOM with fixture count, kW, $/yr, and HVAC sizing.", index: "★" },
@@ -49,44 +48,30 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-const FOCUS_AREAS: Array<{
-  id: string;
-  title: string;
-  body: string;
-  primaryTab: TabId;
-  tabs: TabId[];
-}> = [
-  {
-    id: "visual",
-    title: "Visual model",
-    body:
-      "Use the live scene to sanity-check sun angle, light state, vents, shade, and canopy geometry before diving into the numbers.",
-    primaryTab: "live",
-    tabs: ["live", "science"],
-  },
+/**
+ * The 13 tabs, segmented into four labeled clusters. This IS the
+ * navigation — it replaces the former parallel system (a "START HERE"
+ * banner + standalone workspace cards that duplicated the tab bar).
+ * Every tab appears exactly once; the tab bar renders one labeled row
+ * per group. The visual model leads as group 1, honoring its central
+ * role without a redundant preview banner.
+ */
+const TAB_GROUPS: { id: string; label: string; tabIds: TabId[] }[] = [
+  { id: "visual", label: "Visual model", tabIds: ["live", "science"] },
   {
     id: "build",
-    title: "Build + electrical",
-    body:
-      "Translate the scenario into fixtures, amperage, branch circuits, installed kW, and procurement-ready layout assumptions.",
-    primaryTab: "build",
-    tabs: ["build", "optimized", "supplemental", "ledHps"],
+    label: "Build & electrical",
+    tabIds: ["build", "optimized", "supplemental", "ledHps"],
   },
   {
     id: "climate",
-    title: "Climate + HVAC",
-    body:
-      "Pressure-test humidity, wet-bulb limits, shade tradeoffs, cooling tons, and dehumidification burden month by month.",
-    primaryTab: "humidity",
-    tabs: ["dli", "shade", "humidity", "hvac"],
+    label: "Climate & HVAC",
+    tabIds: ["dli", "shade", "humidity", "hvac"],
   },
   {
     id: "cultivation",
-    title: "Cultivation strategy",
-    body:
-      "Evaluate under-canopy, CO2, pathogen pressure, and seasonal operating windows to support flower quality and consistency.",
-    primaryTab: "science",
-    tabs: ["science", "underCanopy", "co2", "calendar"],
+    label: "Cultivation",
+    tabIds: ["underCanopy", "co2", "calendar"],
   },
 ];
 
@@ -139,182 +124,6 @@ function TabHeader({ tabId }: { tabId: TabId }) {
   );
 }
 
-function MetricChip({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-full border border-white/20 bg-ink-900/55 px-3 py-1.5 text-[11px] text-white/92 shadow-e1 backdrop-blur-sm">
-      <span className="mr-1 text-white/55">{label}</span>
-      <span className="font-semibold">{value}</span>
-    </div>
-  );
-}
-
-function WorkspaceCard({
-  area,
-  active,
-  onSelect,
-}: {
-  area: (typeof FOCUS_AREAS)[number];
-  active: boolean;
-  onSelect: (tab: TabId) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(area.primaryTab)}
-      className={`w-full rounded-xl border p-4 text-left transition-all duration-150 ${
-        active
-          ? "border-leaf-500/50 bg-leaf-500/[0.06] shadow-e2"
-          : "border-ink-200/80 bg-white shadow-e1 hover:-translate-y-px hover:border-ink-300 hover:shadow-e2"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.10em] text-ink-500">
-            Workspace
-          </div>
-          <div className="mt-1 text-base font-semibold tracking-tight text-ink-900">
-            {area.title}
-          </div>
-        </div>
-        <span className={`tag ${active ? "tag-info" : "tag-muted"}`}>
-          {active ? "Open now" : "Jump in"}
-        </span>
-      </div>
-      <p className="mt-2 text-sm leading-relaxed text-ink-700 proportional-nums">
-        {area.body}
-      </p>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {area.tabs.map((tabId) => {
-          const tab = TABS.find((item) => item.id === tabId);
-          if (!tab) return null;
-          return (
-            <span key={`${area.id}-${tabId}`} className="tag tag-muted">
-              {tab.title}
-            </span>
-          );
-        })}
-      </div>
-    </button>
-  );
-}
-
-function DashboardGuide({
-  activeTab,
-  onSelect,
-}: {
-  activeTab: TabId;
-  onSelect: (tab: TabId) => void;
-}) {
-  const { inputs } = useScenario();
-  const d = useDerived();
-  const warningCount = d.sanityFlags.length + d.warnings.global.length;
-
-  return (
-    <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-      <div className="card-hero-primary">
-        <div className="card-body space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-2xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.10em] text-ink-500">
-                Start here
-              </div>
-              <h2 className="mt-1 text-[1.65rem] font-semibold tracking-tight text-ink-900">
-                Lead with the visual model, then move into the right decision
-                workspace.
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-700 proportional-nums">
-                The greenhouse scene is the fastest way to orient yourself:
-                sun angle, lights, vents, shade, and canopy geometry in one
-                glance. From there, use the named workspaces to answer build,
-                climate, and cultivation questions without hunting through the
-                dashboard.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onSelect("live")}
-                className="btn-primary px-4 py-2 text-sm"
-              >
-                Open live simulation
-              </button>
-              <button
-                type="button"
-                onClick={() => onSelect("science")}
-                className="btn px-4 py-2 text-sm"
-              >
-                Open cultivation science
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-2xl border border-ink-200/80 bg-white/80 shadow-e1">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-200/70 px-4 py-2.5">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.10em] text-ink-700">
-                Visual model preview
-              </span>
-              <span className="text-[11px] text-ink-500">
-                Live 3D scene plus HUD telemetry lives in the simulation
-                workspaces
-              </span>
-            </div>
-            <div className="relative overflow-hidden bg-ink-900">
-              <img
-                src="/landing-hero.png"
-                alt="Preview of the live greenhouse model showing the 3D structure, canopy, sun, and telemetry overlay."
-                className="block h-auto w-full"
-              />
-              <div className="absolute inset-x-0 bottom-0 flex flex-wrap gap-2 bg-gradient-to-t from-ink-900/85 via-ink-900/55 to-transparent p-3">
-                <MetricChip label="Site" value={inputs.weatherStation} />
-                <MetricChip
-                  label="Peak overhead"
-                  value={`${fmt1(d.peakInstalledKW)} kW`}
-                />
-                <MetricChip
-                  label="Net transmission"
-                  value={fmtPct(d.transmission)}
-                />
-                <MetricChip
-                  label="Peak cooling"
-                  value={`${fmt1(d.peakCoolingTons)} tons`}
-                />
-                <MetricChip
-                  label="Warnings"
-                  value={warningCount > 0 ? `${warningCount} flagged` : "clear"}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-header-strong">
-          <span>Dashboard workspaces</span>
-          <span className="text-[11px] font-normal text-ink-500">
-            Each card tells you what the section is for
-          </span>
-        </div>
-        <div className="card-body space-y-3">
-          {FOCUS_AREAS.map((area) => (
-            <WorkspaceCard
-              key={area.id}
-              area={area}
-              active={area.tabs.includes(activeTab)}
-              onSelect={onSelect}
-            />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function ScenePanel({
   title,
@@ -432,22 +241,34 @@ export default function DashboardLayout() {
       <main className="row-start-2 overflow-y-auto p-4 surface-page">
         <div className="space-y-4">
           <OutputSummary />
-          <DashboardGuide activeTab={tab} onSelect={setTab} />
-          <nav className="tab-bar">
-            {TABS.map((t) => {
-              const isStarred = t.label.startsWith("★");
-              const active = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`tab-button ${isStarred ? "tab-button-star" : ""} ${active ? "tab-button-active" : ""}`}
-                  type="button"
-                >
-                  {t.label}
-                </button>
-              );
-            })}
+          {/* Single navigation — four labeled tab groups. */}
+          <nav className="flex flex-col gap-2 rounded-xl bg-ink-100/70 p-1.5 shadow-recessed">
+            {TAB_GROUPS.map((group) => (
+              <div
+                key={group.id}
+                className="flex flex-wrap items-center gap-1.5"
+              >
+                <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">
+                  {group.label}
+                </span>
+                {group.tabIds.map((tabId) => {
+                  const t = TABS.find((x) => x.id === tabId);
+                  if (!t) return null;
+                  const isStarred = t.label.startsWith("★");
+                  const active = tab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTab(t.id)}
+                      className={`tab-button ${isStarred ? "tab-button-star" : ""} ${active ? "tab-button-active" : ""}`}
+                      type="button"
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
 
           <div key={tab} className="tab-content space-y-4">
