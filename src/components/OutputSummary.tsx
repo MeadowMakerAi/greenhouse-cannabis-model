@@ -1,4 +1,3 @@
-import { ResponsiveContainer, Area, AreaChart } from "recharts";
 import { useDerived } from "../context/useDerived";
 import { useScenario } from "../context/ScenarioContext";
 import { fmtCurrency, fmtInt, fmt1, fmtPct } from "../utils/formatting";
@@ -7,35 +6,37 @@ import SensitivitySlider from "./SensitivitySlider";
 import type { ReactNode } from "react";
 
 /**
- * Editorial KPI strip — hero metric + supporting ledger row.
+ * KPI strip — operating-economics crown + three decision groups.
  *
- * Layout intent (per /somersault round-2 synthesis):
- *   • Hero: annual lighting energy at display weight (96pt-ish), tabular,
- *     IBM Plex Sans Condensed, with a 12-month monthly sparkline that earns
- *     visual real estate. This is the single load-bearing decision metric
- *     in the model — every other cost/heat/yield figure derives from it.
- *   • Vitals (top-right): DLI target + net transmission, the two structural
- *     constraints the user is designing against.
- *   • Ledger (bottom): 5 supporting metrics in a 5-col row, label small-caps
- *     above, value tabular below, hairline column dividers. NO card chrome —
- *     the structure is the typography, not the container.
+ * Information architecture (per /somersault round-2, 2026-05-22):
+ *   • Crown: operating cost per gram — the single "does this pencil"
+ *     number, fused from annual power cost ÷ annual harvest. Power
+ *     only; capex is NOT modeled here (Build sheet carries a capex band).
+ *   • Three groups answer the grower's three questions, in order:
+ *       ① Light for quality — can I hit indoor-grade light, and what
+ *         supplement does it take?
+ *       ② Harvest — what does it yield?
+ *       ③ What it costs — what do I pay to run it?
+ *   Light drives bud density / structure / yield, NOT cannabinoid % —
+ *   see cropTargets.ts and CITATIONS "yield-dli".
  */
 export default function OutputSummary() {
   const { inputs, setInputs } = useScenario();
   const d = useDerived();
 
-  const monthly = d.months.map((m, i) => ({
-    month: i,
-    kwh: m.monthlyKwh + m.underCanopyKwhMonth,
-  }));
-
-  const peakKwh = Math.max(...monthly.map((m) => m.kwh), 0);
+  const annualGrams = d.yieldProjection.totalAnnualKg * 1000;
+  const costPerGram =
+    annualGrams > 0 ? d.annualEnergyPlusDemand / annualGrams : 0;
+  const annualLb = d.yieldProjection.totalAnnualKg * 2.2046;
+  // Natural sun delivered to the flower window, averaged across the year.
+  const naturalDLI =
+    d.months.reduce((a, m) => a + m.flowerWindowDLI, 0) / d.months.length;
   const onTarget = d.target.targetDLI > 0;
 
   return (
     <section className="relative overflow-hidden">
-      {/* Decision-support disclaimer — main's pattern, kept verbatim. The
-          project's CLAUDE.md requires every output disclose its level. */}
+      {/* Decision-support disclaimer — every output discloses its level
+          per the project's CLAUDE.md. */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.10em] text-ink-500">
           <span>Key outputs</span>
@@ -53,8 +54,8 @@ export default function OutputSummary() {
           ⚠ Screening-level — verify before capex
         </div>
       </div>
-      {/* Subliminal blueprint grid behind the hero panel — Vercel/Geist
-          pattern. 24px cells at 4% opacity. Felt before seen. */}
+
+      {/* Subliminal blueprint grid behind the panel — felt before seen. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -68,78 +69,28 @@ export default function OutputSummary() {
       />
 
       <div className="relative">
-        {/* ── Top: hero + right-aligned vitals ── */}
-        <div className="flex flex-wrap items-end justify-between gap-6 pb-4">
-          <div className="min-w-0 flex-1">
-            <div className="kpi-eyebrow">
-              <span className="text-leaf-700">●</span>{" "}
-              Annual lighting energy
+        {/* ── Crown: operating cost per gram ── */}
+        <div className="pb-4">
+          <div className="kpi-eyebrow">
+            <span className="text-leaf-700">●</span> Operating cost per gram
+          </div>
+          <div className="mt-1 flex flex-wrap items-end gap-x-4 gap-y-1">
+            <div
+              className="kpi-hero"
+              title="Annual power cost (energy + demand + dehumidification) divided by annual dry-flower harvest. Power only — equipment and build-out (capex) are not included; see the Build sheet for a capex band."
+            >
+              ${costPerGram.toFixed(2)}
+              <span className="kpi-hero-unit">/gram</span>
             </div>
-            <div className="mt-1 flex items-end gap-4">
-              <div className="kpi-hero">
-                {fmtInt(d.annualKwh)}
-                <span className="kpi-hero-unit">kWh/yr</span>
-              </div>
-              {/* Monthly sparkline — 12 bars of total kWh delivered */}
-              <div className="hidden h-14 w-40 sm:block">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={monthly}
-                    margin={{ top: 4, right: 0, left: 0, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient
-                        id="kwhSpark"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#1f6c50" stopOpacity={0.55} />
-                        <stop offset="100%" stopColor="#1f6c50" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey="kwh"
-                      stroke="#1f6c50"
-                      strokeWidth={1.5}
-                      fill="url(#kwhSpark)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            <div className="kpi-context-lead mt-2">
-              Overhead + under-canopy at $
-              {inputs.electricityRatePerKwh.toFixed(2)}/kWh ·{" "}
-              {fmtInt(d.peakInstalledKW)} kW peak ·{" "}
-              {fmtInt(peakKwh)} kWh peak month
+            <div className="kpi-context-lead mb-1">
+              {fmt1(d.gramsPerSqFtPerCycle)} g/ft² per cycle ·{" "}
+              {fmtInt(annualLb)} lb/yr · {inputs.cyclesPerYear} cycles/yr
             </div>
           </div>
-
-          {/* Right rail — design constraints */}
-          <div className="flex items-stretch gap-5 self-stretch">
-            <div className="hidden w-px self-stretch bg-ink-200/70 md:block" />
-            <Vital
-              label="Light needed (DLI)"
-              value={`${onTarget ? d.target.targetDLI : "—"}`}
-              unit="mol/m²/d"
-              context={
-                onTarget
-                  ? `${d.target.label} · ≈${d.target.targetTopCanopyPPFD} µmol/m²/s at 12-h flower`
-                  : d.target.label
-              }
-              tooltip="DLI is the whole day's light added up (mol/m²/day). PPFD is the brightness at any one instant (µmol/m²/s) — the number a PAR meter reads. This is the minimum light to grow indoor-grade bud density; above it, more light means more yield, not more potency."
-              citationId="yield-dli"
-            />
-            <Vital
-              label="Light reaching plants"
-              value={fmtPct(d.transmission)}
-              unit=""
-              context="of outdoor sun · glaze × roof × structure × soil"
-              tooltip="The share of outdoor sunlight that actually reaches the canopy once glazing, roof shape, structural shading, and dirt/aging losses stack up."
-            />
+          <div className="kpi-context mt-1 proportional-nums">
+            Power cost only — energy + demand + dehumidification ÷ annual
+            harvest. Build-out capex is not modeled here; see the Build sheet
+            for a capex band.
           </div>
         </div>
 
@@ -148,13 +99,60 @@ export default function OutputSummary() {
           <div className="absolute left-0 top-0 h-px w-24 bg-leaf-600" />
         </div>
 
-        {/* ── Bottom: 6-col ledger row ── */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-0 lg:divide-x lg:divide-ink-200/70">
-          <Ledger
-            label="Lighting bill"
-            value={fmtCurrency(d.annualCost)}
-            context={`@ $${inputs.electricityRatePerKwh.toFixed(2)}/kWh`}
-            extra={
+        {/* ── Three decision groups ── */}
+        <div className="grid grid-cols-1 gap-x-6 gap-y-6 pt-4 sm:grid-cols-3 sm:gap-x-0 sm:divide-x sm:divide-ink-200/70">
+          <Group title="① Light for quality">
+            <Stat
+              value={onTarget ? `${d.target.targetDLI}` : "—"}
+              unit="DLI target"
+              citationId="yield-dli"
+              tooltip="DLI is the whole day's light added up (mol/m²/day). PPFD is the brightness at one instant (µmol/m²/s) — what a PAR meter reads. This is the minimum light for indoor-grade bud density; above it, more light means more yield, not more potency."
+            />
+            <Line>
+              {onTarget
+                ? `≈${d.target.targetTopCanopyPPFD} µmol/m²/s at the canopy on a 12-h flower day — ${d.target.label}.`
+                : d.target.label}
+            </Line>
+            <Line>
+              Sunlight delivers ~{fmt1(naturalDLI)} DLI into the flower window.
+              Supplemental lighting closes the gap to target.
+            </Line>
+            <Line>
+              {fmt1(d.peakInstalledKW)} kW of supplemental lighting at the peak
+              month.
+            </Line>
+          </Group>
+
+          <Group title="② Harvest">
+            <Stat
+              value={fmt1(d.gramsPerSqFtPerCycle)}
+              unit="g/ft² per cycle"
+              citationId="yield-dli"
+              warn={d.yieldTierNeedsEvidence}
+            />
+            <Line>
+              ≈{fmtInt(annualLb)} lb of dry flower per year across{" "}
+              {inputs.cyclesPerYear} cycles.
+            </Line>
+            <Line>{d.yieldTierLabel}.</Line>
+            <Line>
+              {fmt1(d.energyUseIntensity_kWhPerGram)} kWh of power per gram
+              harvested.
+            </Line>
+          </Group>
+
+          <Group title="③ What it costs">
+            <Stat
+              value={fmtCurrency(d.annualEnergyPlusDemand)}
+              unit="/yr"
+              warn={d.demandFractionOfBill > 0.4}
+            />
+            <Line>
+              Power to run it — energy + demand charges + dehumidification.
+              {" "}
+              {fmtPct(d.demandFractionOfBill)} of that is peak-demand charges.
+            </Line>
+            <div className="space-y-1.5 pt-1">
               <SensitivitySlider
                 label="Electricity rate"
                 value={inputs.electricityRatePerKwh}
@@ -165,14 +163,6 @@ export default function OutputSummary() {
                 format={(v) => `$${v.toFixed(3)}`}
                 onChange={(v) => setInputs({ electricityRatePerKwh: v })}
               />
-            }
-          />
-          <Ledger
-            label="Demand charges"
-            value={fmtCurrency(d.peakDemandChargeAnnual)}
-            context={`${fmtInt(d.peakLightingKW)} kW × $${inputs.demandChargePerKwMonth.toFixed(0)}/kW · ${fmtPct(d.demandFractionOfBill)} of electric`}
-            warn={d.demandFractionOfBill > 0.4}
-            extra={
               <SensitivitySlider
                 label="Demand charge"
                 value={inputs.demandChargePerKwMonth}
@@ -183,133 +173,52 @@ export default function OutputSummary() {
                 format={(v) => `$${v.toFixed(1)}`}
                 onChange={(v) => setInputs({ demandChargePerKwMonth: v })}
               />
-            }
-          />
-          <Ledger
-            label="Lighting draw (peak)"
-            value={fmt1(d.peakInstalledKW)}
-            unit="kW"
-            context={`${fmtInt(d.peakFixtureCount)} × ${
-              d.fixture.wattsPerFixture
-            }W · ${d.peakWattsPerSqFt.toFixed(1)} W/ft²`}
-          />
-          <Ledger
-            label="Cooling needed"
-            value={fmt1(d.peakCoolingTons)}
-            unit="tons"
-            context="screening estimate"
-            warn={d.peakCoolingTons > 0}
-            warnSuppress
-            citationId="kaspro-energy-balance"
-          />
-          <Ledger
-            label="Harvest / cycle"
-            value={d.gramsPerSqFtPerCycle.toFixed(1)}
-            unit="g/ft²"
-            context={d.yieldTierLabel}
-            warn={d.yieldTierNeedsEvidence}
-            citationId="yield-dli"
-          />
-          <Ledger
-            label="Fixture"
-            value={d.fixture.label.split("·")[0].trim()}
-            unit=""
-            context={`${d.fixture.ppe.toFixed(1)} µmol/J · ${d.fixture.type}`}
-            verbatim
-          />
+            </div>
+          </Group>
         </div>
       </div>
     </section>
   );
 }
 
-function Vital({
-  label,
-  value,
-  unit,
-  context,
-  citationId,
-  tooltip,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  context?: string;
-  citationId?: keyof typeof CITATIONS;
-  /** Plain-language hover explainer — what the number means, how to read it. */
-  tooltip?: string;
-}) {
+/** A titled decision column. */
+function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="min-w-[8rem]" title={tooltip}>
-      <div className="kpi-eyebrow flex items-center gap-1">
-        <span>{label}</span>
-        {citationId && <Citation id={citationId} />}
-      </div>
-      <div className="kpi-vital">
-        {value}
-        {unit && <span className="kpi-vital-unit">{unit}</span>}
-      </div>
-      {context && (
-        <div className="kpi-context proportional-nums">{context}</div>
-      )}
+    <div className="sm:px-5 sm:first:pl-0 sm:last:pr-0">
+      <div className="kpi-eyebrow text-ink-700">{title}</div>
+      <div className="mt-1.5 space-y-1">{children}</div>
     </div>
   );
 }
 
-function Ledger({
-  label,
+/** The headline number inside a group. */
+function Stat({
   value,
   unit,
-  context,
-  warn,
-  warnSuppress,
-  verbatim,
   citationId,
-  extra,
+  warn,
+  tooltip,
 }: {
-  label: string;
   value: string;
   unit?: string;
-  context?: string;
-  warn?: boolean;
-  warnSuppress?: boolean;
-  verbatim?: boolean;
   citationId?: keyof typeof CITATIONS;
-  /** Optional extra slot below the context line — used for sensitivity
-   *  sliders that mutate the coupled input live. */
-  extra?: ReactNode;
+  warn?: boolean;
+  tooltip?: string;
 }) {
-  // When `warn` AND we're NOT suppressing the color tint, show a small
-  // warn-orange dot before the eyebrow label so the cell is scannable
-  // from a distance. Pattern: ISA-101 alarm cue.
-  const showWarnDot = warn && !warnSuppress;
   return (
-    <div className="lg:px-5 lg:first:pl-0 lg:last:pr-0">
-      <div className="flex items-center gap-1.5 kpi-eyebrow">
-        {showWarnDot && (
-          <span
-            aria-hidden
-            className="inline-block h-1.5 w-1.5 rounded-full bg-warn-500"
-            style={{
-              boxShadow: "0 0 6px rgba(192,87,58,0.7)",
-            }}
-          />
-        )}
-        <span>{label}</span>
-        {citationId && <Citation id={citationId} />}
-      </div>
-      <div
-        className={`mt-0.5 ${verbatim ? "kpi-ledger-text" : "kpi-ledger"} ${
-          showWarnDot ? "text-warn-600" : "text-ink-900"
-        }`}
+    <div className="flex items-baseline gap-1.5" title={tooltip}>
+      <span
+        className={`kpi-vital ${warn ? "text-warn-600" : "text-ink-900"}`}
       >
         {value}
-        {unit && <span className="kpi-ledger-unit">{unit}</span>}
-      </div>
-      {context && (
-        <div className="kpi-context proportional-nums">{context}</div>
-      )}
-      {extra}
+        {unit && <span className="kpi-vital-unit">{unit}</span>}
+      </span>
+      {citationId && <Citation id={citationId} />}
     </div>
   );
+}
+
+/** A plain-language supporting line under a group's headline number. */
+function Line({ children }: { children: ReactNode }) {
+  return <div className="kpi-context proportional-nums">{children}</div>;
 }
