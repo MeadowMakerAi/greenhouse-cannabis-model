@@ -87,23 +87,25 @@ interface Props {
 // 1 ft = 1 unit in scene; canvas camera distance scales accordingly.
 
 /**
- * Retractable horizontal curtain — gutter-to-gutter installation with two
- * fabric panels that slide outward toward the sidewalls when retracting.
+ * Retractable horizontal curtain — gutter-to-gutter, single panel that
+ * deploys down the length of the greenhouse.
  *
- * Real Svensson / Argus / Cravo installations retract HORIZONTALLY: the
- * fabric bunches against the sidewall rails. We model two half-panels
- * sliding along the width axis; when `targetFraction === 1` the inner edges
- * meet at the centerline (fully deployed), when 0 they're tucked against the
- * gutter rails (fully retracted).
+ * Geometry verified 2026-05-23 via somersault (see reference memory
+ * `reference_greenhouse_curtain_mechanics`). Commercial cannabis
+ * light-dep installs (Ludvig Svensson Obscura + Wadsworth Powerpull,
+ * SLS Tempest, Fullbloom): curtain hangs horizontally at gutter/eave
+ * height, the metal leading-edge bar travels down the length of the
+ * greenhouse, fabric anchors at one gable and concertinas there when
+ * retracted. NOT roof-conformal. NOT roll-up. Blackout fabric is fully
+ * opaque (light-tight); thermal/energy screens are aluminized for IR
+ * reflection.
  *
- * Animation uses useFrame + lerp on a per-mesh ref so we don't fight React
- * re-renders. The convergence is fast (lerp factor 0.08 ≈ ~0.4s transition)
- * so the user reads it as motion without waiting.
+ * Animation uses useFrame + lerp on per-mesh refs so we don't fight
+ * React re-renders. ~0.5s transition reads as a curtain moving.
  *
- * Single shared component used by thermal screen, shade cloth, and blackout —
- * each spec passes its own color/opacity/elevation. This makes the three
- * curtain layers behave as a coherent system rather than three bespoke
- * components.
+ * Single shared component used by blackout, thermal, and shade — each
+ * wrapper sets color/opacity/metalness for its fabric, the geometry +
+ * animation are identical.
  */
 function RetractableCurtain({
   length,
@@ -113,7 +115,9 @@ function RetractableCurtain({
   color,
   opacity,
   roughness,
+  metalness = 0,
   railColor = "#3d4452",
+  edgeBarColor = "#b8bcc4",
 }: {
   length: number;
   width: number;
@@ -124,18 +128,23 @@ function RetractableCurtain({
   color: string;
   opacity: number;
   roughness: number;
+  metalness?: number;
   railColor?: string;
+  edgeBarColor?: string;
 }) {
-  const leftPanel = useRef<Mesh>(null);
-  const rightPanel = useRef<Mesh>(null);
+  const panelRef = useRef<Mesh>(null);
+  const edgeBarRef = useRef<Mesh>(null);
+  const bundleRef = useRef<Mesh>(null);
   const currentFraction = useRef(targetFraction);
-  const halfWidth = width / 2 - 0.4; // panel travel limit (gutter rail position)
-  const panelLength = length * 0.95;
+  const halfLength = length / 2;
+  const halfWidth = width / 2 - 0.4; // gutter-rail setback
+  const panelMaxLen = length - 0.4; // 0.2 setback at each gable
+  const panelWidth = width - 0.8; // span between gutters
 
   useFrame(() => {
     // Lerp the live fraction toward the target. 0.08 per frame at 60fps =
-    // ~95% closure in 0.5s — fast enough to feel responsive, slow enough to
-    // read as a curtain moving.
+    // ~95% closure in 0.5s — fast enough to feel responsive, slow enough
+    // to read as a curtain moving.
     const diff = targetFraction - currentFraction.current;
     if (Math.abs(diff) > 0.001) {
       currentFraction.current += diff * 0.08;
@@ -143,24 +152,35 @@ function RetractableCurtain({
       currentFraction.current = targetFraction;
     }
     const f = currentFraction.current;
-    // Each panel covers (width * 0.46 * f) of the canopy. When f=1, both
-    // panels meet near center with a 0.5ft seam allowance. When f=0, both
-    // are bunched against their respective sidewalls.
-    const panelWidth = width * 0.46 * Math.max(0.001, f);
-    if (leftPanel.current) {
-      leftPanel.current.scale.z = panelWidth;
-      // Panel center sits at: gutter_z − panelWidth/2
-      leftPanel.current.position.z = -halfWidth + panelWidth / 2;
+    const deployedLen = panelMaxLen * Math.max(0.001, f);
+    if (panelRef.current) {
+      // scale.x scales the plane geometry (sized to panelMaxLen on X)
+      // by the deploy fraction. Anchor at the −x gable side.
+      panelRef.current.scale.x = Math.max(0.001, f);
+      // Position center so the anchored edge stays at x = −halfLength + 0.2.
+      panelRef.current.position.x = -halfLength + 0.2 + deployedLen / 2;
     }
-    if (rightPanel.current) {
-      rightPanel.current.scale.z = panelWidth;
-      rightPanel.current.position.z = halfWidth - panelWidth / 2;
+    if (edgeBarRef.current) {
+      // Aluminum leading-edge bar travels with the moving edge.
+      edgeBarRef.current.position.x = -halfLength + 0.2 + deployedLen;
+      // Hide before the panel has any real extent so the bar doesn't
+      // hover at the anchored side when fully retracted.
+      edgeBarRef.current.visible = f > 0.01;
+    }
+    if (bundleRef.current) {
+      // Folded bundle parked at the anchored gable. Grows with the
+      // un-deployed length so the user sees "fabric stored over there"
+      // rather than fabric appearing from thin air.
+      const retractedFraction = Math.max(0, 1 - f);
+      const bundleScale = 0.3 + retractedFraction * 1.4; // visual girth
+      bundleRef.current.scale.set(1, bundleScale, 1);
+      bundleRef.current.visible = f < 0.99;
     }
   });
 
   return (
     <group>
-      {/* Curtain track rails along each gutter line */}
+      {/* Gutter rails along the two long sides */}
       <mesh position={[0, elevation + 0.08, halfWidth]}>
         <boxGeometry args={[length, 0.06, 0.06]} />
         <meshStandardMaterial color={railColor} metalness={0.5} />
@@ -169,37 +189,47 @@ function RetractableCurtain({
         <boxGeometry args={[length, 0.06, 0.06]} />
         <meshStandardMaterial color={railColor} metalness={0.5} />
       </mesh>
-      {/* Left panel — starts bunched at -halfWidth, slides toward center */}
+      {/* Curtain panel — anchored at the −x gable, deploys toward +x */}
       <mesh
-        ref={leftPanel}
-        position={[0, elevation, -halfWidth]}
+        ref={panelRef}
+        position={[-halfLength + 0.2, elevation, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
-        scale={[1, 1, 0.001]}
+        scale={[0.001, 1, 1]}
       >
-        {/* Unit z-extent of the plane; scale.z provides the actual deployed width */}
-        <planeGeometry args={[panelLength, 1]} />
+        <planeGeometry args={[panelMaxLen, panelWidth]} />
         <meshStandardMaterial
           color={color}
           side={THREE.DoubleSide}
           opacity={opacity}
-          transparent
+          transparent={opacity < 0.999}
           roughness={roughness}
+          metalness={metalness}
         />
       </mesh>
-      {/* Right panel — mirror */}
+      {/* Aluminum leading-edge bar — travels with the moving edge */}
       <mesh
-        ref={rightPanel}
-        position={[0, elevation, halfWidth]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        scale={[1, 1, 0.001]}
+        ref={edgeBarRef}
+        position={[-halfLength + 0.2, elevation - 0.04, 0]}
       >
-        <planeGeometry args={[panelLength, 1]} />
+        <boxGeometry args={[0.12, 0.12, panelWidth]} />
+        <meshStandardMaterial
+          color={edgeBarColor}
+          metalness={0.85}
+          roughness={0.3}
+        />
+      </mesh>
+      {/* Folded bundle at the anchored gable — fabric concertinas here
+       * when retracted. A simple stacked box reads as "parked fabric"
+       * without paying for a real fold simulation. */}
+      <mesh
+        ref={bundleRef}
+        position={[-halfLength + 0.25, elevation - 0.1, 0]}
+      >
+        <boxGeometry args={[0.5, 0.2, panelWidth]} />
         <meshStandardMaterial
           color={color}
-          side={THREE.DoubleSide}
-          opacity={opacity}
-          transparent
           roughness={roughness}
+          metalness={metalness}
         />
       </mesh>
     </group>
@@ -220,17 +250,20 @@ function ThermalScreen({
   elevation: number;
   deployedFraction: number;
 }) {
-  // Cream / aluminized fabric (Ludvig Svensson XLS Obscura / Harmony — energy
-  // screens are typically aluminized for IR reflection)
+  // Aluminized energy screen (Ludvig Svensson XLS / Harmony — woven
+  // aluminum strips reflect IR back to the canopy at night). Metallic
+  // sheen + slight translucency reads as fabric, not foil.
   return (
     <RetractableCurtain
       length={length}
       width={width}
       elevation={elevation}
       targetFraction={deployedFraction}
-      color="#e8e2d2"
-      opacity={0.55}
-      roughness={0.92}
+      color="#dcd9cc"
+      opacity={0.92}
+      roughness={0.55}
+      metalness={0.45}
+      edgeBarColor="#c8ccd2"
     />
   );
 }
@@ -248,14 +281,16 @@ function ShadeCloth({
   transmissionPct: number;
   deployedFraction: number;
 }) {
-  const opacity = Math.min(0.65, Math.max(0.18, 1 - transmissionPct / 100 + 0.1));
+  // Neutral grey/white knit — real shade cloth runs white, silver, or
+  // black depending on type. Green was unrepresentative.
+  const opacity = Math.min(0.7, Math.max(0.2, 1 - transmissionPct / 100 + 0.1));
   return (
     <RetractableCurtain
       length={length}
       width={width}
       elevation={elevation}
       targetFraction={deployedFraction}
-      color="#5a6a40"
+      color="#cfd2cc"
       opacity={opacity}
       roughness={0.95}
     />
@@ -266,59 +301,29 @@ function BlackoutCurtain({
   length,
   width,
   elevation,
-  eave,
   deployedFraction,
 }: {
   length: number;
   width: number;
   elevation: number;
-  eave: number;
   deployedFraction: number;
 }) {
-  // Sidewall pull-downs remain static (they don't retract horizontally —
-  // they roll up vertically from floor to gutter when not in use). When
-  // deployedFraction is low, render them with reduced opacity so they
-  // visibly "lift" rather than disappear.
-  const sidewallOpacity = 0.72 * Math.max(0.05, deployedFraction);
+  // Light-tight blackout (Obscura / SLS Tempest blackout face). Fully
+  // opaque when deployed — that is the entire point. Perimeter
+  // light-lock is a permanent skirt at the structure, not a fading
+  // sidewall panel; deferred to a follow-up pass.
   return (
-    <group>
-      <RetractableCurtain
-        length={length}
-        width={width}
-        elevation={elevation}
-        targetFraction={deployedFraction}
-        color="#0d0e10"
-        opacity={0.78}
-        roughness={0.95}
-        railColor="#1a1d22"
-      />
-      {/* Sidewall pull-downs (south + north) — visibility fades with
-       * deployedFraction so the user reads "retracting" as a single motion */}
-      {deployedFraction > 0.02 && (
-        <>
-          <mesh position={[0, eave / 2 + 0.5, width / 2 - 0.08]}>
-            <planeGeometry args={[length * 0.95, eave * deployedFraction]} />
-            <meshStandardMaterial
-              color="#0d0e10"
-              side={THREE.DoubleSide}
-              opacity={sidewallOpacity}
-              transparent
-              roughness={0.95}
-            />
-          </mesh>
-          <mesh position={[0, eave / 2 + 0.5, -width / 2 + 0.08]}>
-            <planeGeometry args={[length * 0.95, eave * deployedFraction]} />
-            <meshStandardMaterial
-              color="#0d0e10"
-              side={THREE.DoubleSide}
-              opacity={sidewallOpacity}
-              transparent
-              roughness={0.95}
-            />
-          </mesh>
-        </>
-      )}
-    </group>
+    <RetractableCurtain
+      length={length}
+      width={width}
+      elevation={elevation}
+      targetFraction={deployedFraction}
+      color="#0d0e10"
+      opacity={1.0}
+      roughness={0.95}
+      railColor="#1a1d22"
+      edgeBarColor="#9aa0aa"
+    />
   );
 }
 
@@ -636,7 +641,6 @@ function GreenhouseStructure({
         length={length}
         width={width}
         elevation={blackoutElevation ?? eave - 0.05}
-        eave={eave}
         deployedFraction={blackoutActive ? 1 : 0}
       />
     </group>

@@ -36,8 +36,10 @@ export const defaultGreenhouseGeometry = {
   greenhouseWidthFt: 32,
   eaveHeightFt: 8,
   peakHeightFt: 14,
-  // Active flowering canopy (typically smaller than floor)
-  canopyAreaSqFt: 1000,
+  // Active flowering canopy (typically smaller than floor).
+  // 1200/1536 ≈ 78% — typical commercial layout with 2–3 ft aisles.
+  // Auto-scales with length × width changes (ScenarioContext.setInputs).
+  canopyAreaSqFt: 1200,
   // Override-able derived values (auto-computed from dimensions if not set)
   greenhouseFloorAreaSqFt: 1500, // = length × width when in sync
   greenhouseEnvelopeAreaSqFt: 3500, // = floor + 2(L×eave) + 2(W×eave) + 2 gable triangles + 2 roof slopes
