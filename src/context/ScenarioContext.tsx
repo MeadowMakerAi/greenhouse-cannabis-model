@@ -160,6 +160,13 @@ export interface ScenarioInputs {
   // Cultivation phase + cycles
   cultivationPhase: "vegetative" | "earlyFlower" | "midFlower" | "lateFlower";
   cyclesPerYear: number;
+  /**
+   * Flowering plants per sq ft of canopy. Triple-sourced range
+   * (Cannabis Industry Institute / Greenhouse Grower; Royal Queen Seeds
+   * / Premium Cultivars; Bugbee-style density studies): commercial
+   * standard 0.65–1.0; Sea of Green can push 2–4. Default 1.0.
+   */
+  plantsPerSqFt: number;
   // Plant growth schedule (drives 3D plant geometry over time)
   cropStartDayOfYear: number; // when this cycle started (clone planted)
   vegDays: number; // length of vegetative phase
@@ -293,6 +300,7 @@ export const defaultScenario: ScenarioInputs = {
   ventDewpointMarginF: defaultClimateControl.ventControl.ventDewpointMarginF,
   cultivationPhase: "midFlower",
   cyclesPerYear: 3,
+  plantsPerSqFt: 1.0,
   cropStartDayOfYear: 100, // April 10 — clone planted
   vegDays: 28,
   flowerDays: 56, // 8-week flower
@@ -428,14 +436,26 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
           (merged as Record<string, unknown>)[key] = min;
         }
       };
+      const clampMax = (key: keyof ScenarioInputs, max: number) => {
+        const v = merged[key] as number;
+        if (Number.isFinite(v) && v > max) {
+          (merged as Record<string, unknown>)[key] = max;
+        }
+      };
       clampMin("greenhouseLengthFt", 8);
+      clampMax("greenhouseLengthFt", 300); // single-zone practical max
       clampMin("greenhouseWidthFt", 8);
+      clampMax("greenhouseWidthFt", 60); // single-bay practical max
       clampMin("eaveHeightFt", 6);
+      clampMax("eaveHeightFt", 18); // typical commercial high-bay ceiling
       clampMin("peakHeightFt", 7); // geometryFromDims further enforces > eave
+      clampMax("peakHeightFt", 32);
       clampMin("canopyAreaSqFt", 50);
       clampMin("greenhouseFloorAreaSqFt", 50);
       clampMin("greenhouseEnvelopeAreaSqFt", 50);
       clampMin("greenhouseVolumeCuFt", 100);
+      clampMin("plantsPerSqFt", 0.1);
+      clampMax("plantsPerSqFt", 4); // Sea-of-Green upper bound
       // If any exterior dimension changed, re-derive area + envelope + volume
       const dimKeys = [
         "greenhouseLengthFt",

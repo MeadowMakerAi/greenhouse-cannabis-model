@@ -113,28 +113,28 @@ export default function AssumptionPanel() {
           value={inputs.greenhouseLengthFt}
           onChange={(n) => setInputs({ greenhouseLengthFt: n })}
           unit="ft"
-          hint="Long-axis exterior length (gutter run direction)."
+          hint="Long-axis exterior length (gutter run direction). Suggested 16–300 ft for a single-zone commercial greenhouse."
         />
         <NumberField
           label="Width"
           value={inputs.greenhouseWidthFt}
           onChange={(n) => setInputs({ greenhouseWidthFt: n })}
           unit="ft"
-          hint="Short-axis exterior width (eave-to-eave)."
+          hint="Short-axis exterior width (eave-to-eave). Suggested 18–60 ft for a single bay; gutter-connect multi-bay houses exceed this."
         />
         <NumberField
           label="Eave height"
           value={inputs.eaveHeightFt}
           onChange={(n) => setInputs({ eaveHeightFt: n })}
           unit="ft"
-          hint="Sidewall vertical height before roof slope."
+          hint="Sidewall vertical height before roof slope. Suggested 8–18 ft (commercial high-bay range)."
         />
         <NumberField
           label="Peak height"
           value={inputs.peakHeightFt}
           onChange={(n) => setInputs({ peakHeightFt: n })}
           unit="ft"
-          hint="Ridge / peak vertical height."
+          hint="Ridge / peak vertical height. Suggested 10–28 ft."
         />
         <NumberField
           label="Canopy area"
@@ -590,6 +590,33 @@ export default function AssumptionPanel() {
           unit="cycles"
           hint="Greenhouse 2–3, indoor sealed 4–5"
         />
+        <NumberField
+          label="Plant density"
+          value={inputs.plantsPerSqFt}
+          onChange={(n) => setInputs({ plantsPerSqFt: n })}
+          step={0.05}
+          unit="plants/ft²"
+          hint="Commercial standard 0.65–1.0 plants/ft² (Cannabis Industry Institute via Greenhouse Grower; Royal Queen Seeds / Premium Cultivars). Sea-of-Green pushes 2–4 with shorter veg + smaller plants. Bugbee-style density studies (2-gal pots, 0.5 ft²/plant) maximize biomass per area but increase pathogen risk."
+        />
+        <div className="rounded-lg border border-ink-200 bg-ink-50 p-2 text-xs">
+          <div className="text-[10px] uppercase tracking-wider text-ink-500">
+            Auto-derived
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono tabular-nums text-ink-900">
+            <span className="text-ink-500">Total plants</span>
+            <span className="text-right">
+              {Math.round(inputs.canopyAreaSqFt * inputs.plantsPerSqFt).toLocaleString()}
+            </span>
+            <span className="text-ink-500">Plants / cycle</span>
+            <span className="text-right">
+              {Math.round(inputs.canopyAreaSqFt * inputs.plantsPerSqFt).toLocaleString()}
+            </span>
+            <span className="text-ink-500">Plants / yr</span>
+            <span className="text-right">
+              {Math.round(inputs.canopyAreaSqFt * inputs.plantsPerSqFt * inputs.cyclesPerYear).toLocaleString()}
+            </span>
+          </div>
+        </div>
         <SelectField
           label="Yield realism"
           value={inputs.yieldRealismCase}

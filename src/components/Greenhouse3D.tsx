@@ -52,8 +52,9 @@ interface Props {
   shadeActive?: boolean;
   /** Shade transmission % (0-100) */
   shadeTransmissionPct?: number;
-  /** Blackout curtain deployed — opaque black fabric at gutter level + sidewall
-   *  pull-downs. Cannabis photoperiod control: forces uninterrupted dark phase. */
+  /** Blackout curtain deployed — opaque fabric at gutter level + a
+   *  permanent perimeter light-lock skirt that appears at >50 % closure.
+   *  Cannabis photoperiod control: forces uninterrupted dark phase. */
   blackoutActive?: boolean;
   /** Track elevation above floor (ft) — operator-configurable so the same
    *  greenhouse geometry can host different curtain layer combinations. */
@@ -301,29 +302,81 @@ function BlackoutCurtain({
   length,
   width,
   elevation,
+  eave,
   deployedFraction,
 }: {
   length: number;
   width: number;
   elevation: number;
+  eave: number;
   deployedFraction: number;
 }) {
   // Light-tight blackout (Obscura / SLS Tempest blackout face). Fully
-  // opaque when deployed — that is the entire point. Perimeter
-  // light-lock is a permanent skirt at the structure, not a fading
-  // sidewall panel; deferred to a follow-up pass.
+  // opaque when deployed. Perimeter light-lock is a permanent skirt
+  // around the structure — without it the horizontal sheet alone is
+  // unrealistic because the shell glazing stays clear and daylight
+  // pours through the walls. Codex challenge P1, 2026-05-23.
+  const sealed = deployedFraction > 0.5;
+  const halfLength = length / 2;
+  const halfWidth = width / 2;
   return (
-    <RetractableCurtain
-      length={length}
-      width={width}
-      elevation={elevation}
-      targetFraction={deployedFraction}
-      color="#0d0e10"
-      opacity={1.0}
-      roughness={0.95}
-      railColor="#1a1d22"
-      edgeBarColor="#9aa0aa"
-    />
+    <group>
+      <RetractableCurtain
+        length={length}
+        width={width}
+        elevation={elevation}
+        targetFraction={deployedFraction}
+        color="#0d0e10"
+        opacity={1.0}
+        roughness={0.95}
+        railColor="#1a1d22"
+        edgeBarColor="#9aa0aa"
+      />
+      {sealed && (
+        <group>
+          {/* Long sidewalls (perimeter light-lock skirt) */}
+          <mesh position={[0, eave / 2, halfWidth - 0.05]} rotation={[0, Math.PI, 0]}>
+            <planeGeometry args={[length - 0.4, eave - 0.1]} />
+            <meshStandardMaterial
+              color="#0d0e10"
+              side={THREE.DoubleSide}
+              roughness={0.95}
+            />
+          </mesh>
+          <mesh position={[0, eave / 2, -halfWidth + 0.05]}>
+            <planeGeometry args={[length - 0.4, eave - 0.1]} />
+            <meshStandardMaterial
+              color="#0d0e10"
+              side={THREE.DoubleSide}
+              roughness={0.95}
+            />
+          </mesh>
+          {/* Gable end walls */}
+          <mesh
+            position={[halfLength - 0.05, eave / 2, 0]}
+            rotation={[0, -Math.PI / 2, 0]}
+          >
+            <planeGeometry args={[width - 0.4, eave - 0.1]} />
+            <meshStandardMaterial
+              color="#0d0e10"
+              side={THREE.DoubleSide}
+              roughness={0.95}
+            />
+          </mesh>
+          <mesh
+            position={[-halfLength + 0.05, eave / 2, 0]}
+            rotation={[0, Math.PI / 2, 0]}
+          >
+            <planeGeometry args={[width - 0.4, eave - 0.1]} />
+            <meshStandardMaterial
+              color="#0d0e10"
+              side={THREE.DoubleSide}
+              roughness={0.95}
+            />
+          </mesh>
+        </group>
+      )}
+    </group>
   );
 }
 
@@ -623,7 +676,8 @@ function GreenhouseStructure({
        * practice: curtains sit on adjacent tracks separated by 6-12 in so
        * any combination (0/1/2/3 layers) can deploy without colliding. The
        * deployed-fraction prop drives a useFrame lerp inside each curtain,
-       * so retraction reads as a horizontal slide toward the sidewalls. */}
+       * so retraction reads as a horizontal slide down the length of the
+       * greenhouse (single-panel gutter-to-gutter). */}
       <ThermalScreen
         length={length}
         width={width}
@@ -641,6 +695,7 @@ function GreenhouseStructure({
         length={length}
         width={width}
         elevation={blackoutElevation ?? eave - 0.05}
+        eave={eave}
         deployedFraction={blackoutActive ? 1 : 0}
       />
     </group>

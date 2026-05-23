@@ -497,7 +497,8 @@ export default function BuildSheet() {
         >
           {inputs.blackoutEnabled ? (
             (() => {
-              // Fabric area = horizontal at gutter level + two sidewall pull-downs.
+              // Fabric area = horizontal sheet at gutter level + permanent
+              // perimeter light-lock skirt (long sidewalls + gable ends).
               const length = inputs.greenhouseLengthFt;
               const width = inputs.greenhouseWidthFt;
               const eave = inputs.eaveHeightFt;
