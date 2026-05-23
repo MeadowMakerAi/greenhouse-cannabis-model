@@ -12,7 +12,6 @@ import {
   naturalVentilationCFM,
   outdoorPPFDFromElevation,
   sunPositionAt,
-  ventStateAt,
   ventStateDecision,
   type VentReason,
   type SunPosition,
@@ -55,7 +54,9 @@ export interface LiveSnapshot {
   canopyNaturalPPFD: number;
   canopyTotalPPFD: number;
   lights: LightsState;
-  ventOpen: boolean;
+  /** Proportional ridge-vent opening (0..1) — driven by the P-band on
+   *  indoor T vs setpoint with humidity/dewpoint dumps forcing full open. */
+  ventOpen: number;
   /** Governing reason for the vent state — shown in the HUD systems row */
   ventReason: VentReason;
   indoorTempF: number;
@@ -79,7 +80,7 @@ export interface DailyTracePoint {
   outdoorRH: number;
   canopyPPFD: number;
   supplementalOnFraction: number; // 0 or 1 for line steps
-  ventOpen: number; // 0 or 1
+  ventOpen: number; // 0..1 (proportional opening)
   sunElev: number;
   outdoorPPFD: number;
 }
@@ -101,7 +102,7 @@ export function useLiveDynamics() {
 
     const transmission = netCanopyTransmissionPct(inputs.envelope);
 
-    const computeAt = (hourOfDay: number, prevIndoor: number, prevVent: boolean) => {
+    const computeAt = (hourOfDay: number, prevIndoor: number, prevVent: number) => {
       const sun = sunPositionAt(lat, sim.dayOfYear, hourOfDay);
       const diurnal = diurnalState(
         hourOfDay,
@@ -204,17 +205,22 @@ export function useLiveDynamics() {
       );
 
       let T = prevIndoor;
-      let vent = prevVent;
+      let vent = prevVent; // proportional opening 0..1
       for (let s = 0; s < subSteps; s++) {
-        vent = ventStateAt({
+        // Proportional vent control: open % scales with how far indoor
+        // temp is above the setpoint, capped at full open. CFM through
+        // the ridge scales with the open % since the effective vent
+        // area is proportional to the opening.
+        vent = ventStateDecision({
           indoorTempF: T,
           ventOpenSetpointF: inputs.indoorTargetDryBulbF + 2,
           ventCloseSetpointF: inputs.indoorTargetDryBulbF - 1,
-          currentlyOpen: vent,
-        });
-        const A_eff = vent
-          ? effectiveVentAreaSqFt(peakRidgeArea, peakRidgeArea)
-          : 0;
+          currentlyOpen: vent > 0,
+        }).openFraction;
+        const A_eff =
+          vent > 0
+            ? effectiveVentAreaSqFt(peakRidgeArea, peakRidgeArea) * vent
+            : 0;
         const ventCFMSub = naturalVentilationCFM({
           effectiveOpenAreaSqFt: A_eff,
           stackHeightFt,
@@ -225,9 +231,12 @@ export function useLiveDynamics() {
           inputs.radiantHeatingEnabled && T < inputs.indoorTargetDryBulbF - 2
             ? inputs.radiantHeatingCapacityBTUhr * 0.7
             : 0;
+        // Mechanical cooling backs up natural ventilation when vents
+        // alone can't keep up. Phased in as vents approach full open.
+        const ventInsufficient = vent < 0.95;
         const coolingSub =
-          T > inputs.indoorTargetDryBulbF + 2 && !vent
-            ? peakCoolingCapBTUhr * 0.5
+          T > inputs.indoorTargetDryBulbF + 2 && ventInsufficient
+            ? peakCoolingCapBTUhr * 0.5 * (1 - vent)
             : 0;
         T = indoorTempStep({
           outdoorTempF: diurnal.outdoorTempF,
@@ -269,7 +278,7 @@ export function useLiveDynamics() {
     // Build a 24-hour trace for the current day (to chart it)
     const trace: DailyTracePoint[] = [];
     let prevIndoor = climateRow.meanTempF;
-    let prevVent = false;
+    let prevVent = 0;
     for (let h = 0; h <= 24; h += 0.5) {
       const r = computeAt(h, prevIndoor, prevVent);
       prevIndoor = r.indoorTempF;
@@ -281,7 +290,7 @@ export function useLiveDynamics() {
         outdoorRH: r.outdoor.outdoorRH,
         canopyPPFD: r.canopyTotalPPFD,
         supplementalOnFraction: r.lights.on ? r.lights.dimLevel : 0,
-        ventOpen: r.ventOpen ? 1 : 0,
+        ventOpen: r.ventOpen,
         sunElev: r.sun.elevationDeg,
         outdoorPPFD: r.outdoorPPFD,
       });
@@ -298,7 +307,7 @@ export function useLiveDynamics() {
     const fullSnap = computeAt(
       sim.hourOfDay,
       prev.indoorTempF,
-      prev.ventOpen === 1,
+      prev.ventOpen,
     );
     // Hard guard: even with the substepped solver, sustained numerical
     // pathology in user inputs (e.g., volume = 0, U-value 0) could produce
@@ -326,7 +335,9 @@ export function useLiveDynamics() {
       fullSnap.outdoor.outdoorRH,
     );
     const transpirationAH = 0.0008; // ~0.8 g/kg lift from dense canopy transpiration
-    const ventMixingFraction = fullSnap.ventOpen ? 0.85 : 0.25; // 85 % outdoor when vents open
+    // Indoor↔outdoor air mixing scales with proportional vent opening:
+    // baseline 25 % leakage (vents closed) up to 85 % at full open.
+    const ventMixingFraction = 0.25 + 0.6 * fullSnap.ventOpen;
     const ambientIndoorAH =
       outdoorAH * ventMixingFraction +
       outdoorAH * (1 - ventMixingFraction) +
@@ -372,7 +383,7 @@ export function useLiveDynamics() {
       indoorTempF: fullSnap.indoorTempF,
       ventOpenSetpointF: inputs.indoorTargetDryBulbF + 2,
       ventCloseSetpointF: inputs.indoorTargetDryBulbF - 1,
-      currentlyOpen: fullSnap.ventOpen,
+      currentlyOpen: fullSnap.ventOpen > 0,
       indoorRHPct: indoorRH,
       humidityTargetPct: inputs.ventHumidityTargetPct,
       indoorAbsoluteHumidity: absoluteHumidityKgPerKg(
@@ -411,7 +422,7 @@ export function useLiveDynamics() {
       canopyNaturalPPFD: fullSnap.canopyNaturalPPFD,
       canopyTotalPPFD: fullSnap.canopyTotalPPFD,
       lights: fullSnap.lights,
-      ventOpen: ventDecision.open,
+      ventOpen: ventDecision.openFraction,
       ventReason: ventDecision.reason,
       indoorTempF: fullSnap.indoorTempF,
       shadeActive: fullSnap.shadeActive,

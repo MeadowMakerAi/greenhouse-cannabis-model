@@ -340,6 +340,43 @@ describe("ventStateDecision (multi-input, Argus Titan pattern)", () => {
     expect(d.reason).toBe("thermal-load");
   });
 
+  it("openFraction is proportional: 0% at setpoint, 50% at +2.5°F, 100% at +5°F", () => {
+    expect(
+      ventStateDecision({ ...base, indoorTempF: 79.99 }).openFraction,
+    ).toBe(0);
+    expect(
+      ventStateDecision({ ...base, indoorTempF: 80 }).openFraction,
+    ).toBeCloseTo(0, 5);
+    expect(
+      ventStateDecision({ ...base, indoorTempF: 82.5 }).openFraction,
+    ).toBeCloseTo(0.5, 5);
+    expect(
+      ventStateDecision({ ...base, indoorTempF: 85 }).openFraction,
+    ).toBeCloseTo(1, 5);
+    expect(
+      ventStateDecision({ ...base, indoorTempF: 95 }).openFraction,
+    ).toBe(1); // clamped at full open
+  });
+
+  it("humidity / dewpoint dumps drive openFraction to 1.0", () => {
+    const humidity = ventStateDecision({
+      ...base,
+      indoorTempF: 78, // below thermal trigger
+      indoorRHPct: 75,
+      humidityTargetPct: 65,
+      indoorAbsoluteHumidity: 0.012,
+      outdoorAbsoluteHumidity: 0.008,
+    });
+    expect(humidity.openFraction).toBe(1);
+    const dewpoint = ventStateDecision({
+      ...base,
+      indoorTempF: 78,
+      indoorDewpointF: 76,
+      dewpointMarginF: 3,
+    });
+    expect(dewpoint.openFraction).toBe(1);
+  });
+
   it("hysteresis: closes below close setpoint", () => {
     const d = ventStateDecision({ ...base, indoorTempF: 75, currentlyOpen: true });
     expect(d.open).toBe(false);

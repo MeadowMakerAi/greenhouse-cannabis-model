@@ -62,7 +62,8 @@ interface Props {
   shadeElevation?: number;
   blackoutElevation?: number;
   /** Roof vents open */
-  roofVentsOpen?: boolean;
+  /** Ridge-vent opening fraction (0..1). Proportional, not binary. */
+  roofVentFraction?: number;
   /** Live sun position (azimuth/elevation in degrees from N) — when supplied, overrides month-based sun */
   liveSunAzimuthDeg?: number;
   liveSunElevationDeg?: number;
@@ -412,7 +413,7 @@ function RoofVent({
   ridgeY,
   ridgeZ,
   slopeAngleRad,
-  open,
+  openFraction,
   side,
 }: {
   ventWidth: number;
@@ -424,17 +425,19 @@ function RoofVent({
   ridgeZ: number;
   /** Roof slope angle from horizontal (positive = ridge to eave going down) */
   slopeAngleRad: number;
-  open: boolean;
+  openFraction: number;
   /** "south" = +z slope, "north" = −z slope */
   side: "south" | "north";
 }) {
   // Atrium-style continuous ridge vent. Hinge sits at the ridge. Closed: flush
   // on the roof slope (rotated by ±slopeAngleRad). Open: rotates outward an
-  // additional ~38° (commercial ridge vents typically 30–45°).
+  // additional 0–38° proportional to openFraction (commercial ridge vents
+  // typically 30–45° at full open).
   // Each leaf opens AWAY from the ridge centerline — north leaf rotates one
   // way, south leaf the opposite — so together they form an inverted-V opening.
   const fullyOpenDeg = 38;
-  const openRad = open ? (fullyOpenDeg * Math.PI) / 180 : 0;
+  const openRad =
+    Math.max(0, Math.min(1, openFraction)) * (fullyOpenDeg * Math.PI) / 180;
   // Sign convention:
   //   Closed south leaf: rotation about X = +slopeAngleRad (panel goes +z, downhill)
   //   Closed north leaf: rotation about X = -slopeAngleRad (panel goes -z)
@@ -479,7 +482,7 @@ function GreenhouseStructure({
   thermalScreenActive,
   shadeActive,
   shadeTransmissionPct,
-  roofVentsOpen,
+  roofVentFraction,
   blackoutActive,
   thermalScreenElevation,
   shadeElevation,
@@ -492,7 +495,8 @@ function GreenhouseStructure({
   thermalScreenActive?: boolean;
   shadeActive?: boolean;
   shadeTransmissionPct?: number;
-  roofVentsOpen?: boolean;
+  /** Ridge-vent opening fraction (0..1). Proportional, not binary. */
+  roofVentFraction?: number;
   blackoutActive?: boolean;
   thermalScreenElevation?: number;
   shadeElevation?: number;
@@ -652,7 +656,7 @@ function GreenhouseStructure({
               ridgeY={ridgeY}
               ridgeZ={0}
               slopeAngleRad={slopeAngleRad}
-              open={!!roofVentsOpen}
+              openFraction={roofVentFraction ?? 0}
               side="south"
             />,
             <RoofVent
@@ -663,7 +667,7 @@ function GreenhouseStructure({
               ridgeY={ridgeY}
               ridgeZ={0}
               slopeAngleRad={slopeAngleRad}
-              open={!!roofVentsOpen}
+              openFraction={roofVentFraction ?? 0}
               side="north"
             />,
           );
@@ -1870,7 +1874,7 @@ export default function Greenhouse3D({
   thermalScreenActive = false,
   shadeActive = false,
   shadeTransmissionPct = 70,
-  roofVentsOpen = false,
+  roofVentFraction = 0,
   blackoutActive = false,
   thermalScreenElevation,
   shadeElevation,
@@ -2130,7 +2134,7 @@ export default function Greenhouse3D({
               thermalScreenActive={thermalScreenActive}
               shadeActive={shadeActive}
               shadeTransmissionPct={shadeTransmissionPct}
-              roofVentsOpen={roofVentsOpen}
+              roofVentFraction={roofVentFraction}
               blackoutActive={blackoutActive}
               thermalScreenElevation={thermalScreenElevation}
               shadeElevation={shadeElevation}

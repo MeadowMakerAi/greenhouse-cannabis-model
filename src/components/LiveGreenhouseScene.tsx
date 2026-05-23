@@ -257,7 +257,9 @@ export default function LiveGreenhouseScene({
           thermalScreenActive={thermalActive}
           shadeActive={shadeActive}
           shadeTransmissionPct={inputs.shadeTransmissionPct}
-          roofVentsOpen={syncToSim ? live.snapshot.ventOpen : showVentsOpen}
+          roofVentFraction={
+            syncToSim ? live.snapshot.ventOpen : showVentsOpen ? 1 : 0
+          }
           blackoutActive={syncToSim ? live.snapshot.blackoutActive : false}
           thermalScreenElevation={inputs.thermalScreenElevationFt}
           shadeElevation={inputs.shadeElevationFt}

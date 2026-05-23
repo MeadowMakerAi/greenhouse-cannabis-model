@@ -842,7 +842,9 @@ function Live3DScene(props: {
           resetCameraSignal={resetSignal}
           thermalScreenActive={thermalActive}
           shadeActive={shadeActive}
-          roofVentsOpen={props.syncToSim ? live.snapshot.ventOpen : showVentsOpen}
+          roofVentFraction={
+            props.syncToSim ? live.snapshot.ventOpen : showVentsOpen ? 1 : 0
+          }
           liveSunAzimuthDeg={props.syncToSim ? live.snapshot.sun.azimuthDeg : undefined}
           liveSunElevationDeg={props.syncToSim ? live.snapshot.sun.elevationDeg : undefined}
           lightsDimLevel={

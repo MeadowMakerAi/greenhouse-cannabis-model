@@ -315,8 +315,31 @@ export interface VentInput {
 }
 
 export interface VentDecision {
+  /** True when openFraction > 0 — preserved for callers that need a
+   *  binary state. New code should consume openFraction directly. */
   open: boolean;
+  /**
+   * Proportional opening (0..1). Commercial greenhouse climate
+   * controllers run a P-band on indoor temp vs setpoint: vents start
+   * to crack at setpoint and reach full open at setpoint + band. We
+   * use a 5 °F band (UMass / UConn extension guidance). Humidity and
+   * dewpoint triggers force full open. Guards drive to 0.
+   */
+  openFraction: number;
   reason: VentReason;
+}
+
+/** Proportional band on indoor T above setpoint (°F).
+ *  Vent opens linearly from 0 % at setpoint to 100 % at setpoint+band.
+ *  5 °F matches typical commercial controller bands. */
+const VENT_PROPORTIONAL_BAND_F = 5;
+
+function asDecision(
+  open: boolean,
+  openFraction: number,
+  reason: VentReason,
+): VentDecision {
+  return { open, openFraction, reason };
 }
 
 export function ventStateDecision(input: VentInput): VentDecision {
@@ -326,52 +349,71 @@ export function ventStateDecision(input: VentInput): VentDecision {
     input.outdoorTempF > input.indoorTempF + 5
   ) {
     // Outside is hotter than inside + 5°F — venting would heat the canopy.
-    // Close if currently open.
-    return { open: false, reason: "blocked-outdoor-hot" };
+    return asDecision(false, 0, "blocked-outdoor-hot");
   }
   if (input.blackoutActive && input.lightsOn) {
-    // Blackout is deployed AND lights are on (e.g., summer scheduled flip).
-    // Opening the vents would break photoperiod containment via the ridge
-    // opening — the curtain alone can't seal the open-vent gap.
-    return { open: false, reason: "blocked-blackout-photoperiod" };
+    // Blackout is deployed AND lights are on. Opening the vents would
+    // break photoperiod containment via the ridge opening.
+    return asDecision(false, 0, "blocked-blackout-photoperiod");
   }
 
-  // TRIGGERS — any opens the vents
-  if (input.indoorTempF >= input.ventOpenSetpointF) {
-    return { open: true, reason: "thermal-load" };
-  }
+  // TRIGGERS — strongest trigger wins; thermal is proportional, humidity
+  // and dewpoint dumps force full open.
+  const thermalDelta = input.indoorTempF - input.ventOpenSetpointF;
+  const thermalFraction = Math.max(
+    0,
+    Math.min(1, thermalDelta / VENT_PROPORTIONAL_BAND_F),
+  );
+
+  let humidityFraction = 0;
   if (
     input.indoorRHPct !== undefined &&
     input.humidityTargetPct !== undefined &&
     input.indoorRHPct > input.humidityTargetPct + 5
   ) {
-    // Humidity dump — only if outdoor air is drier (less moisture in the
-    // absolute sense). If outdoor AH not provided, fall back to the simpler
-    // "high RH = open" rule (UMass standard).
     const outdoorDrier =
       input.outdoorAbsoluteHumidity === undefined ||
       input.indoorAbsoluteHumidity === undefined ||
       input.outdoorAbsoluteHumidity < input.indoorAbsoluteHumidity;
-    if (outdoorDrier) {
-      return { open: true, reason: "humidity-dump" };
-    }
+    if (outdoorDrier) humidityFraction = 1;
   }
+
+  let dewpointFraction = 0;
   if (
     input.indoorDewpointF !== undefined &&
     input.dewpointMarginF !== undefined &&
     input.indoorTempF - input.indoorDewpointF < input.dewpointMarginF
   ) {
-    return { open: true, reason: "dewpoint-margin" };
+    dewpointFraction = 1;
   }
 
-  // Hysteresis hold — keep state when in the deadband
+  const triggerFraction = Math.max(
+    thermalFraction,
+    humidityFraction,
+    dewpointFraction,
+  );
+  if (triggerFraction > 0) {
+    const reason: VentReason =
+      dewpointFraction > 0
+        ? "dewpoint-margin"
+        : humidityFraction > 0
+          ? "humidity-dump"
+          : "thermal-load";
+    return asDecision(true, triggerFraction, reason);
+  }
+
+  // Hysteresis hold — keep state when in the deadband (below open
+  // setpoint but above the close setpoint, currently open).
   if (input.indoorTempF <= input.ventCloseSetpointF) {
-    return { open: false, reason: "off" };
+    return asDecision(false, 0, "off");
   }
   if (input.currentlyOpen) {
-    return { open: true, reason: "hysteresis-hold" };
+    // Hold the previous proportional state — without a stored fraction
+    // input the screening default is to keep the vent cracked at the
+    // proportional-band minimum until we drop below close setpoint.
+    return asDecision(true, 0.15, "hysteresis-hold");
   }
-  return { open: false, reason: "off" };
+  return asDecision(false, 0, "off");
 }
 
 /**
