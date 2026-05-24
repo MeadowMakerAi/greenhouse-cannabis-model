@@ -75,4 +75,23 @@ describe("clampScenarioInputs", () => {
     expect(Number.isFinite(r.greenhouseLengthFt)).toBe(true);
     expect(Number.isFinite(r.canopyAreaSqFt)).toBe(true);
   });
+
+  it("clamps flowerPhotoperiodHours to [1, 24] (DLI tile divide-by-zero safety)", () => {
+    expect(
+      clampScenarioInputs({ ...defaultScenario, flowerPhotoperiodHours: 0 })
+        .flowerPhotoperiodHours,
+    ).toBe(1);
+    expect(
+      clampScenarioInputs({ ...defaultScenario, flowerPhotoperiodHours: -5 })
+        .flowerPhotoperiodHours,
+    ).toBe(1);
+    expect(
+      clampScenarioInputs({ ...defaultScenario, flowerPhotoperiodHours: 36 })
+        .flowerPhotoperiodHours,
+    ).toBe(24);
+    expect(
+      clampScenarioInputs({ ...defaultScenario, flowerPhotoperiodHours: 12 })
+        .flowerPhotoperiodHours,
+    ).toBe(12);
+  });
 });

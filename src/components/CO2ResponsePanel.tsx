@@ -1,6 +1,7 @@
 import { useDerived } from "../context/useDerived";
 import { useScenario } from "../context/ScenarioContext";
 import { fmt1, fmtInt } from "../utils/formatting";
+import DLIBandTile from "./DLIBandTile";
 
 export default function CO2ResponsePanel() {
   const { inputs } = useScenario();
@@ -9,6 +10,12 @@ export default function CO2ResponsePanel() {
 
   return (
     <div className="space-y-3">
+      {/* Sourced DLI band ruler — anchor the operator's target against
+          the three peer-reviewed cannabis DLI thresholds and show the
+          CO₂ yield-equivalent uplift inline. Renders first so the
+          ruler is the first thing the eye lands on. */}
+      <DLIBandTile />
+
       <div className="card">
         <div className="card-header">
           <span>CO₂ feasibility · {inputs.co2SetpointPpm} ppm · {inputs.ventilationMode.replace("_", " ")}</span>

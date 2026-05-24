@@ -426,6 +426,12 @@ export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
   // functions in co2Model and have them silently saturate.
   clampMin("co2SetpointPpm", 350);
   clampMax("co2SetpointPpm", 2000);
+  // Photoperiod bounds: 1 h floor avoids divide-by-zero in dliToPPFD
+  // (which would render "≈ 0 µmol/m²/s @ 0h" on the DLI band tile);
+  // 24 h ceiling is the physical maximum continuous-light schedule.
+  // Typical flower runs 12 h; veg runs 18 h.
+  clampMin("flowerPhotoperiodHours", 1);
+  clampMax("flowerPhotoperiodHours", 24);
   return merged;
 }
 

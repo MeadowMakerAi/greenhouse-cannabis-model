@@ -83,6 +83,37 @@ const BASELINE_G_PER_M2_PER_CYCLE = 350;
 const BASELINE_DLI_MOL_M2_DAY = 40;
 const TOPT_F = 79; // ~26 °C — yield optimum (slightly below Pn Topt)
 const M2_PER_FT2 = 1 / 10.7639;
+const DLI_KINK = 70; // mol/m²/day — Rodriguez-Morrison saturation onset
+const DLI_KINK_FACTOR = DLI_KINK / BASELINE_DLI_MOL_M2_DAY; // 1.75
+
+/**
+ * Piecewise-linear DLI → yield-multiplier mapping. Linear up to DLI 70
+ * (Rodriguez-Morrison saturation onset), then half-slope diminishing
+ * returns above that. Exposed so other surfaces (e.g. the DLI band
+ * tile) can do consistent math against the same curve instead of
+ * re-implementing it and drifting.
+ */
+export function dliFactor(cycleAvgDLI: number): number {
+  if (cycleAvgDLI <= DLI_KINK) {
+    return Math.max(0, cycleAvgDLI / BASELINE_DLI_MOL_M2_DAY);
+  }
+  return DLI_KINK_FACTOR + (cycleAvgDLI - DLI_KINK) / (BASELINE_DLI_MOL_M2_DAY * 2);
+}
+
+/**
+ * Inverse of `dliFactor`: given a target yield multiplier, return the
+ * ambient-CO₂ DLI that would produce it. Used by the DLI band tile to
+ * translate an elevated-CO₂ scenario into its yield-equivalent
+ * ambient DLI without lying when the equivalent crosses the DLI_KINK
+ * saturation boundary.
+ */
+export function inverseDLIFactor(yieldFactor: number): number {
+  if (yieldFactor <= 0) return 0;
+  if (yieldFactor <= DLI_KINK_FACTOR) {
+    return yieldFactor * BASELINE_DLI_MOL_M2_DAY;
+  }
+  return DLI_KINK + (yieldFactor - DLI_KINK_FACTOR) * (BASELINE_DLI_MOL_M2_DAY * 2);
+}
 
 export function projectYield(input: YieldInput): YieldOutput {
   const cycleDays = 365 / Math.max(1, input.cyclesPerYear);
@@ -91,15 +122,10 @@ export function projectYield(input: YieldInput): YieldOutput {
   const cycleAvgDLI = input.annualDLIMolM2 / 365;
 
   // ---- DLI factor ----
-  // Linear up to DLI 70 (Rodriguez-Morrison saturation onset), then asymptotic.
-  let dliFactor: number;
-  if (cycleAvgDLI <= 70) {
-    dliFactor = cycleAvgDLI / BASELINE_DLI_MOL_M2_DAY;
-  } else {
-    // Above 70, diminishing returns — half slope, asymptote at ~2.0 × baseline
-    dliFactor = 70 / BASELINE_DLI_MOL_M2_DAY + (cycleAvgDLI - 70) / (BASELINE_DLI_MOL_M2_DAY * 2);
-  }
-  dliFactor = Math.max(0, dliFactor);
+  // Delegates to the exported `dliFactor` helper so the DLI band tile
+  // and any other surface that needs the same math reads from one
+  // definition.
+  const dliFactorValue = dliFactor(cycleAvgDLI);
 
   // ---- Temperature factor ----
   // Bell curve centered on Topt; drops to 0.5 at ±8 °F, 0 at ±16 °F
@@ -123,7 +149,7 @@ export function projectYield(input: YieldInput): YieldOutput {
   const realismFactor = input.realismFactor ?? 1;
   const gramsPerM2PerCycle =
     BASELINE_G_PER_M2_PER_CYCLE *
-    dliFactor *
+    dliFactorValue *
     tempFactor *
     co2Factor *
     realismFactor;
@@ -139,7 +165,7 @@ export function projectYield(input: YieldInput): YieldOutput {
     gramsPerM2PerYear,
     totalAnnualKg,
     totalAnnualLbs,
-    dliFactor,
+    dliFactor: dliFactorValue,
     tempFactor,
     co2Factor,
     baselineGramsPerM2PerCycle: BASELINE_G_PER_M2_PER_CYCLE,
