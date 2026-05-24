@@ -16,9 +16,15 @@
  *   - DLI factor:  cumulative DLI / expected DLI for elapsed days. Linear up
  *                  to 1.0, plateaus at 1.05.
  *   - Temp factor: bell on Topt 79 °F (Chandra 2008).
- *   - CO₂ factor:  reuses the bounded multiplier from yieldModel (1.0–1.45).
+ *   - CO₂ factor:  delegated to `co2YieldMultiplier` in co2Model.ts so the
+ *                  step function lives in exactly one place. Uses the
+ *                  high-DLI branch by default since growth simulation is
+ *                  most useful at light intensities the cultivator actually
+ *                  cares about. See CITATIONS.md → Chandra et al. (2008).
  *   - Combined factor scales growth rate, clamped 0.45–1.15.
  */
+
+import { co2YieldMultiplier, type VentilationMode } from "./co2Model";
 
 export type CropPhase = "clone" | "veg" | "flower-stretch" | "flower-mid" | "flower-late";
 
@@ -40,6 +46,12 @@ export interface PlantGrowthInput {
   /** CO₂ ppm during flower */
   co2Ppm: number;
   co2Enabled: boolean;
+  /**
+   * Ventilation mode — gates physical feasibility of CO₂ enrichment in
+   * the visual growth model, same gate as `yieldModel` and
+   * `co2StomatalFactor`. Defaults to "low" for backward compatibility.
+   */
+  ventilationMode?: VentilationMode;
   /** Stretch factor for the cultivar — sativa 1.5, indica 1.2, hybrid 1.35 */
   stretchFactor?: number;
 }
@@ -95,14 +107,18 @@ export function plantGrowthAt(input: PlantGrowthInput): PlantGrowthState {
   );
   const dT = input.meanTempF - TOPT_F;
   const tempFactor = clamp(Math.exp(-(dT * dT) / (2 * 8 * 8)), 0.4, 1.05);
-  let co2Factor = 1.0;
-  if (input.co2Enabled) {
-    if (input.co2Ppm >= 1500) co2Factor = 1.45;
-    else if (input.co2Ppm >= 1200) co2Factor = 1.40;
-    else if (input.co2Ppm >= 1000) co2Factor = 1.30;
-    else if (input.co2Ppm >= 800) co2Factor = 1.20;
-    else if (input.co2Ppm >= 600) co2Factor = 1.10;
-  }
+  // Pass actual meanDLI so the low-DLI 1.05× damping branch fires when
+  // light is the limiting factor — consistent with the yield model's
+  // damping below DLI 30. The visual will show under-developed plants
+  // both because dliFactor is low AND because CO₂ gives no extra lift,
+  // which is the correct physics. Ventilation mode gates feasibility
+  // (open-vented returns 1.0 — CO₂ can't be held).
+  const co2Factor = co2YieldMultiplier(
+    input.co2Ppm,
+    input.co2Enabled,
+    input.meanDLI,
+    input.ventilationMode ?? "low",
+  );
   const combinedFactor = clamp(dliFactor * tempFactor * co2Factor, 0.45, 1.15);
 
   // ---- Phase determination ----

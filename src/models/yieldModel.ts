@@ -24,6 +24,8 @@
  * Use to compare scenarios, not to predict absolute yield.
  */
 
+import { co2YieldMultiplier, type VentilationMode } from "./co2Model";
+
 export interface YieldInput {
   /** Annual DLI received at canopy, mol/m²/yr (sum of monthly DLI × days) */
   annualDLIMolM2: number;
@@ -33,6 +35,12 @@ export interface YieldInput {
   co2Ppm: number;
   /** Whether CO₂ enrichment is operational */
   co2Enabled: boolean;
+  /**
+   * Ventilation mode — gates physical feasibility of CO₂ enrichment.
+   * Open-vented + enriched yields no benefit (CO₂ can't be held at
+   * canopy). Defaults to "low" for backward compatibility.
+   */
+  ventilationMode?: VentilationMode;
   /** Number of flower cycles per year (typical 3–5 indoor, 2–3 greenhouse) */
   cyclesPerYear: number;
   /** Canopy area sqft for absolute yield */
@@ -99,22 +107,16 @@ export function projectYield(input: YieldInput): YieldOutput {
   const tempFactor = Math.max(0, Math.exp(-(dT * dT) / (2 * 8 * 8)));
 
   // ---- CO₂ factor ----
-  // Bounded multiplier:
-  //   ambient (≤500 ppm) → 1.0
-  //   1000 ppm + DLI ≥ 30 → 1.30
-  //   1200 ppm + DLI ≥ 35 → 1.40
-  //   1500+ ppm → diminishing returns to 1.45
-  let co2Factor = 1.0;
-  if (input.co2Enabled && cycleAvgDLI >= 30) {
-    if (input.co2Ppm >= 1500) co2Factor = 1.45;
-    else if (input.co2Ppm >= 1200) co2Factor = 1.40;
-    else if (input.co2Ppm >= 1000) co2Factor = 1.30;
-    else if (input.co2Ppm >= 800) co2Factor = 1.20;
-    else if (input.co2Ppm >= 600) co2Factor = 1.10;
-  } else if (input.co2Enabled && cycleAvgDLI < 30) {
-    // Enrichment without enough light — minimal benefit
-    co2Factor = 1.05;
-  }
+  // Bounded multiplier sourced from `co2YieldMultiplier` in co2Model.ts —
+  // single source of truth, see CITATIONS.md → Chandra et al. (2008).
+  // Ventilation mode gates physical feasibility: open-vented + enriched
+  // returns 1.0 (no benefit, same physics as the stomatal factor).
+  const co2Factor = co2YieldMultiplier(
+    input.co2Ppm,
+    input.co2Enabled,
+    cycleAvgDLI,
+    input.ventilationMode ?? "low",
+  );
 
   // Realism haircut — the projection above is the dialed-in ceiling;
   // this scales it to the operator's chosen planning scenario.

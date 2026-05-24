@@ -11,7 +11,12 @@ This greenhouse model is a synthesis of peer-reviewed plant science, greenhouse 
 
 **University of Mississippi (National Center for Natural Products Research)** — Chandra et al. (2008). *Photosynthetic response of Cannabis sativa L. to variations in photosynthetic photon flux densities, temperature and CO₂ conditions.* Physiology and Molecular Biology of Plants.
 - Leaf-level Pn temperature optimum ≈ 30 °C / 86 °F. Drives `tempFactor` in `plantGrowthModel.ts` and the Topt bell in `yieldModel.ts`.
-- CO₂ enrichment Pn boost coefficients used in `co2Model.ts`.
+- CO₂ enrichment Pn boost coefficients used in `co2Model.ts` (`co2YieldMultiplier`).
+
+**University of Illinois (FACE consortium)** — Ainsworth, E.A. & Long, S.P. (2005). *What have we learned from 15 years of free-air CO₂ enrichment (FACE)? A meta-analytic review of the responses of photosynthesis, canopy properties and plant production to rising CO₂.* New Phytologist 165(2): 351–372.
+- Stomatal-conductance response to elevated CO₂ in C3 crops (~20% reduction at ~550 ppm vs. ~370 ppm ambient, monotonic to ~30–35% at 1200–1500 ppm). Basis for `co2StomatalFactor` in `co2Model.ts`. Net whole-canopy transpiration response is more muted than leaf-level gs because of partially compensating LAI; our coefficient table is the conservative whole-canopy figure used by `dehumidificationModel.ts` and the latent-load term in `heatLoadModel.ts`.
+- The coefficient table represents a DAILY-AGGREGATE, WHOLE-CANOPY reduction (already photoperiod-weighted in the FACE empirical fit). Seasonal/monthly aggregates apply it directly. **Known gap:** the per-tick live-tick humidity model in `useLiveDynamics.ts` does NOT yet apply this factor — sub-daily application would need lights-on gating and the moisture balance moved inside the substepped Euler loop (a Plan Mode change). Filed as a follow-up.
+- Open-vented and moderate-vented operation gate the factor (CO₂ cannot be physically held at the canopy under high ventilation rates), consistent with the feasibility model in `evaluateCO2`.
 
 ---
 

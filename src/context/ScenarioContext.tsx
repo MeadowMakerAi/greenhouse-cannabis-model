@@ -378,16 +378,69 @@ function saveCustomFixtures(list: FixtureSpec[]) {
 }
 
 /**
+ * Defensive clamps on critical numeric inputs. Belt-and-suspenders
+ * alongside NumberField's NaN-drop: any path that bypasses the field
+ * (chatbot set_scenario tool, scenario presets, programmatic updates,
+ * share-URL hydration, `hashchange` rehydration) gets safe values.
+ * Without these, a single NaN or 0 propagates through Math.sqrt() and
+ * floods the 3D scene with NaN positions — 100+ console errors, scene
+ * goes blank.
+ *
+ * Pure function — returns a new object, does not mutate input. Called
+ * from `setInputs` AND from share-URL hydration paths so a malicious
+ * or stale share link cannot inject out-of-range CO₂ ppm, negative
+ * dimensions, etc.
+ */
+export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
+  const merged = { ...inputs };
+  const clampMin = (key: keyof ScenarioInputs, min: number) => {
+    const v = merged[key] as number;
+    if (!Number.isFinite(v) || v < min) {
+      (merged as Record<string, unknown>)[key] = min;
+    }
+  };
+  const clampMax = (key: keyof ScenarioInputs, max: number) => {
+    const v = merged[key] as number;
+    if (Number.isFinite(v) && v > max) {
+      (merged as Record<string, unknown>)[key] = max;
+    }
+  };
+  clampMin("greenhouseLengthFt", 8);
+  clampMax("greenhouseLengthFt", 300); // single-zone practical max
+  clampMin("greenhouseWidthFt", 8);
+  clampMax("greenhouseWidthFt", 60); // single-bay practical max
+  clampMin("eaveHeightFt", 6);
+  clampMax("eaveHeightFt", 18); // typical commercial high-bay ceiling
+  clampMin("peakHeightFt", 7); // geometryFromDims further enforces > eave
+  clampMax("peakHeightFt", 32);
+  clampMin("canopyAreaSqFt", 50);
+  clampMin("greenhouseFloorAreaSqFt", 50);
+  clampMin("greenhouseEnvelopeAreaSqFt", 50);
+  clampMin("greenhouseVolumeCuFt", 100);
+  clampMin("plantsPerSqFt", 0.1);
+  clampMax("plantsPerSqFt", 4); // Sea-of-Green upper bound
+  // CO₂ setpoint bounds: ambient outdoor air is ~420 ppm; cannabis
+  // saturates around 1500 ppm; OSHA 8-hr TWA is 5000 ppm. Clamp to
+  // physically and operationally plausible range so a bad share URL
+  // or tool patch can't feed −50 or 10000 ppm into the step
+  // functions in co2Model and have them silently saturate.
+  clampMin("co2SetpointPpm", 350);
+  clampMax("co2SetpointPpm", 2000);
+  return merged;
+}
+
+/**
  * Hydrate from a `#s=...` share URL fragment if present. Runs once at
  * provider mount. Each share link encodes only the delta vs defaults,
- * so we layer it onto `defaultScenario` and let `setInputs` re-derive
- * geometry/envelope/volume downstream.
+ * so we layer it onto `defaultScenario` and run the merged state
+ * through `clampScenarioInputs` so a stale or malicious share link
+ * cannot inject out-of-range values.
  */
 function initialScenarioFromHashOrDefault(): ScenarioInputs {
   if (typeof window === "undefined") return defaultScenario;
   const patch = decodeScenarioFromHash(window.location.hash);
   if (!patch) return defaultScenario;
-  return { ...defaultScenario, ...patch } as ScenarioInputs;
+  return clampScenarioInputs({ ...defaultScenario, ...patch } as ScenarioInputs);
 }
 
 export function ScenarioProvider({ children }: { children: ReactNode }) {
@@ -423,39 +476,9 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
 
   const setInputs = useCallback((next: Partial<ScenarioInputs>) => {
     setInputsState((prev) => {
-      const merged = { ...prev, ...next };
-      // Defensive clamps on critical numeric inputs. Belt-and-suspenders
-      // alongside NumberField's NaN-drop: any path that bypasses the field
-      // (chatbot set_scenario tool, scenario presets, programmatic updates,
-      // or future inputs) still gets safe values. Without these, a single
-      // NaN or 0 propagates through Math.sqrt() and floods the 3D scene
-      // with NaN positions — 100+ console errors, scene goes blank.
-      const clampMin = (key: keyof ScenarioInputs, min: number) => {
-        const v = merged[key] as number;
-        if (!Number.isFinite(v) || v < min) {
-          (merged as Record<string, unknown>)[key] = min;
-        }
-      };
-      const clampMax = (key: keyof ScenarioInputs, max: number) => {
-        const v = merged[key] as number;
-        if (Number.isFinite(v) && v > max) {
-          (merged as Record<string, unknown>)[key] = max;
-        }
-      };
-      clampMin("greenhouseLengthFt", 8);
-      clampMax("greenhouseLengthFt", 300); // single-zone practical max
-      clampMin("greenhouseWidthFt", 8);
-      clampMax("greenhouseWidthFt", 60); // single-bay practical max
-      clampMin("eaveHeightFt", 6);
-      clampMax("eaveHeightFt", 18); // typical commercial high-bay ceiling
-      clampMin("peakHeightFt", 7); // geometryFromDims further enforces > eave
-      clampMax("peakHeightFt", 32);
-      clampMin("canopyAreaSqFt", 50);
-      clampMin("greenhouseFloorAreaSqFt", 50);
-      clampMin("greenhouseEnvelopeAreaSqFt", 50);
-      clampMin("greenhouseVolumeCuFt", 100);
-      clampMin("plantsPerSqFt", 0.1);
-      clampMax("plantsPerSqFt", 4); // Sea-of-Green upper bound
+      // Apply defensive clamps via the shared helper so this path stays
+      // in sync with share-URL hydration and `hashchange` rehydration.
+      const merged = clampScenarioInputs({ ...prev, ...next });
       // If any exterior dimension changed, re-derive area + envelope + volume
       const dimKeys = [
         "greenhouseLengthFt",
@@ -561,7 +584,13 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined") return;
     const onHashChange = () => {
       const patch = decodeScenarioFromHash(window.location.hash);
-      if (patch) setInputsState((prev) => ({ ...prev, ...patch }));
+      if (patch) {
+        // Clamp on rehydration too — a malicious or stale share URL
+        // pasted mid-session must not bypass input bounds.
+        setInputsState((prev) =>
+          clampScenarioInputs({ ...prev, ...patch } as ScenarioInputs),
+        );
+      }
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);

@@ -8,7 +8,7 @@ import { computeMonthlySolar, netCanopyTransmissionPct } from "../models/solarMo
 import { dliToPPFD, ppfdToDLI } from "../models/dliModel";
 import { fixtureKWFromPPFD } from "../models/fixtureModel";
 import { computeUnderCanopy } from "../models/underCanopyModel";
-import { evaluateCO2 } from "../models/co2Model";
+import { evaluateCO2, co2StomatalFactor } from "../models/co2Model";
 import { evaluateEvap } from "../models/evapCoolingModel";
 import { heatLoadEstimate } from "../models/heatLoadModel";
 import { estimateDehumidification } from "../models/dehumidificationModel";
@@ -214,6 +214,23 @@ export function useDerived() {
       });
 
       const shadeFactor = shadeActive ? inputs.shadeTransmissionPct / 100 : 1;
+      // CO₂ enrichment partially closes stomata → less transpiration →
+      // smaller latent cooling load AND smaller dehumidification load.
+      // Apply the same factor at both call sites so the energy balance
+      // and the moisture balance agree. Physical-feasibility gate on
+      // ventilation mode lives inside co2StomatalFactor — open-vented
+      // operation returns 1.0 because CO₂ can't be held at the canopy.
+      // See CITATIONS.md → Ainsworth & Long (2005).
+      const stomatalFactor = co2StomatalFactor(
+        inputs.co2SetpointPpm,
+        inputs.co2Enabled,
+        inputs.ventilationMode,
+      );
+      const baselineTranspirationGalDay =
+        (inputs.canopyAreaSqFt / 1000) *
+        inputs.plantTranspirationGalPerDayPer1000SqFt;
+      const effectiveTranspirationGalDay =
+        baselineTranspirationGalDay * stomatalFactor;
       const heat = heatLoadEstimate({
         outdoorDryBulbF: climateRow.maxTempF,
         indoorTargetTempF: inputs.indoorTargetDryBulbF,
@@ -228,8 +245,7 @@ export function useDerived() {
         equipmentKW: inputs.equipmentKW,
         ventilationCFM: inputs.ventilationCFM,
         ventilationDeltaTempF: inputs.ventilationDeltaTempF,
-        plantTranspirationGalDay:
-          (inputs.canopyAreaSqFt / 1000) * inputs.plantTranspirationGalPerDayPer1000SqFt,
+        plantTranspirationGalDay: effectiveTranspirationGalDay,
       });
 
       const dehumid = estimateDehumidification({
@@ -242,6 +258,8 @@ export function useDerived() {
         dehumidifierEfficiencyPintsPerKwh: inputs.dehumidifierEfficiencyPintsPerKwh,
         ventilationMoistureRemovalGalDay: inputs.ventilationMoistureRemovalGalDay,
         co2Enabled: inputs.co2Enabled,
+        co2SetpointPpm: inputs.co2SetpointPpm,
+        ventilationMode: inputs.ventilationMode,
       });
 
       const highHumidityRisk = climateRow.designDewPointF >= 60 || psych.dewPointF >= 60;
@@ -404,6 +422,11 @@ export function useDerived() {
       meanFlowerDayTempF: inputs.indoorTargetDryBulbF,
       co2Ppm: inputs.co2SetpointPpm,
       co2Enabled: inputs.co2Enabled,
+      // Open-vented + enriched is physically infeasible; the gate
+      // inside co2YieldMultiplier collapses the yield bump to 1.0 so
+      // the model doesn't claim a +40% yield benefit for a scenario
+      // that evaluateCO2 simultaneously flags as not viable.
+      ventilationMode: inputs.ventilationMode,
       cyclesPerYear: inputs.cyclesPerYear,
       canopyAreaSqFt: inputs.canopyAreaSqFt,
       realismFactor: yieldRealismCases[inputs.yieldRealismCase].multiplier,
