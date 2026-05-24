@@ -29,6 +29,7 @@ export default function MarginalLightPanel() {
       meanFlowerDayTempF: inputs.indoorTargetDryBulbF,
       co2Ppm: inputs.co2SetpointPpm,
       co2Enabled: inputs.co2Enabled,
+      ventilationMode: inputs.ventilationMode,
       cyclesPerYear: inputs.cyclesPerYear,
       canopyAreaSqFt: inputs.canopyAreaSqFt,
       realismFactor: yieldRealismCases[inputs.yieldRealismCase].multiplier,

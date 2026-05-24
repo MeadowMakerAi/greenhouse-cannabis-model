@@ -334,6 +334,17 @@ export function useLiveDynamics() {
       fahrenheitToCelsius(fullSnap.outdoor.outdoorTempF),
       fullSnap.outdoor.outdoorRH,
     );
+    // KNOWN GAP: this is a 24/7 average lift, NOT CO₂-aware. Applying
+    // a stomatal-closure factor here would be wrong — the lights-off
+    // window is exactly where dehumidification sizing and pathogen risk
+    // peak, and stomata are already mostly closed at night regardless of
+    // CO₂. Proper per-tick CO₂ × RH coupling needs the moisture balance
+    // moved INSIDE the substepped Euler loop alongside vent state +
+    // indoor T. That is a "Plan Mode required" change (see CLAUDE.md
+    // "Numerical stability — load-bearing decisions"). Seasonal models
+    // (dehumidificationModel + heatLoadModel via useDerived) DO apply
+    // the daily-aggregate co2StomatalFactor — see CITATIONS.md →
+    // Ainsworth & Long (2005).
     const transpirationAH = 0.0008; // ~0.8 g/kg lift from dense canopy transpiration
     // Indoor↔outdoor air mixing scales with proportional vent opening:
     // baseline 25 % leakage (vents closed) up to 85 % at full open.
@@ -399,17 +410,25 @@ export function useLiveDynamics() {
     });
 
     // ---- Plant growth state ----
-    // Use the average DLI achieved so far across the cycle so far
+    // Cycle-average DLI proxy: in a production setup with sized
+    // supplemental lighting, the canopy actually sees its targetDLI
+    // during flower (supplemental closes the seasonal gap). When the
+    // operator screens a low-target-DLI design (target < 30), the
+    // low-DLI damping branch in co2YieldMultiplier correctly fires and
+    // shows under-developed plants in the live visual. ventilationMode
+    // is also passed so open-vented + CO₂ doesn't fake a yield bump
+    // in the live geometry.
     const plant = plantGrowthAt({
       cropStartDayOfYear: inputs.cropStartDayOfYear,
       vegDays: inputs.vegDays,
       flowerDays: inputs.flowerDays,
       currentDayOfYear: sim.dayOfYear,
-      meanDLI: derived.target.targetDLI, // approx; full cycle avg ≈ target if lighting on schedule
+      meanDLI: derived.target.targetDLI,
       targetDLI: derived.target.targetDLI,
       meanTempF: inputs.indoorTargetDryBulbF,
       co2Ppm: inputs.co2SetpointPpm,
       co2Enabled: inputs.co2Enabled,
+      ventilationMode: inputs.ventilationMode,
       stretchFactor: inputs.cultivarStretchFactor,
     });
 
