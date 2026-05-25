@@ -20,17 +20,19 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  /* Three-layer page background:
+  /* Three-layer page background — Phase 1 warm-paper restyle.
+     The base shifted from cool grey (#f3f5f8) to warm paper (#faf5e8)
+     to bring the editorial feel up. Existing leaf and slate radial
+     accents are unchanged — they complement the warm base.
      1. soft leaf radial top-left (warm, brand)
      2. soft slate radial bottom-right (cool, balance)
-     3. base neutral
-     The vignette darkens corners ~3% so the content plane reads as
-     foreground rather than fading into infinite white. */
+     3. center vignette darkens corners ~3% so the content plane reads
+        as foreground rather than fading into infinite white. */
   background:
     radial-gradient(at 0% 0%, rgba(47, 143, 108, 0.07), transparent 55%),
     radial-gradient(at 100% 100%, rgba(58, 90, 145, 0.06), transparent 55%),
-    radial-gradient(ellipse at center, transparent 55%, rgba(13, 17, 23, 0.035) 100%),
-    #f3f5f8;
+    radial-gradient(ellipse at center, transparent 55%, rgba(26, 34, 48, 0.04) 100%),
+    #faf5e8;
   color: #0d1117;
   letter-spacing: -0.005em;
 }
@@ -183,16 +185,20 @@ body,
     z-index: 5;
   }
   .scene-bleed::before {
-    /* Top + bottom soft fade into the page background */
+    /* Top + bottom soft fade into the page background.
+       Color must match the body bg (warm paper #faf5e8 — Phase 1
+       visual-system shift). Otherwise the 3D scene edges fade INTO a
+       cool-grey overlay and produce a two-tone seam where the canvas
+       meets the warm body. */
     inset: 0;
     background:
-      linear-gradient(180deg, rgba(243, 245, 248, 0.6) 0%, transparent 8%, transparent 92%, rgba(243, 245, 248, 0.5) 100%);
+      linear-gradient(180deg, rgba(250, 245, 232, 0.6) 0%, transparent 8%, transparent 92%, rgba(250, 245, 232, 0.5) 100%);
   }
   .scene-bleed::after {
-    /* Left + right edge vignette */
+    /* Left + right edge vignette — same warm-paper match as above. */
     inset: 0;
     background:
-      linear-gradient(90deg, rgba(243, 245, 248, 0.45) 0%, transparent 6%, transparent 94%, rgba(243, 245, 248, 0.45) 100%);
+      linear-gradient(90deg, rgba(250, 245, 232, 0.45) 0%, transparent 6%, transparent 94%, rgba(250, 245, 232, 0.45) 100%);
   }
 
   /* ---- Editorial sidebar sections (Figma right-panel + Bloomberg) ----
@@ -289,6 +295,21 @@ body,
     line-height: 0.95;
     letter-spacing: -0.025em;
     font-variant-numeric: tabular-nums;
+  }
+  /* Editorial serif variant — Phase 1 visual-system token.
+     Same dimensions as kpi-hero but rendered in Newsreader for
+     "trade publication / journal" warmth. Use selectively on the
+     headline KPI you most want to anchor (e.g. $/g power crown,
+     yield projection), not on every number — the contrast with the
+     condensed sans is what gives this typeface its weight. */
+  .kpi-hero-serif {
+    @apply font-serif text-ink-900;
+    font-size: clamp(3rem, 7vw, 5.75rem);
+    font-weight: 500;
+    line-height: 0.95;
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums oldstyle-nums;
+    font-feature-settings: "lnum" 0, "onum" 1;
   }
   .kpi-hero-unit {
     @apply ml-2 align-baseline text-base font-medium text-ink-500;
@@ -395,6 +416,17 @@ body,
   .tag-celebrate {
     @apply bg-celebrate-400/10 text-celebrate-500;
   }
+  /* "Start here" onboarding cue — Phase 1 visual-system token.
+     Terracotta-on-warm with a hairline ring, slightly heavier weight
+     than the other tags. Use this once per surface to signal "if
+     this is your first time, do THIS first" (currently on the Site
+     section of AssumptionPanel — the location inputs). Distinct from
+     tag-warn so a user doesn't confuse "start here" with "danger." */
+  .tag-start {
+    @apply bg-cta-50 text-cta-600 ring-1 ring-cta-400/40;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
 
   /* ---- Tab bar ----
      Container is recessed (sits in a groove). Inactive tabs are flush.
@@ -456,6 +488,39 @@ body,
   .btn-danger {
     @apply inline-flex items-center justify-center rounded-lg bg-warn-600 px-3 py-1.5 text-sm font-semibold text-white shadow-e2 transition duration-150 hover:-translate-y-px hover:shadow-e3 active:translate-y-0 active:shadow-pressed disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-e2;
     background-image: linear-gradient(180deg, #c0573a 0%, #a3462b 100%);
+  }
+  /* Terracotta CTA — Phase 1 visual-system token. Used for the
+     primary "customize this for your greenhouse" affordances
+     (location CTA, share scenario, run model with my inputs). Visually
+     distinct from btn-primary (forest green) so we have a two-tone
+     CTA hierarchy: green = "do the science thing," terracotta =
+     "make this YOUR thing." Visually identical to btn-danger but
+     semantically opposite — name is the disambiguator. */
+  .btn-cta-warm {
+    @apply inline-flex items-center justify-center rounded-lg bg-cta-500 px-3 py-1.5 text-sm font-semibold text-white shadow-e2 transition duration-150 hover:-translate-y-px hover:shadow-e3 active:translate-y-0 active:shadow-pressed disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-e2 focus:outline-none focus:ring-2 focus:ring-cta-400/60 focus:ring-offset-1;
+    background-image: linear-gradient(180deg, #c0573a 0%, #a3462b 100%);
+  }
+
+  /* Live indicator — Phase 2 chrome restyle token. Pulsing leaf-green
+     dot + "Live" label, used in the masthead so a first-time user can
+     instantly see this is a live-computation tool, not a static
+     screenshot. Pulse is cancelled under prefers-reduced-motion. */
+  .live-indicator {
+    @apply inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-leaf-700;
+  }
+  .live-indicator::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: theme('colors.leaf.500');
+    box-shadow: 0 0 0 3px theme('colors.leaf.50');
+    animation: live-pulse 2.6s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @keyframes live-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(47, 143, 108, 0.5); }
+    50%      { box-shadow: 0 0 0 4px rgba(47, 143, 108, 0.0); }
   }
 }
 
@@ -566,7 +631,8 @@ body,
   }
   .landing-hero-img,
   .tab-content,
-  .landing-mesh {
+  .landing-mesh,
+  .live-indicator::before {
     animation: none !important;
     transform: none !important;
   }

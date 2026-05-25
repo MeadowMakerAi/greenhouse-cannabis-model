@@ -44,6 +44,37 @@ export default {
           400: "#7d4cd1",
           500: "#5e34b3",
         },
+        /* Warm paper background family — Phase 1 visual-system token.
+           Used as an alternative to the cool ink-50/100 base when the
+           dashboard wants a more editorial / trade-publication feel.
+           Neighborhood-adjacent to the existing leaf and warn accents
+           (which already work against warm tones). */
+        paper: {
+          50:  "#fbf7ed",
+          100: "#f6f1e7",
+          200: "#ede4d2",
+          300: "#e1d5bd",
+          400: "#cbb98f",
+        },
+        /* Promoted from warn — terracotta as a first-class chromatic
+           CTA accent, not only a warning state. Use cta-* for primary
+           "do this" affordances (location CTA, crown KPI underline,
+           start-here pills). warn-* stays for actual warnings. Values
+           mirror the warn family so the visual language is consistent. */
+        cta: {
+          50:  "#fbeae3",
+          400: "#d6694b",
+          500: "#c0573a",
+          600: "#a3462b",
+          700: "#7d3520",
+        },
+        /* Deep forest editorial green — alias for the leaf-700/leaf-600
+           band so "editorial primary" intent is explicit in markup
+           without re-tuning the existing leaf scale. */
+        forest: {
+          500: "#1f3a2e",
+          600: "#16302a",
+        },
       },
       fontFamily: {
         sans: [
@@ -71,6 +102,17 @@ export default {
           "SFMono-Regular",
           "Menlo",
           "monospace",
+        ],
+        /* Editorial serif for headline numerals + magazine-spread
+           moments (KPI crown values, hero numbers, italic captions).
+           Newsreader is open-source, variable-axis (optical size
+           16-72), designed for screen reading at large sizes. Georgia
+           keeps the warmth even if Newsreader fails to load. */
+        serif: [
+          "Newsreader",
+          "Georgia",
+          "Times New Roman",
+          "serif",
         ],
       },
       letterSpacing: {
