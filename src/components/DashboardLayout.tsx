@@ -27,6 +27,7 @@ import LiveGreenhouseScene from "./LiveGreenhouseScene";
 import ScenarioPresets from "./ScenarioPresets";
 import ShareLinkButton from "./ShareLinkButton";
 import GreenhouseIsoView from "./GreenhouseIsoView";
+import TopPillBar from "./TopPillBar";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 
@@ -187,7 +188,7 @@ export default function DashboardLayout() {
     d.peakSquareGridSpacingFt > 0 ? d.peakSquareGridSpacingFt : 5.3;
 
   return (
-    <div className="grid h-screen grid-cols-[360px_1fr] grid-rows-[auto_1fr]">
+    <div className="grid h-screen grid-cols-[360px_1fr] grid-rows-[auto_auto_1fr]">
       {/* Header sits on a raised plane (e2 + bottom shadow) so the content
           beneath it reads as the working surface, not a peer. We use solid
           bg-white/95 instead of bg-white/90 + backdrop-blur because the
@@ -238,17 +239,27 @@ export default function DashboardLayout() {
           </div>
         </div>
       </header>
+      {/* Top pill bar — Phase 4 PR 1 of the layout overhaul.
+          Surfaces the 7 most-edited inputs (Location, Dimensions,
+          Photoperiod & DLI, Fixture, CO₂, Climate, Cycles) as fast
+          click-to-edit pills directly under the masthead. Spans both
+          columns so the pills feel like global scenario controls,
+          not a sidebar feature. Strictly additive — the full
+          AssumptionPanel sidebar still owns every field. */}
+      <div className="col-span-2 row-start-2 relative z-10">
+        <TopPillBar />
+      </div>
       {/* Sidebar = recessed trough. Slightly cooler bg + inset top shadow
           so it visibly sits beneath the header plane. We avoid
           overflow-hidden on the wrapper so card hover lifts (shadow-e3)
           near the sidebar edge don't get clipped. AssumptionPanel itself
           provides overflow-y-auto. */}
-      <div className="row-start-2 relative border-r border-ink-200/70 bg-ink-100/40">
+      <div className="row-start-3 relative border-r border-ink-200/70 bg-ink-100/40">
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-3 bg-gradient-to-b from-ink-900/[0.05] to-transparent" />
         <AssumptionPanel />
       </div>
       {/* Main content plane — slight off-white so cards lift visibly. */}
-      <main className="row-start-2 overflow-y-auto p-4 surface-page">
+      <main className="row-start-3 overflow-y-auto p-4 surface-page">
         <div className="space-y-4">
           <OutputSummary />
           {/* Single navigation — four labeled tab groups. */}
