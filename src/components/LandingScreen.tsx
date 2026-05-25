@@ -71,7 +71,7 @@ export default function LandingScreen({
   const onHeroMouseLeave = () => setTilt({ rx: 0, ry: 0 });
 
   return (
-    <div className="landing-root relative min-h-screen overflow-hidden bg-[#f3f5f8]">
+    <div className="landing-root relative min-h-screen overflow-hidden bg-[#faf5e8]">
       {/* ── Animated mesh gradient background ──
           Four large radials at different positions, slow-drifting via the
           `landing-mesh-drift` keyframe. Replaces the previous static
@@ -306,7 +306,7 @@ export default function LandingScreen({
       </section>
 
       {/* ── How it works — 3 steps, hairline-divided ── */}
-      <section className="relative bg-[#f3f5f8] py-20 lg:py-24" data-reveal>
+      <section className="relative bg-[#faf5e8] py-20 lg:py-24" data-reveal>
         <div className="mx-auto max-w-6xl px-6 lg:px-10">
           <div className="text-[11px] font-semibold uppercase tracking-[0.10em] text-ink-500">
             How it works
@@ -380,7 +380,7 @@ export default function LandingScreen({
       </section>
 
       {/* ── Footer ── */}
-      <footer className="relative bg-[#f3f5f8] py-6">
+      <footer className="relative bg-[#faf5e8] py-6">
         <div className="mx-auto flex max-w-6xl flex-wrap items-baseline justify-between gap-3 border-t border-ink-200/80 px-6 pt-4 text-[11px] text-ink-500 proportional-nums lg:px-10">
           <div>
             Built with React 19 + TypeScript + React Three Fiber + Tailwind.

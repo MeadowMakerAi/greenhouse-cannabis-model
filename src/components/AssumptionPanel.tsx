@@ -22,6 +22,13 @@ export default function AssumptionPanel() {
           <span className="sidebar-section-caret" aria-hidden>▸</span>
           <span className="sidebar-section-title">Site</span>
           <span className="sidebar-section-right">
+            {/* Phase 2 visual-system cue: "Start here" pill is the
+                onboarding signal for first-time visitors that this is
+                where to drop their actual greenhouse's coordinates.
+                Pairs with the existing coordinate-status warn tag —
+                the start tag tells you to act, the warn tag tells you
+                what's currently set. */}
+            <span className="tag tag-start">Start here</span>
             <span className="tag tag-warn">{inputs.coordinateStatus}</span>
           </span>
         </summary>

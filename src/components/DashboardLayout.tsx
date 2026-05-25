@@ -221,6 +221,16 @@ export default function DashboardLayout() {
                 {inputs.siteAddress} · {inputs.weatherStation} · screening-level decision support
               </p>
             </div>
+            {/* Live indicator — Phase 2 visual-system cue. Tells a
+                first-time visitor this dashboard is live-computing from
+                their inputs, not a static screenshot. Pulses softly to
+                draw the eye without competing with the brand mark. */}
+            <span
+              className="live-indicator hidden md:inline-flex"
+              title="Every number recomputes as you change inputs"
+            >
+              Live · updates as you type
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <ShareLinkButton />
