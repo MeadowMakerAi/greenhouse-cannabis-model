@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AssumptionPanel from "./AssumptionPanel";
 import OutputSummary from "./OutputSummary";
 import Warnings from "./Warnings";
@@ -28,6 +28,7 @@ import ScenarioPresets from "./ScenarioPresets";
 import ShareLinkButton from "./ShareLinkButton";
 import GreenhouseIsoView from "./GreenhouseIsoView";
 import TopPillBar from "./TopPillBar";
+import CustomizeDrawer from "./CustomizeDrawer";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 
@@ -187,6 +188,48 @@ export default function DashboardLayout() {
   const gridSpacingFt =
     d.peakSquareGridSpacingFt > 0 ? d.peakSquareGridSpacingFt : 5.3;
 
+  // Customize drawer state — PR 2 of Phase 4. Lifted here so the
+  // top pill bar's "Customize" button and the global ⌘K hotkey both
+  // toggle the same drawer instance.
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [customizeAutoFocusSearch, setCustomizeAutoFocusSearch] =
+    useState(false);
+
+  // ⌘K / Ctrl+K global hotkey — opens the customize drawer with the
+  // search input focused. Ignored when the user is in an editable
+  // element (so they can still ⌘K text edits in inputs without
+  // hijacking). Esc-to-close is handled inside CustomizeDrawer.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const cmd = e.metaKey || e.ctrlKey;
+      if (!cmd || e.key !== "k") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const editable =
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        target?.isContentEditable === true;
+      // Even inside editable: if it's our own search input we never
+      // re-trigger, but other inputs we leave alone so ⌘K cursor
+      // commands in those fields work as expected. This mirrors
+      // Linear / GitHub: global ⌘K from anywhere except a focused
+      // field.
+      if (editable) return;
+      e.preventDefault();
+      setCustomizeAutoFocusSearch(true);
+      setCustomizeOpen(true);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const openCustomize = () => {
+    setCustomizeAutoFocusSearch(false);
+    setCustomizeOpen(true);
+  };
+  const closeCustomize = () => setCustomizeOpen(false);
+
   return (
     <div className="grid h-screen grid-cols-[360px_1fr] grid-rows-[auto_auto_1fr]">
       {/* Header sits on a raised plane (e2 + bottom shadow) so the content
@@ -247,7 +290,7 @@ export default function DashboardLayout() {
           not a sidebar feature. Strictly additive — the full
           AssumptionPanel sidebar still owns every field. */}
       <div className="col-span-2 row-start-2 relative z-10">
-        <TopPillBar />
+        <TopPillBar onCustomizeClick={openCustomize} />
       </div>
       {/* Sidebar = recessed trough. Slightly cooler bg + inset top shadow
           so it visibly sits beneath the header plane. We avoid
@@ -390,6 +433,14 @@ export default function DashboardLayout() {
           <InsightsPanel />
         </div>
       </main>
+      {/* Customize drawer — sibling of the grid so it overlays the
+          entire viewport without disrupting layout. Renders nothing
+          when closed. */}
+      <CustomizeDrawer
+        open={customizeOpen}
+        onClose={closeCustomize}
+        autoFocusSearch={customizeAutoFocusSearch}
+      />
     </div>
   );
 }
