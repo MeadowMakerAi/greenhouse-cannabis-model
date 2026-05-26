@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import AssumptionPanel from "./AssumptionPanel";
+// AssumptionPanel is no longer mounted in the layout — Phase 4 PR 3
+// retired the left sidebar. The full 70-field panel is now reached via
+// the Customize drawer (CustomizeDrawer.tsx), triggered from the top
+// pill bar or ⌘K. AssumptionPanel itself is unchanged and is consumed
+// directly by CustomizeDrawer.
 import OutputSummary from "./OutputSummary";
 import Warnings from "./Warnings";
 import AnnualDLIChart from "./AnnualDLIChart";
@@ -29,6 +33,7 @@ import ShareLinkButton from "./ShareLinkButton";
 import GreenhouseIsoView from "./GreenhouseIsoView";
 import TopPillBar from "./TopPillBar";
 import CustomizeDrawer from "./CustomizeDrawer";
+import WhatChangedBanner from "./WhatChangedBanner";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 
@@ -231,7 +236,12 @@ export default function DashboardLayout() {
   const closeCustomize = () => setCustomizeOpen(false);
 
   return (
-    <div className="grid h-screen grid-cols-[360px_1fr] grid-rows-[auto_auto_1fr]">
+    // Phase 4 PR 3: single-column layout. Sidebar removed; the 3D
+    // scene + tab content now fill full viewport width. All input
+    // editing lives in the top pill bar (PR 1) + Customize drawer
+    // (PR 2). Grid stays 3-row (header / pill bar / content) so the
+    // existing row-start references in child components still resolve.
+    <div className="grid h-screen grid-cols-1 grid-rows-[auto_auto_1fr]">
       {/* Header sits on a raised plane (e2 + bottom shadow) so the content
           beneath it reads as the working surface, not a peer. We use solid
           bg-white/95 instead of bg-white/90 + backdrop-blur because the
@@ -239,7 +249,7 @@ export default function DashboardLayout() {
           Monogram keeps main's radial-gradient + green-glow treatment
           (inline style — radial + custom multi-layer shadow don't compose
           cleanly as Tailwind utilities for a one-off brand mark). */}
-      <header className="col-span-2 relative z-20 border-b border-ink-200/70 bg-white/95 px-5 py-3 shadow-header">
+      <header className="relative z-20 border-b border-ink-200/70 bg-white/95 px-5 py-3 shadow-header">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -289,21 +299,14 @@ export default function DashboardLayout() {
           columns so the pills feel like global scenario controls,
           not a sidebar feature. Strictly additive — the full
           AssumptionPanel sidebar still owns every field. */}
-      <div className="col-span-2 row-start-2 relative z-10">
+      <div className="row-start-2 relative z-10">
         <TopPillBar onCustomizeClick={openCustomize} />
       </div>
-      {/* Sidebar = recessed trough. Slightly cooler bg + inset top shadow
-          so it visibly sits beneath the header plane. We avoid
-          overflow-hidden on the wrapper so card hover lifts (shadow-e3)
-          near the sidebar edge don't get clipped. AssumptionPanel itself
-          provides overflow-y-auto. */}
-      <div className="row-start-3 relative border-r border-ink-200/70 bg-ink-100/40">
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-3 bg-gradient-to-b from-ink-900/[0.05] to-transparent" />
-        <AssumptionPanel />
-      </div>
-      {/* Main content plane — slight off-white so cards lift visibly. */}
+      {/* Main content plane — slight off-white so cards lift visibly.
+          Now fills full viewport width (sidebar retired in PR 3). */}
       <main className="row-start-3 overflow-y-auto p-4 surface-page">
         <div className="space-y-4">
+          <WhatChangedBanner />
           <OutputSummary />
           {/* Single navigation — four labeled tab groups. */}
           <nav className="flex flex-col gap-2 rounded-xl bg-ink-100/70 p-1.5 shadow-recessed">
