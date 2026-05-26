@@ -605,6 +605,53 @@ function GreenhouseStructure({
         <Truss key={i} x={x} width={width} eave={eave} peak={peak} />
       ))}
 
+      {/* Longitudinal roof purlins — Phase visual-fidelity PR c.
+          Horizontal structural bars between trusses on each slope.
+          Adds depth + the recognizable "ladder running ridge-to-
+          eave" pattern of real commercial greenhouses. */}
+      <RoofPurlins length={length} width={width} eave={eave} peak={peak} />
+
+      {/* Glazing-bar grid — Phase visual-fidelity PR c. Mullions +
+          transom rails overlaid on every glazed surface. The iconic
+          Dutch greenhouse signature. */}
+      {/* South sidewall bars */}
+      <GlazingBars
+        length={length}
+        height={eave}
+        position={[0, eave / 2 + 0.5, -width / 2 - 0.04]}
+        rotation={[0, Math.PI, 0]}
+      />
+      {/* North sidewall bars */}
+      <GlazingBars
+        length={length}
+        height={eave}
+        position={[0, eave / 2 + 0.5, width / 2 + 0.04]}
+        rotation={[0, 0, 0]}
+      />
+      {/* South roof slope bars */}
+      {(() => {
+        const slopeLen = Math.sqrt((width / 2) * (width / 2) + (peak - eave) * (peak - eave));
+        const slopeAngle = Math.atan2(peak - eave, width / 2);
+        return (
+          <>
+            <GlazingBars
+              length={length}
+              height={slopeLen}
+              position={[0, (eave + peak) / 2 + 0.5, -width / 4]}
+              rotation={[slopeAngle - Math.PI / 2, 0, 0]}
+              spacingUp={3}
+            />
+            <GlazingBars
+              length={length}
+              height={slopeLen}
+              position={[0, (eave + peak) / 2 + 0.5, width / 4]}
+              rotation={[Math.PI / 2 - slopeAngle, 0, Math.PI]}
+              spacingUp={3}
+            />
+          </>
+        );
+      })()}
+
       {/* Eave gutters */}
       <mesh position={[0, eave + 0.5, width / 2]}>
         <boxGeometry args={[length, 0.2, 0.3]} />
@@ -752,13 +799,11 @@ function EndGable({
           side={THREE.DoubleSide}
         />
       </mesh>
-      {/* Door silhouette on west wall only (flag via rotation) */}
-      {rotationY > 0 && (
-        <mesh position={[0, 1.5, 0.05]}>
-          <planeGeometry args={[3, 7]} />
-          <meshStandardMaterial color="#1a2230" side={THREE.DoubleSide} />
-        </mesh>
-      )}
+      {/* Endwall door — Phase visual-fidelity PR c. Upgraded from
+          flat silhouette to a recessed door with frame, vision
+          panel, threshold, and lever handle. Mounted on west gable
+          only (rotation flag). */}
+      {rotationY > 0 && <EndwallDoor position={[0, 0, 0.08]} />}
     </group>
   );
 }
@@ -818,32 +863,196 @@ function Truss({
   eave: number;
   peak: number;
 }) {
-  // Two diagonal rafters from eaves to peak, plus vertical kingpost
-  const points = useMemo(() => {
-    return [
-      new THREE.Vector3(x, eave + 0.5, -width / 2),
-      new THREE.Vector3(x, peak + 0.5, 0),
-      new THREE.Vector3(x, eave + 0.5, width / 2),
-    ];
-  }, [x, width, eave, peak]);
-  const rafterGeom = useMemo(() => {
-    const g = new THREE.BufferGeometry().setFromPoints(points);
-    return g;
-  }, [points]);
-
+  // Phase visual-fidelity PR c: rafters are now solid box geometries
+  // (was line primitive). Real structural members that catch light +
+  // cast shadows. ~2-inch aluminum extrusion proportions.
+  const slopeLen = Math.sqrt((width / 2) * (width / 2) + (peak - eave) * (peak - eave));
+  const slopeAngle = Math.atan2(peak - eave, width / 2);
+  const rafterMid = (eave + peak) / 2 + 0.5;
   return (
     <group>
-      <line>
-        <primitive object={rafterGeom} attach="geometry" />
-        <lineBasicMaterial color="#3d4452" linewidth={2} />
-      </line>
-      {/* Tie beam */}
+      {/* South rafter — angled box from eave to peak */}
+      <mesh
+        position={[x, rafterMid, -width / 4]}
+        rotation={[slopeAngle, 0, 0]}
+      >
+        <boxGeometry args={[0.16, 0.18, slopeLen]} />
+        <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
+      </mesh>
+      {/* North rafter */}
+      <mesh
+        position={[x, rafterMid, width / 4]}
+        rotation={[-slopeAngle, 0, 0]}
+      >
+        <boxGeometry args={[0.16, 0.18, slopeLen]} />
+        <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
+      </mesh>
+      {/* Tie beam (horizontal collar tie at eave level) */}
       <mesh position={[x, eave + 0.5, 0]}>
-        <boxGeometry args={[0.15, 0.15, width]} />
-        <meshStandardMaterial color="#3d4452" />
+        <boxGeometry args={[0.18, 0.18, width]} />
+        <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
+      </mesh>
+      {/* Kingpost (vertical from tie to ridge) */}
+      <mesh position={[x, (eave + peak) / 2 + 0.5, 0]}>
+        <boxGeometry args={[0.14, peak - eave, 0.14]} />
+        <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
       </mesh>
     </group>
   );
+}
+
+/**
+ * Aluminum glazing-bar grid — Phase visual-fidelity PR c.
+ *
+ * The iconic Dutch/Venlo greenhouse signature: a thin aluminum bar
+ * grid over every glazed surface. Mullions (vertical bars) every
+ * ~4 ft along the length; transom rails (horizontal) every ~4-5 ft
+ * up the height of sidewalls or along the slope of roof panels.
+ *
+ * Rendered as thin box geometries (~1-inch wide). PBR-lit so they
+ * pick up the sun direction. Slight inset (0.04 units toward camera)
+ * so they sit on top of the glazing plane without z-fighting.
+ */
+function GlazingBars({
+  length,
+  height,
+  position,
+  rotation,
+  spacingAlong = 4,
+  spacingUp = 4,
+}: {
+  length: number;
+  height: number;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  spacingAlong?: number;
+  spacingUp?: number;
+}) {
+  const mullionCount = Math.max(2, Math.floor(length / spacingAlong) + 1);
+  const transomCount = Math.max(2, Math.floor(height / spacingUp) + 1);
+  const bars: React.ReactNode[] = [];
+  // Vertical mullions
+  for (let i = 0; i < mullionCount; i++) {
+    const x = -length / 2 + (length / (mullionCount - 1)) * i;
+    bars.push(
+      <mesh key={`m-${i}`} position={[x, 0, 0.04]}>
+        <boxGeometry args={[0.10, height, 0.05]} />
+        <meshStandardMaterial color="#9aa3ad" roughness={0.4} metalness={0.6} />
+      </mesh>,
+    );
+  }
+  // Horizontal transoms
+  for (let i = 0; i < transomCount; i++) {
+    const y = -height / 2 + (height / (transomCount - 1)) * i;
+    bars.push(
+      <mesh key={`t-${i}`} position={[0, y, 0.04]}>
+        <boxGeometry args={[length, 0.08, 0.05]} />
+        <meshStandardMaterial color="#9aa3ad" roughness={0.4} metalness={0.6} />
+      </mesh>,
+    );
+  }
+  return (
+    <group position={position} rotation={rotation}>
+      {bars}
+    </group>
+  );
+}
+
+/**
+ * Endwall door — Phase visual-fidelity PR c. Replaces the flat dark
+ * plane with a recessed frame, threshold strip, vision panel, and
+ * lever handle. Mounted on the west gable.
+ */
+function EndwallDoor({ position }: { position: [number, number, number] }) {
+  const w = 3.2;
+  const h = 7;
+  return (
+    <group position={position}>
+      {/* Frame (slightly larger box behind door) */}
+      <mesh position={[0, h / 2, -0.04]}>
+        <boxGeometry args={[w + 0.4, h + 0.2, 0.08]} />
+        <meshStandardMaterial color="#1f2530" roughness={0.45} metalness={0.5} />
+      </mesh>
+      {/* Door slab — warm grey aluminum */}
+      <mesh position={[0, h / 2, 0.02]}>
+        <boxGeometry args={[w, h, 0.06]} />
+        <meshStandardMaterial color="#3a4250" roughness={0.5} metalness={0.45} />
+      </mesh>
+      {/* Vision panel (small window in upper third) */}
+      <mesh position={[0, h * 0.7, 0.06]}>
+        <planeGeometry args={[w * 0.55, h * 0.18]} />
+        <meshPhysicalMaterial
+          color="#cfe9f7"
+          transparent
+          opacity={0.35}
+          transmission={0.85}
+          roughness={0.05}
+          metalness={0}
+          ior={1.51}
+        />
+      </mesh>
+      {/* Threshold strip */}
+      <mesh position={[0, 0.04, 0.06]}>
+        <boxGeometry args={[w + 0.1, 0.08, 0.12]} />
+        <meshStandardMaterial color="#2a3140" roughness={0.4} metalness={0.5} />
+      </mesh>
+      {/* Lever handle */}
+      <mesh position={[w * 0.35, h * 0.45, 0.08]}>
+        <boxGeometry args={[0.5, 0.06, 0.08]} />
+        <meshStandardMaterial color="#cfd3d9" roughness={0.2} metalness={0.85} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * Roof purlins — Phase visual-fidelity PR c. Longitudinal horizontal
+ * structural members running the full greenhouse length on each
+ * roof slope, sitting between trusses to support the glazing. Real
+ * greenhouses have 3-5 per slope at evenly-spaced intervals from
+ * eave to ridge. Adds depth + scale to the structure.
+ */
+function RoofPurlins({
+  length,
+  width,
+  eave,
+  peak,
+}: {
+  length: number;
+  width: number;
+  eave: number;
+  peak: number;
+}) {
+  const slopeLen = Math.sqrt((width / 2) * (width / 2) + (peak - eave) * (peak - eave));
+  const slopeAngle = Math.atan2(peak - eave, width / 2);
+  const purlinsPerSlope = 4;
+  const lines: React.ReactNode[] = [];
+  // Distance along slope from eave at fractional t in [0,1]
+  const purlinAt = (t: number, side: "south" | "north") => {
+    const distAlongSlope = t * slopeLen;
+    const yLift = Math.sin(slopeAngle) * distAlongSlope;
+    const horizFromEave = Math.cos(slopeAngle) * distAlongSlope;
+    const sign = side === "south" ? -1 : 1;
+    const z = sign * (width / 2 - horizFromEave);
+    const y = eave + 0.5 + yLift;
+    return [0, y, z] as [number, number, number];
+  };
+  for (let i = 1; i < purlinsPerSlope; i++) {
+    const t = i / purlinsPerSlope;
+    const sPos = purlinAt(t, "south");
+    const nPos = purlinAt(t, "north");
+    lines.push(
+      <mesh key={`ps-${i}`} position={sPos}>
+        <boxGeometry args={[length, 0.10, 0.10]} />
+        <meshStandardMaterial color="#5a626d" roughness={0.5} metalness={0.5} />
+      </mesh>,
+      <mesh key={`pn-${i}`} position={nPos}>
+        <boxGeometry args={[length, 0.10, 0.10]} />
+        <meshStandardMaterial color="#5a626d" roughness={0.5} metalness={0.5} />
+      </mesh>,
+    );
+  }
+  return <group>{lines}</group>;
 }
 
 /** Bar-grid LED form factor (Fluence SPYDR, Gavita 1700e/RS 1900e, generic LED).
