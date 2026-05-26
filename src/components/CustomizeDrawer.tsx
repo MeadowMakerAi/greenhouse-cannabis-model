@@ -244,7 +244,7 @@ export default function CustomizeDrawer({
         {/* Footer — keyboard hint */}
         <footer className="border-t border-ink-200/70 bg-white px-4 py-2 text-[10px] uppercase tracking-[0.10em] text-ink-500">
           <span>
-            ⌘K to search · Esc to close · Sidebar still active during validation
+            ⌘K to search · Esc to close · 70+ fields across 12 sections
           </span>
         </footer>
       </aside>
