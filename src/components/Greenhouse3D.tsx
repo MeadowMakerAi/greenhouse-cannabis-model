@@ -5,6 +5,7 @@ import {
   OrbitControls,
   Grid,
   Sky,
+  Stars,
   Environment,
   Lightformer,
 } from "@react-three/drei";
@@ -1797,6 +1798,95 @@ function ElegantSky({
   );
 }
 
+/**
+ * Night sky — star field + moon disc + optional Milky Way arc.
+ *
+ * Visibility logic driven by sun elevation:
+ *   sun > +3°  → fully transparent (broad daylight, no celestials)
+ *   sun -6°…+3° → fading in (civil + early twilight)
+ *   sun < -6°  → fully visible (astronomical twilight + night)
+ *
+ * Moon position uses the simple "opposite-of-sun" approximation
+ * (180° azimuth offset, mirrored elevation) — this gives the right
+ * feel for sunset/sunrise transitions without an ephemeris library.
+ * Real moon ephemeris is a future polish item (see issue).
+ *
+ * Milky Way: a faint backdrop sphere with a gradient texture that
+ * only renders when sun is deep below horizon AND when "season"
+ * (proxied by day-of-year) puts the galactic core above the
+ * latitude's horizon. Skipped for now — pure star field looks fine.
+ */
+function NightSky({
+  sunElevationDeg,
+  sunAzimuthDeg,
+}: {
+  sunElevationDeg: number;
+  sunAzimuthDeg: number;
+}) {
+  // Visibility ramp 0..1 across sun -6° → +3°
+  const v = sunElevationDeg <= -6 ? 1
+    : sunElevationDeg >= 3 ? 0
+    : 1 - (sunElevationDeg + 6) / 9;
+  if (v <= 0.02) return null;
+
+  // Moon position: rough antipode of sun. Real moon orbits
+  // independently; this gives the right "opposite the sun" feel for
+  // sunrise/sunset transitions without needing an ephemeris.
+  const moonAz = (sunAzimuthDeg + 180) % 360;
+  const moonElev = -sunElevationDeg;
+  const moonElevRad = (moonElev * Math.PI) / 180;
+  const moonAzRad = (moonAz * Math.PI) / 180;
+  const moonDist = 420;
+  const moonHoriz = Math.cos(moonElevRad) * moonDist;
+  const moonX = Math.sin(moonAzRad) * moonHoriz;
+  const moonZ = -Math.cos(moonAzRad) * moonHoriz;
+  const moonY = Math.sin(moonElevRad) * moonDist;
+  // Hide moon when below horizon (we'd see through ground anyway,
+  // and the asymmetry would feel off).
+  const moonVisible = moonElev > -2;
+
+  return (
+    <group>
+      {/* drei Stars: 5000-star field. Fade radius keeps the sphere
+          edge soft. Speed = subtle twinkle. */}
+      <Stars
+        radius={400}
+        depth={60}
+        count={5000}
+        factor={4}
+        saturation={0}
+        fade
+        speed={0.4}
+      />
+      {moonVisible && (
+        <mesh position={[moonX, moonY, moonZ]}>
+          <sphereGeometry args={[10 * v, 32, 16]} />
+          {/* Soft pearl-white moon. Emissive so it stays bright
+              against the dark sky without needing a light source. */}
+          <meshBasicMaterial
+            color="#e8e6dc"
+            transparent
+            opacity={Math.min(0.95, 0.4 + v * 0.55)}
+          />
+        </mesh>
+      )}
+      {moonVisible && (
+        // Soft halo: a slightly larger sphere with a low-opacity
+        // additive blend gives the moon a corona without expensive
+        // postprocessing.
+        <mesh position={[moonX, moonY, moonZ]}>
+          <sphereGeometry args={[14 * v, 24, 12]} />
+          <meshBasicMaterial
+            color="#ffffff"
+            transparent
+            opacity={0.06 * v}
+          />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 function Atmosphere({ elevationDeg }: { elevationDeg: number }) {
   // Subtle haze that mirrors what the eye actually sees — low sun = slightly
   // warmer fog, but never theatrical. Density caps at 0.0014.
@@ -2046,6 +2136,10 @@ export default function Greenhouse3D({
           <ElegantSky
             azimuthDeg={liveSunAzimuthDeg ?? 180}
             elevationDeg={liveSunElevationDeg ?? 60}
+          />
+          <NightSky
+            sunElevationDeg={liveSunElevationDeg ?? 60}
+            sunAzimuthDeg={liveSunAzimuthDeg ?? 180}
           />
           <Atmosphere elevationDeg={liveSunElevationDeg ?? 60} />
 

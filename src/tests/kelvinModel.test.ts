@@ -50,10 +50,15 @@ describe("skyParamsFromElevation", () => {
     expect(p.rayleigh).toBeCloseTo(0.5, 1);
   });
 
-  it("horizon (0°) gives warm hazy params (high turbidity)", () => {
+  it("horizon (0°) gives dramatic golden-hour params (peak turbidity + rayleigh)", () => {
+    // 2026-05-25 sky upgrade: golden hour is now dramatic.
+    // At exactly the horizon we hit peak turbidity 10 + peak rayleigh
+    // 3.0 + peak mie for the beautiful sunrise/sunset color scatter.
+    // Was turbidity 6 / rayleigh 1.2 in the prior more conservative
+    // band layout.
     const p = skyParamsFromElevation(0);
-    expect(p.turbidity).toBe(6);
-    expect(p.rayleigh).toBeCloseTo(1.2, 1);
+    expect(p.turbidity).toBeCloseTo(10, 1);
+    expect(p.rayleigh).toBeCloseTo(3.0, 1);
   });
 
   it("below horizon returns dim params", () => {
