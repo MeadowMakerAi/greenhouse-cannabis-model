@@ -871,10 +871,15 @@ function Truss({
   const rafterMid = (eave + peak) / 2 + 0.5;
   return (
     <group>
-      {/* South rafter — angled box from eave to peak */}
+      {/* South rafter — angled box from south eave (low) to peak (high).
+          Box's +Z end at the peak (z=0), -Z end at the eave
+          (z=-width/2). Under positive X-rotation, +Z goes DOWN — we
+          want it UP, so the sign is NEGATED (and mirrored for the
+          north rafter). Initial PR c had this backwards, flipping
+          the truss upside down. */}
       <mesh
         position={[x, rafterMid, -width / 4]}
-        rotation={[slopeAngle, 0, 0]}
+        rotation={[-slopeAngle, 0, 0]}
       >
         <boxGeometry args={[0.16, 0.18, slopeLen]} />
         <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
@@ -882,7 +887,7 @@ function Truss({
       {/* North rafter */}
       <mesh
         position={[x, rafterMid, width / 4]}
-        rotation={[-slopeAngle, 0, 0]}
+        rotation={[slopeAngle, 0, 0]}
       >
         <boxGeometry args={[0.16, 0.18, slopeLen]} />
         <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
@@ -2260,18 +2265,144 @@ function Ground({
  * (proxied by day-of-year) puts the galactic core above the
  * latitude's horizon. Skipped for now — pure star field looks fine.
  */
+/**
+ * Milky Way arc — Phase visual-fidelity PR d.
+ *
+ * A dim luminous band sweeping across the night sky. Renders as a
+ * big inside-facing sphere with a custom shader that brightens a
+ * great-circle band at a fixed orientation (galactic plane tilted
+ * 60° from the celestial equator, which is close to reality for
+ * mid-northern latitudes). The band uses two octaves of value noise
+ * for cloud-like patchiness (dust lanes, brighter cores).
+ *
+ * Visibility tied to sun elevation — fully visible at sun < -10°
+ * (astronomical twilight), fades to 0 at sun > -3°. Color is a warm
+ * cream tinted toward orange in the galactic core direction.
+ */
+function MilkyWay({ visibility }: { visibility: number }) {
+  const material = useMemo(() => {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uVisibility: { value: 0 },
+      },
+      transparent: true,
+      side: THREE.BackSide,
+      depthWrite: false,
+      vertexShader: `
+        varying vec3 vWorldPos;
+        void main() {
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vWorldPos = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        uniform float uVisibility;
+        varying vec3 vWorldPos;
+
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+
+        void main() {
+          // Normalize direction from origin to this fragment
+          vec3 dir = normalize(vWorldPos);
+
+          // Galactic plane normal: tilted ~60° from world Y. This
+          // gives the Milky Way a diagonal sweep across the sky
+          // instead of a flat horizontal band.
+          vec3 galacticNormal = normalize(vec3(0.5, 0.7, 0.2));
+          float planeDist = abs(dot(dir, galacticNormal));
+
+          // Band intensity: peaks when fragment is on the great
+          // circle (planeDist=0), falls off with cosine roll.
+          float band = smoothstep(0.32, 0.0, planeDist);
+
+          // Two-octave noise for cloud-like dust lanes
+          vec2 nc = vec2(atan(dir.x, dir.z) * 2.0, dir.y * 2.0);
+          float n = noise(nc * 1.5) * 0.55 + noise(nc * 5.0) * 0.35 + noise(nc * 14.0) * 0.15;
+
+          // Bright core region: stronger near "galactic center"
+          // direction (we use the +X axis of galactic frame as proxy)
+          vec3 galCenter = normalize(vec3(0.8, -0.4, 0.4));
+          float coreBoost = pow(max(0.0, dot(dir, galCenter)), 4.0) * 0.6;
+
+          // Final luminance + color
+          float lum = band * (0.5 + n * 0.5) + coreBoost * band;
+          vec3 cool = vec3(0.78, 0.84, 1.0);
+          vec3 warm = vec3(1.0, 0.85, 0.65);
+          vec3 col = mix(cool, warm, coreBoost);
+
+          // Twinkle individual bright spots
+          float twinkle = step(0.78, noise(nc * 28.0)) * 0.5;
+
+          float alpha = clamp((lum + twinkle * 0.3) * uVisibility, 0.0, 0.85);
+          gl_FragColor = vec4(col * lum, alpha);
+        }
+      `,
+    });
+    return mat;
+  }, []);
+
+  // Update uniform when visibility changes (re-render keeps it fresh)
+  material.uniforms.uVisibility.value = visibility;
+
+  if (visibility <= 0.02) return null;
+
+  return (
+    <mesh>
+      <sphereGeometry args={[480, 60, 30]} />
+      <primitive object={material} attach="material" />
+    </mesh>
+  );
+}
+
+/**
+ * Approximate lunar phase fraction (0=new, 0.5=full, 1=new again)
+ * from a day-of-year proxy. Uses a fixed lunar synodic cycle of
+ * 29.5 days and a known new-moon reference (Jan 6, 2026). Good
+ * enough for "feel" — phase advances visibly week-to-week without
+ * needing a real ephemeris. Phase ∈ [0, 1) returned.
+ */
+function approximateLunarPhase(dayOfYear: number): number {
+  // Reference: Jan 6, 2026 = new moon (DOY ≈ 6). Cycle 29.5 days.
+  const refDOY = 6;
+  const cycle = 29.5;
+  const elapsed = (dayOfYear - refDOY) % cycle;
+  return ((elapsed + cycle) % cycle) / cycle;
+}
+
 function NightSky({
   sunElevationDeg,
   sunAzimuthDeg,
+  monthIndex,
 }: {
   sunElevationDeg: number;
   sunAzimuthDeg: number;
+  monthIndex: number;
 }) {
-  // Visibility ramp 0..1 across sun -6° → +3°
+  // Star + moon visibility ramp 0..1 across sun -6° → +3°
   const v = sunElevationDeg <= -6 ? 1
     : sunElevationDeg >= 3 ? 0
     : 1 - (sunElevationDeg + 6) / 9;
-  if (v <= 0.02) return null;
+
+  // Milky Way needs deeper darkness — visible only at sun < -10°
+  // (astronomical twilight), peaks at sun < -18°
+  const milkyWayV = sunElevationDeg <= -18 ? 1
+    : sunElevationDeg >= -10 ? 0
+    : (-sunElevationDeg - 10) / 8;
+
+  if (v <= 0.02 && milkyWayV <= 0.02) return null;
 
   // Moon position: rough antipode of sun. Real moon orbits
   // independently; this gives the right "opposite the sun" feel for
@@ -2285,47 +2416,96 @@ function NightSky({
   const moonX = Math.sin(moonAzRad) * moonHoriz;
   const moonZ = -Math.cos(moonAzRad) * moonHoriz;
   const moonY = Math.sin(moonElevRad) * moonDist;
-  // Hide moon when below horizon (we'd see through ground anyway,
-  // and the asymmetry would feel off).
+  // Hide moon when below horizon
   const moonVisible = moonElev > -2;
+
+  // Lunar phase from month index — proxy day-of-year is the 15th
+  // of the active month (sufficient for visual change across the
+  // year; real ephemeris would require currentDayOfYear plumbed
+  // through every consumer).
+  const cumStart = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  const dayOfYear = (cumStart[monthIndex] ?? 0) + 15;
+  const phase = approximateLunarPhase(dayOfYear);
+  // illuminationFraction: 0 at new, 1 at full
+  const illuminationFraction = 0.5 * (1 - Math.cos(phase * Math.PI * 2));
+  // phaseAngle ∈ [0, 2π) — used by the moon shader to position the
+  // terminator. 0 = full moon (terminator behind), π = new moon.
+  const phaseAngle = phase * Math.PI * 2;
+
+  // Moon shader material — applies a terminator across the sphere
+  // so we see crescent / gibbous / full phases. The sphere is
+  // rotated so the lit hemisphere faces the sun (we use a rough
+  // sun-direction unit vector for this).
+  const moonMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uPhaseAngle: { value: 0 },
+        uVisibility: { value: 0 },
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uPhaseAngle;
+        uniform float uVisibility;
+        varying vec3 vNormal;
+        void main() {
+          // Direction "toward the sun" in moon-local frame. As
+          // phase advances, this vector rotates around the moon.
+          vec3 sunDir = vec3(sin(uPhaseAngle), 0.0, cos(uPhaseAngle));
+          float lit = max(0.0, dot(vNormal, sunDir));
+          // Smooth terminator
+          float lightness = smoothstep(0.0, 0.15, lit);
+          // Base moon color (pearl) + slight earthshine on dark side
+          vec3 litColor = vec3(0.95, 0.93, 0.85);
+          vec3 darkColor = vec3(0.10, 0.11, 0.15);
+          vec3 col = mix(darkColor, litColor, lightness);
+          gl_FragColor = vec4(col, uVisibility);
+        }
+      `,
+      transparent: true,
+    });
+  }, []);
+  moonMaterial.uniforms.uPhaseAngle.value = phaseAngle;
+  moonMaterial.uniforms.uVisibility.value = Math.min(0.98, 0.4 + v * 0.58);
 
   return (
     <group>
-      {/* drei Stars: 5000-star field. Fade radius keeps the sphere
-          edge soft. Speed = subtle twinkle. */}
+      {/* Milky Way arc — deepest layer, very subtle */}
+      <MilkyWay visibility={milkyWayV} />
+
+      {/* Dense star field. Larger count + slightly cooler saturation
+          for richness. */}
       <Stars
         radius={400}
-        depth={60}
-        count={5000}
+        depth={80}
+        count={9000}
         factor={4}
-        saturation={0}
+        saturation={0.05}
         fade
-        speed={0.4}
+        speed={0.5}
       />
+
       {moonVisible && (
-        <mesh position={[moonX, moonY, moonZ]}>
-          <sphereGeometry args={[10 * v, 32, 16]} />
-          {/* Soft pearl-white moon. Emissive so it stays bright
-              against the dark sky without needing a light source. */}
-          <meshBasicMaterial
-            color="#e8e6dc"
-            transparent
-            opacity={Math.min(0.95, 0.4 + v * 0.55)}
-          />
-        </mesh>
-      )}
-      {moonVisible && (
-        // Soft halo: a slightly larger sphere with a low-opacity
-        // additive blend gives the moon a corona without expensive
-        // postprocessing.
-        <mesh position={[moonX, moonY, moonZ]}>
-          <sphereGeometry args={[14 * v, 24, 12]} />
-          <meshBasicMaterial
-            color="#ffffff"
-            transparent
-            opacity={0.06 * v}
-          />
-        </mesh>
+        <group>
+          <mesh position={[moonX, moonY, moonZ]}>
+            <sphereGeometry args={[14, 64, 32]} />
+            <primitive object={moonMaterial} attach="material" />
+          </mesh>
+          {/* Soft halo */}
+          <mesh position={[moonX, moonY, moonZ]}>
+            <sphereGeometry args={[18 * (0.5 + illuminationFraction * 0.5), 24, 12]} />
+            <meshBasicMaterial
+              color="#ffffff"
+              transparent
+              opacity={0.05 * v * (0.4 + illuminationFraction * 0.6)}
+            />
+          </mesh>
+        </group>
       )}
     </group>
   );
@@ -2584,6 +2764,7 @@ export default function Greenhouse3D({
           <NightSky
             sunElevationDeg={liveSunElevationDeg ?? 60}
             sunAzimuthDeg={liveSunAzimuthDeg ?? 180}
+            monthIndex={month}
           />
           <Atmosphere elevationDeg={liveSunElevationDeg ?? 60} />
 
