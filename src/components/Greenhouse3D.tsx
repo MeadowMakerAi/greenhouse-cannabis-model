@@ -852,6 +852,40 @@ function RoofPanel({
   );
 }
 
+/**
+ * Single rafter member oriented between two explicit endpoints.
+ * Cylinder geometry positioned at the midpoint and rotated via
+ * quaternion so its local +Y axis points from `from` toward `to`.
+ * Axis-rotation math is impossible to get wrong this way —
+ * regression-proof vs the prior "guess the Euler sign" approach.
+ */
+function Rafter({
+  from,
+  to,
+  thickness = 0.18,
+}: {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  thickness?: number;
+}) {
+  const { mid, len, quat } = useMemo(() => {
+    const len = from.distanceTo(to);
+    const mid = from.clone().lerp(to, 0.5);
+    const dir = to.clone().sub(from).normalize();
+    // Default cylinder orientation: along local +Y. Compute the
+    // quaternion that rotates +Y to point along `dir`.
+    const upY = new THREE.Vector3(0, 1, 0);
+    const quat = new THREE.Quaternion().setFromUnitVectors(upY, dir);
+    return { mid, len, quat };
+  }, [from, to]);
+  return (
+    <mesh position={[mid.x, mid.y, mid.z]} quaternion={quat}>
+      <cylinderGeometry args={[thickness / 2, thickness / 2, len, 10]} />
+      <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
+    </mesh>
+  );
+}
+
 function Truss({
   x,
   width,
@@ -863,42 +897,37 @@ function Truss({
   eave: number;
   peak: number;
 }) {
-  // Phase visual-fidelity PR c: rafters are now solid box geometries
-  // (was line primitive). Real structural members that catch light +
-  // cast shadows. ~2-inch aluminum extrusion proportions.
-  const slopeLen = Math.sqrt((width / 2) * (width / 2) + (peak - eave) * (peak - eave));
-  const slopeAngle = Math.atan2(peak - eave, width / 2);
-  const rafterMid = (eave + peak) / 2 + 0.5;
+  // Phase visual-fidelity PR c (rewritten 2026-05-26): rafters now
+  // use endpoint-driven quaternion orientation via the Rafter helper.
+  // Previous box+Euler approach mis-rotated one rafter on top of the
+  // correct one, producing a "phantom upside-down truss" silhouette.
+  const eaveY = eave + 0.5;
+  const peakY = peak + 0.5;
+  const southEave = useMemo(
+    () => new THREE.Vector3(x, eaveY, -width / 2),
+    [x, eaveY, width],
+  );
+  const northEave = useMemo(
+    () => new THREE.Vector3(x, eaveY, width / 2),
+    [x, eaveY, width],
+  );
+  const peakPt = useMemo(
+    () => new THREE.Vector3(x, peakY, 0),
+    [x, peakY],
+  );
   return (
     <group>
-      {/* South rafter — angled box from south eave (low) to peak (high).
-          Box's +Z end at the peak (z=0), -Z end at the eave
-          (z=-width/2). Under positive X-rotation, +Z goes DOWN — we
-          want it UP, so the sign is NEGATED (and mirrored for the
-          north rafter). Initial PR c had this backwards, flipping
-          the truss upside down. */}
-      <mesh
-        position={[x, rafterMid, -width / 4]}
-        rotation={[-slopeAngle, 0, 0]}
-      >
-        <boxGeometry args={[0.16, 0.18, slopeLen]} />
-        <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
-      </mesh>
+      {/* South rafter — endpoint-driven, guaranteed correct */}
+      <Rafter from={southEave} to={peakPt} />
       {/* North rafter */}
-      <mesh
-        position={[x, rafterMid, width / 4]}
-        rotation={[slopeAngle, 0, 0]}
-      >
-        <boxGeometry args={[0.16, 0.18, slopeLen]} />
-        <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
-      </mesh>
+      <Rafter from={northEave} to={peakPt} />
       {/* Tie beam (horizontal collar tie at eave level) */}
-      <mesh position={[x, eave + 0.5, 0]}>
+      <mesh position={[x, eaveY, 0]}>
         <boxGeometry args={[0.18, 0.18, width]} />
         <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
       </mesh>
       {/* Kingpost (vertical from tie to ridge) */}
-      <mesh position={[x, (eave + peak) / 2 + 0.5, 0]}>
+      <mesh position={[x, (eaveY + peakY) / 2, 0]}>
         <boxGeometry args={[0.14, peak - eave, 0.14]} />
         <meshStandardMaterial color="#3d4452" roughness={0.5} metalness={0.4} />
       </mesh>
