@@ -54,7 +54,13 @@ type PillId =
   | "climate"
   | "cycles";
 
-export default function TopPillBar() {
+export interface TopPillBarProps {
+  /** Open the Customize drawer (the long-tail editing surface that
+   *  holds all 70+ fields). Wired by DashboardLayout in PR 2. */
+  onCustomizeClick?: () => void;
+}
+
+export default function TopPillBar({ onCustomizeClick }: TopPillBarProps = {}) {
   const { inputs, setInputs, climate, refreshClimate } = useScenario();
   const d = useDerived();
   const allFixtures = useAllFixtures();
@@ -377,6 +383,23 @@ export default function TopPillBar() {
           />
         </div>
       </InputPill>
+
+      {/* Customize drawer trigger — opens the long-tail editing
+          surface with all 70+ fields + search. Separately styled from
+          the pills so it reads as "go deeper" rather than another
+          quick-edit input. PR 2 ships this alongside the existing
+          sidebar; PR 3 will retire the sidebar. */}
+      {onCustomizeClick && (
+        <button
+          type="button"
+          onClick={onCustomizeClick}
+          className="btn-cta-warm ml-auto !text-xs"
+          aria-keyshortcuts="Meta+K Control+K"
+          title="Customize all 70+ inputs (⌘K)"
+        >
+          Customize <span className="ml-1.5 opacity-70">⌘K</span>
+        </button>
+      )}
     </div>
   );
 }

@@ -607,6 +607,32 @@ body,
   animation: tab-content-enter 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
+/* Customize drawer entrance — Phase 4 PR 2.
+   Slide in from the right with a soft fade. 220ms matches the tab-
+   content animation so the drawer feels like another tab transition,
+   not a marketing modal. */
+@keyframes customize-drawer-in {
+  from { transform: translate3d(24px, 0, 0); opacity: 0.4; }
+  to   { transform: translate3d(0, 0, 0);    opacity: 1; }
+}
+.animate-customize-in {
+  animation: customize-drawer-in 200ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Search highlight + hide treatment for fields inside the customize
+   drawer. Applied via JS in CustomizeDrawer when the search query is
+   non-empty. */
+.customize-search-hit {
+  background: theme('colors.cta.50');
+  color: theme('colors.cta.700');
+  border-radius: 3px;
+  padding: 1px 3px;
+  margin: 0 -3px;
+}
+.customize-search-miss {
+  display: none !important;
+}
+
 /* Respect users who have asked the OS to reduce motion (Mac System
    Settings → Accessibility → Reduce motion, Windows Animation Effects off).
    The depth system uses translate-y micro-lifts on cards and buttons —
@@ -632,7 +658,8 @@ body,
   .landing-hero-img,
   .tab-content,
   .landing-mesh,
-  .live-indicator::before {
+  .live-indicator::before,
+  .animate-customize-in {
     animation: none !important;
     transform: none !important;
   }
