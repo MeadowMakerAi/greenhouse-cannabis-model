@@ -628,29 +628,18 @@ function GreenhouseStructure({
         position={[0, eave / 2 + 0.5, width / 2 + 0.04]}
         rotation={[0, 0, 0]}
       />
-      {/* South roof slope bars */}
-      {(() => {
-        const slopeLen = Math.sqrt((width / 2) * (width / 2) + (peak - eave) * (peak - eave));
-        const slopeAngle = Math.atan2(peak - eave, width / 2);
-        return (
-          <>
-            <GlazingBars
-              length={length}
-              height={slopeLen}
-              position={[0, (eave + peak) / 2 + 0.5, -width / 4]}
-              rotation={[slopeAngle - Math.PI / 2, 0, 0]}
-              spacingUp={3}
-            />
-            <GlazingBars
-              length={length}
-              height={slopeLen}
-              position={[0, (eave + peak) / 2 + 0.5, width / 4]}
-              rotation={[Math.PI / 2 - slopeAngle, 0, Math.PI]}
-              spacingUp={3}
-            />
-          </>
-        );
-      })()}
+      {/* Roof slope glazing bars — REMOVED 2026-05-26.
+       *
+       * The previous rotation math (slopeAngle ± π/2) put the
+       * mullion+transom grid in a tilted plane that read as a
+       * phantom upside-down truss next to the correct rafters.
+       *
+       * Roof structural depth is already conveyed by the real
+       * rafters (Truss with quaternion-based Rafter helper) plus
+       * the longitudinal purlins (RoofPurlins). Adding another bar
+       * layer was overkill and we don't need it for the "Dutch
+       * greenhouse signature" — sidewall + endwall glazing bars
+       * dominate from the camera angles users actually look from. */}
 
       {/* Eave gutters */}
       <mesh position={[0, eave + 0.5, width / 2]}>
