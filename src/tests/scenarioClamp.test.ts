@@ -45,14 +45,18 @@ describe("clampScenarioInputs", () => {
   });
 
   it("clamps greenhouse geometry to sane ranges", () => {
+    // Lower bounds were relaxed to 1 (from 8/6/7) to stop fighting
+    // live typing — clearing "100" to type "120" used to snap the
+    // intermediate "1" up to 8, jamming the input. NaN / negative
+    // still get caught.
     const r = clampScenarioInputs({
       ...defaultScenario,
-      greenhouseLengthFt: 5000, // way over 300
-      greenhouseWidthFt: 2, // way under 8
-      eaveHeightFt: 100, // way over 18
+      greenhouseLengthFt: 5000, // way over 300 → clamped
+      greenhouseWidthFt: 0, // not finite for our purposes (treated as <1)
+      eaveHeightFt: 100, // way over 18 → clamped
     });
     expect(r.greenhouseLengthFt).toBe(300);
-    expect(r.greenhouseWidthFt).toBe(8);
+    expect(r.greenhouseWidthFt).toBe(1);
     expect(r.eaveHeightFt).toBe(18);
   });
 

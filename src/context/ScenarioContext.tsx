@@ -405,13 +405,19 @@ export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
       (merged as Record<string, unknown>)[key] = max;
     }
   };
-  clampMin("greenhouseLengthFt", 8);
+  // Dimension clamps: only guard against NaN / 0 / negative so the 3D
+  // scene + Math.sqrt() can't blow up. Previous mins (8 / 8 / 6 / 7)
+  // fought live typing — clearing "100" to type "120" briefly snapped
+  // to 8 on the intermediate "1", making the field feel stuck.
+  // Upper bounds stay aggressive (out-of-range entries clamp without
+  // ambiguity because there's no progressive-typing-down path).
+  clampMin("greenhouseLengthFt", 1);
   clampMax("greenhouseLengthFt", 300); // single-zone practical max
-  clampMin("greenhouseWidthFt", 8);
+  clampMin("greenhouseWidthFt", 1);
   clampMax("greenhouseWidthFt", 60); // single-bay practical max
-  clampMin("eaveHeightFt", 6);
+  clampMin("eaveHeightFt", 1);
   clampMax("eaveHeightFt", 18); // typical commercial high-bay ceiling
-  clampMin("peakHeightFt", 7); // geometryFromDims further enforces > eave
+  clampMin("peakHeightFt", 1); // geometryFromDims further enforces > eave
   clampMax("peakHeightFt", 32);
   clampMin("canopyAreaSqFt", 50);
   clampMin("greenhouseFloorAreaSqFt", 50);
