@@ -1902,9 +1902,22 @@ export default function Greenhouse3D({
   /** Override the default 760px canvas height. Useful for substrate mode. */
   heightOverride?: number;
 }) {
-  // Canopy footprint (assume same aspect as floor unless explicit dims given)
-  const canopyWidth = Math.sqrt(canopyAreaSqFt / aspect);
-  const canopyLength = canopyWidth * aspect;
+  // Canopy footprint — match the GREENHOUSE aspect when explicit
+  // length/width are provided, falling back to the legacy 1.5 default
+  // only when dimensions aren't passed. Previously the canopy always
+  // used the 1.5 default regardless of actual greenhouse shape, which
+  // distorted the fixture grid (a 100×30 ft long-span house at 3.3:1
+  // got rendered with a 1.5:1 canopy, collapsing the row count for
+  // wider-coverage fixtures like HPS down to ~1 row).
+  const effectiveAspect =
+    typeof greenhouseLengthFt === "number" &&
+    typeof greenhouseWidthFt === "number" &&
+    greenhouseWidthFt > 0 &&
+    greenhouseLengthFt > 0
+      ? greenhouseLengthFt / greenhouseWidthFt
+      : aspect;
+  const canopyWidth = Math.sqrt(canopyAreaSqFt / effectiveAspect);
+  const canopyLength = canopyWidth * effectiveAspect;
 
   // Floor: explicit dimensions take precedence; fall back to area-derived.
   // Floor must be at least canopy + 6 ft aisles (3 ft each side).
