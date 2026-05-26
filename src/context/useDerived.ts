@@ -96,7 +96,20 @@ export function useDerived() {
   return useMemo(() => {
     const fixture =
       allFixtures[inputs.fixtureId] ?? fixtureLibrary[inputs.fixtureId] ?? fixtureLibrary.ledHighEfficiency;
-    const target = cropTargets[inputs.cropTargetId];
+    const presetTarget = cropTargets[inputs.cropTargetId];
+    // Apply the operator's custom DLI override if set; otherwise fall
+    // back to the preset bucket. Lets indoor growers dial in a
+    // specific DLI (e.g. exactly 45) instead of being limited to the
+    // 3 preset bands. Other preset fields (label, topPPFD, etc.)
+    // remain from the preset — only targetDLI is operator-overridable
+    // because that's the only one that drives downstream model math.
+    const effectiveTargetDLI =
+      typeof inputs.customTargetDLIOverride === "number" &&
+      Number.isFinite(inputs.customTargetDLIOverride) &&
+      inputs.customTargetDLIOverride > 0
+        ? inputs.customTargetDLIOverride
+        : presetTarget.targetDLI;
+    const target = { ...presetTarget, targetDLI: effectiveTargetDLI };
     const transmission = netCanopyTransmissionPct(inputs.envelope);
 
     const solarOutputs = computeMonthlySolar(climate.data, {
