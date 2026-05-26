@@ -1799,6 +1799,241 @@ function ElegantSky({
 }
 
 /**
+ * Realistic terrain — Phase visual-fidelity PR b.
+ *
+ * Replaces the flat grey ground plane with three layered surfaces:
+ *
+ *   1. Grass field — large plane (1500×1500 ft) using
+ *      MeshStandardMaterial with a custom GLSL injection (via
+ *      `onBeforeCompile`) that adds value-noise color variation in
+ *      the fragment shader. Three different hash-derived scales
+ *      blend together so the grass reads as natural variation, not
+ *      a tiling pattern. PBR lighting still works (the sun tints it
+ *      at golden hour because we only modulate albedo, not normals).
+ *
+ *   2. Gravel apron — slightly elevated frame of plates just outside
+ *      the greenhouse footprint (~6 ft wide). Lighter / tanner color
+ *      with its own coarser noise. Sells the "this is a real
+ *      maintained site" feel.
+ *
+ *   3. Distant horizon ring — very faint dark plane at the
+ *      perimeter to soften the grass→sky boundary when the camera
+ *      pitches up.
+ *
+ * Why shader injection instead of canvas texture: zero asset deps
+ * (CSP locked-down project), zero memory cost for a high-resolution
+ * texture, perfect zoom-independence (noise is computed per fragment,
+ * so close-up doesn't look pixelated).
+ */
+function Ground({
+  greenhouseLength,
+  greenhouseWidth,
+}: {
+  greenhouseLength: number;
+  greenhouseWidth: number;
+}) {
+  // Grass field stretches well past the greenhouse so the camera
+  // doesn't see the edge from any normal angle. Scaled with greenhouse
+  // size so big sites still feel like part of a larger property.
+  const grassSize = Math.max(1500, Math.max(greenhouseLength, greenhouseWidth) * 12);
+
+  // Gravel apron is a frame of 4 rectangles around the greenhouse,
+  // ~6 ft wide each side. Building this as separate planes is simpler
+  // than a hole-in-the-middle plane and renders just as well.
+  const apronWidth = 6;
+  const gravelOuterL = greenhouseLength + apronWidth * 2;
+
+  // Grass material with value-noise color variation. We inject GLSL
+  // into the standard material's fragment shader so PBR lighting +
+  // shadows still work — we only modulate the diffuse color.
+  const grassMaterial = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
+      color: "#5a7a3e",
+      roughness: 0.95,
+      metalness: 0,
+    });
+    mat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+        // 2D hash + value noise. Three octaves of variation so the
+        // grass reads as natural patchiness, not a single-frequency
+        // tiling pattern.
+        float gh_hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        float gh_noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          float a = gh_hash(i);
+          float b = gh_hash(i + vec2(1.0, 0.0));
+          float c = gh_hash(i + vec2(0.0, 1.0));
+          float d = gh_hash(i + vec2(1.0, 1.0));
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        // Use world-space XZ position for noise so the pattern doesn't
+        // stretch with UVs. Three scales of noise blended.
+        vec2 wxz = vWorldPosition.xz;
+        float n1 = gh_noise(wxz * 0.08);
+        float n2 = gh_noise(wxz * 0.4);
+        float n3 = gh_noise(wxz * 1.6);
+        float n = n1 * 0.55 + n2 * 0.30 + n3 * 0.15;
+        // Modulate hue between deeper green (#3d5a26) and lighter
+        // sun-bleached green (#7a9a52) per fragment.
+        vec3 deepGreen = vec3(0.24, 0.35, 0.15);
+        vec3 lightGreen = vec3(0.48, 0.60, 0.32);
+        vec3 grassColor = mix(deepGreen, lightGreen, n);
+        // Slight desaturation toward the brown end at low noise values
+        // (sells the "patches of dry grass" effect)
+        vec3 dryPatch = vec3(0.45, 0.42, 0.22);
+        float dryness = smoothstep(0.15, 0.0, n1) * 0.4;
+        grassColor = mix(grassColor, dryPatch, dryness);
+        diffuseColor.rgb = grassColor;`,
+      );
+      // We need vWorldPosition in the fragment shader — add a varying
+      // and pass it through from the vertex shader.
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `#include <common>
+        varying vec3 vWorldPosition;`,
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <worldpos_vertex>",
+        `#include <worldpos_vertex>
+        vWorldPosition = worldPosition.xyz;`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+        varying vec3 vWorldPosition;`,
+      );
+    };
+    return mat;
+  }, []);
+
+  const gravelMaterial = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
+      color: "#8a8478",
+      roughness: 0.85,
+      metalness: 0.02,
+    });
+    mat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+        float gv_hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        float gv_noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          float a = gv_hash(i);
+          float b = gv_hash(i + vec2(1.0, 0.0));
+          float c = gv_hash(i + vec2(0.0, 1.0));
+          float d = gv_hash(i + vec2(1.0, 1.0));
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }`,
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `#include <common>
+        varying vec3 vWorldPositionG;`,
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <worldpos_vertex>",
+        `#include <worldpos_vertex>
+        vWorldPositionG = worldPosition.xyz;`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+        varying vec3 vWorldPositionG;`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        vec2 wxz = vWorldPositionG.xz;
+        float n = gv_noise(wxz * 1.2) * 0.6 + gv_noise(wxz * 4.0) * 0.4;
+        vec3 base = vec3(0.54, 0.51, 0.46);
+        vec3 hi = vec3(0.72, 0.68, 0.60);
+        vec3 lo = vec3(0.38, 0.36, 0.32);
+        vec3 col = mix(lo, hi, n);
+        col = mix(col, base, 0.3);
+        diffuseColor.rgb = col;`,
+      );
+    };
+    return mat;
+  }, []);
+
+  return (
+    <group>
+      {/* Grass field */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0, 0]}
+        receiveShadow
+        material={grassMaterial}
+      >
+        <planeGeometry args={[grassSize, grassSize, 1, 1]} />
+      </mesh>
+
+      {/* Gravel apron — 4 rectangles forming a frame around the
+          greenhouse footprint. Tiny lift to avoid z-fighting. */}
+      {(() => {
+        const lift = 0.015;
+        // North + south strips (full outer length)
+        const lengthwise = gravelOuterL;
+        // East + west strips (only the canopy width, not overlapping the
+        // corners we just covered)
+        const widthwise = greenhouseWidth;
+        return (
+          <>
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[0, lift, -greenhouseWidth / 2 - apronWidth / 2]}
+              receiveShadow
+              material={gravelMaterial}
+            >
+              <planeGeometry args={[lengthwise, apronWidth]} />
+            </mesh>
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[0, lift, greenhouseWidth / 2 + apronWidth / 2]}
+              receiveShadow
+              material={gravelMaterial}
+            >
+              <planeGeometry args={[lengthwise, apronWidth]} />
+            </mesh>
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[-greenhouseLength / 2 - apronWidth / 2, lift, 0]}
+              receiveShadow
+              material={gravelMaterial}
+            >
+              <planeGeometry args={[apronWidth, widthwise]} />
+            </mesh>
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[greenhouseLength / 2 + apronWidth / 2, lift, 0]}
+              receiveShadow
+              material={gravelMaterial}
+            >
+              <planeGeometry args={[apronWidth, widthwise]} />
+            </mesh>
+          </>
+        );
+      })()}
+    </group>
+  );
+}
+
+/**
  * Night sky — star field + moon disc + optional Milky Way arc.
  *
  * Visibility logic driven by sun elevation:
@@ -2207,28 +2442,37 @@ export default function Greenhouse3D({
             resetSignal={resetCameraSignal}
           />
 
-          {/* Ground */}
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[0, 0, 0]}
-            receiveShadow
-          >
-            <planeGeometry args={[Math.max(200, floorLength * 4), Math.max(200, floorWidth * 4)]} />
-            <meshStandardMaterial color="#9aa39c" roughness={0.95} />
-          </mesh>
+          {/* Ground — Phase visual-fidelity PR b.
+              Three-layer terrain replacing the flat grey plane:
+                1. Grass field (large, distant horizon fade)
+                2. Gravel apron around the greenhouse footprint
+                3. Measurement grid kept but faded back so the ground
+                   reads as land, not as graph paper.
+              All PBR-lit so the sun direction tints the surfaces at
+              dawn/dusk/noon. */}
+          <Ground
+            greenhouseLength={floorLength}
+            greenhouseWidth={floorWidth}
+          />
 
-          {/* Grid for scale (every 5 ft) */}
+          {/* Grid for scale (every 5 ft) — backed off so the ground
+              reads as terrain, not a blueprint. Smaller fade radius,
+              softer colors, lower z-position so the grass shows
+              through. */}
           <Grid
             args={[
-              Math.max(60, Math.ceil(floorLength * 1.6)),
-              Math.max(60, Math.ceil(floorWidth * 1.6)),
+              Math.max(40, Math.ceil(floorLength * 1.2)),
+              Math.max(40, Math.ceil(floorWidth * 1.2)),
             ]}
             cellSize={1}
-            cellColor="#a8b0bb"
-            sectionSize={5}
-            sectionColor="#5b6573"
-            fadeDistance={Math.max(120, floorLength * 1.5)}
-            position={[0, 0.01, 0]}
+            cellColor="#5d6b5e"
+            cellThickness={0.4}
+            sectionSize={10}
+            sectionColor="#3d4a3e"
+            sectionThickness={0.6}
+            fadeDistance={Math.max(80, floorLength * 1.0)}
+            fadeStrength={2.5}
+            position={[0, 0.02, 0]}
             infiniteGrid={false}
           />
 
