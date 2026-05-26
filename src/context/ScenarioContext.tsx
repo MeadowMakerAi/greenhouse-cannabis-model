@@ -98,6 +98,18 @@ export interface ScenarioInputs {
 
   // Targets
   cropTargetId: keyof typeof cropTargets;
+  /**
+   * Optional override of the preset DLI target. When set, replaces
+   * `cropTargets[cropTargetId].targetDLI` in every downstream
+   * calculation (supplemental light sizing, yield projection, CO₂
+   * feasibility, etc). Null/undefined means "use the preset."
+   *
+   * Surfaced as a slider/number input in the Light target pill so
+   * operators (indoor growers especially) can dial DLI directly +
+   * see the PPFD-at-photoperiod equivalent live, rather than being
+   * locked into a preset bucket.
+   */
+  customTargetDLIOverride: number | null;
   /** Yield-realism planning scenario — scales the dialed-in projection. */
   yieldRealismCase: YieldRealismCase;
 
@@ -262,6 +274,7 @@ export const defaultScenario: ScenarioInputs = {
   envelope: defaultEnvelope,
   ...defaultPhotoperiod,
   cropTargetId: "commercialPremium",
+  customTargetDLIOverride: null,
   yieldRealismCase: "base",
   solarToPARFactor: defaultSolarConversion.solarToPARFactor,
   fixtureId: "ledHighEfficiency",

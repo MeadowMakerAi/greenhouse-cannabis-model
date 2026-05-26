@@ -3,6 +3,7 @@ import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 import { useAllFixtures } from "../context/useAllFixtures";
 import { cropTargets } from "../data/cropTargets";
+import { dliToPPFD } from "../models/dliModel";
 import { fmt1, fmtInt } from "../utils/formatting";
 import { NumberField, SelectField, ToggleField } from "./Field";
 import InputPill from "./InputPill";
@@ -209,25 +210,65 @@ export default function TopPillBar({ onCustomizeClick }: TopPillBarProps = {}) {
         isOpen={openPill === "light"}
         onToggle={() => toggle("light")}
         label="Light target"
-        value={`${inputs.flowerPhotoperiodHours}h · DLI ${d.target.targetDLI}`}
-        secondary={cropTargets[inputs.cropTargetId]?.label}
-        popoverHint="Photoperiod hours and DLI target drive supplemental light sizing."
+        value={`DLI ${d.target.targetDLI} · ${fmtInt(dliToPPFD(d.target.targetDLI, inputs.flowerPhotoperiodHours))} µmol/m²/s`}
+        secondary={`${inputs.flowerPhotoperiodHours}h · ${cropTargets[inputs.cropTargetId]?.label ?? ""}`}
+        popoverHint="DLI is the daily dose; PPFD is the intensity at canopy. Indoor growers think in PPFD; greenhouse growers in DLI. Both shown live."
+        popoverWidth={400}
       >
         <SelectField
-          label="Crop / DLI target"
+          label="Crop preset"
           value={inputs.cropTargetId as string}
-          onChange={(v) =>
-            setInputs({ cropTargetId: v as typeof inputs.cropTargetId })
-          }
+          onChange={(v) => {
+            // Switching preset clears any override so the preset DLI
+            // takes effect immediately. If the operator wants the new
+            // preset's DLI as a starting point for further tuning,
+            // they'll see it populate and can then dial up/down.
+            setInputs({
+              cropTargetId: v as typeof inputs.cropTargetId,
+              customTargetDLIOverride: null,
+            });
+          }}
           options={cropTargetOptions as { value: string; label: string }[]}
+          hint="Each preset sets a default DLI; override below to dial exact."
+        />
+        <NumberField
+          label="DLI target"
+          value={d.target.targetDLI}
+          onChange={(n) =>
+            setInputs({ customTargetDLIOverride: Number.isFinite(n) ? n : null })
+          }
+          unit="mol/m²/d"
+          min={5}
+          max={80}
+          step={1}
+          hint={`At ${inputs.flowerPhotoperiodHours}h photoperiod = ${fmtInt(dliToPPFD(d.target.targetDLI, inputs.flowerPhotoperiodHours))} µmol/m²/s canopy PPFD.`}
         />
         <NumberField
           label="Flower photoperiod"
           value={inputs.flowerPhotoperiodHours}
           onChange={(n) => setInputs({ flowerPhotoperiodHours: n })}
           unit="hours/day"
-          hint="Typical: 12h for flower."
+          min={1}
+          max={24}
+          hint="Typical: 12h flower, 18h veg."
         />
+        {inputs.customTargetDLIOverride !== null && (
+          <div className="rounded-md border border-cta-400/30 bg-cta-50 px-2.5 py-1.5 text-[11px] text-cta-700">
+            <span className="font-semibold">Custom DLI active.</span>{" "}
+            Preset ({cropTargets[inputs.cropTargetId]?.label}) default was{" "}
+            <span className="font-mono">
+              {cropTargets[inputs.cropTargetId]?.targetDLI} mol/m²/d
+            </span>{" "}
+            ({fmtInt(dliToPPFD(cropTargets[inputs.cropTargetId]?.targetDLI ?? 0, inputs.flowerPhotoperiodHours))} µmol/m²/s).{" "}
+            <button
+              type="button"
+              className="underline hover:text-cta-600"
+              onClick={() => setInputs({ customTargetDLIOverride: null })}
+            >
+              Reset to preset
+            </button>
+          </div>
+        )}
       </InputPill>
 
       {/* FIXTURE */}
