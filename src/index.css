@@ -18,7 +18,11 @@
 html,
 body,
 #root {
-  height: 100%;
+  /* min-height (not height): a fixed 100% locks the document to one
+     viewport, so on mobile — where the dashboard flows past the fold —
+     the overflow can't be scrolled into view. min-height keeps the
+     full-bleed background while letting the page grow and body-scroll. */
+  min-height: 100%;
   margin: 0;
   /* Three-layer page background — Phase 1 warm-paper restyle.
      The base shifted from cool grey (#f3f5f8) to warm paper (#faf5e8)
@@ -35,6 +39,16 @@ body,
     #faf5e8;
   color: #0d1117;
   letter-spacing: -0.005em;
+}
+
+/* Mobile scroll-through for the R3F scene. The <canvas> defaults to
+   touch-action:auto (which scrolls but lets the browser eat one-finger
+   horizontal orbit) and OrbitControls can also force touch-action:none
+   (which traps scroll entirely). Pin it to pan-y so a vertical swipe
+   always scrolls the page while horizontal drag still orbits and pinch
+   still zooms. !important guards against OrbitControls' inline override. */
+.gh-scene canvas {
+  touch-action: pan-y !important;
 }
 
 @layer base {

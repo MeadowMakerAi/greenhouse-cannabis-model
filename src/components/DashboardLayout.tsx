@@ -241,7 +241,14 @@ export default function DashboardLayout() {
     // editing lives in the top pill bar (PR 1) + Customize drawer
     // (PR 2). Grid stays 3-row (header / pill bar / content) so the
     // existing row-start references in child components still resolve.
-    <div className="grid h-screen grid-cols-1 grid-rows-[auto_auto_1fr]">
+    //
+    // Mobile fix: the desktop app-shell (fixed 100vh, only <main> scrolls)
+    // collapsed on phones — a tall header + wrapping pill bar squeezed the
+    // 1fr content row, and 100vh > the visible viewport hid main's bottom
+    // with no body scroll to recover it. So the page is natural-flow and
+    // body-scrolls on mobile (min-h, main not its own scroll container),
+    // and only restores the fixed-height internal-scroll shell at md+.
+    <div className="grid min-h-[100svh] grid-cols-1 grid-rows-[auto_auto_1fr] md:h-screen">
       {/* Header sits on a raised plane (e2 + bottom shadow) so the content
           beneath it reads as the working surface, not a peer. We use solid
           bg-white/95 instead of bg-white/90 + backdrop-blur because the
@@ -304,7 +311,7 @@ export default function DashboardLayout() {
       </div>
       {/* Main content plane — slight off-white so cards lift visibly.
           Now fills full viewport width (sidebar retired in PR 3). */}
-      <main className="row-start-3 overflow-y-auto p-4 surface-page">
+      <main className="row-start-3 p-4 surface-page md:overflow-y-auto">
         <div className="space-y-4">
           <WhatChangedBanner />
           <OutputSummary />

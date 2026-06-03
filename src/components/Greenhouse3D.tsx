@@ -2758,12 +2758,27 @@ export default function Greenhouse3D({
   const fixtureMeshWidth =
     fixtureFormFactor === "panel" ? 2.6 : fixtureFormFactor === "bulb" ? 2.2 : 1.4;
 
+  // Responsive canvas height. The fixed 760px is taller than a phone
+  // screen, so on mobile it both overflowed the fold and (with the canvas
+  // eating touch) blocked scroll. Cap to ~60% of the small viewport on
+  // mobile with a usable floor; restore the exact 760px at md+. An
+  // explicit heightOverride (substrate mode) still wins via inline style.
+  const heightClass = bleed
+    ? "h-[58svh] min-h-[300px] md:h-[760px]"
+    : "h-[60svh] min-h-[320px] md:h-[760px]";
+  // `gh-scene` is the hook for the canvas touch-action rule in index.css —
+  // R3F's <Canvas style> lands on an inner container it then forces to
+  // touch-action:none, so the <canvas> itself must be targeted via CSS to
+  // let a vertical swipe scroll the page on mobile (see index.css).
   const wrapperClass = bleed
-    ? "scene-bleed relative overflow-hidden"
-    : "relative overflow-hidden rounded border border-ink-300/40 bg-ink-900/[0.02]";
+    ? `gh-scene scene-bleed relative overflow-hidden ${heightClass}`
+    : `gh-scene relative overflow-hidden rounded border border-ink-300/40 bg-ink-900/[0.02] ${heightClass}`;
 
   return (
-    <div className={wrapperClass} style={{ height: heightOverride ?? 760 }}>
+    <div
+      className={wrapperClass}
+      style={heightOverride ? { height: heightOverride } : undefined}
+    >
       <Canvas
         shadows
         camera={{ fov: 35, near: 1, far: 1500 }}
