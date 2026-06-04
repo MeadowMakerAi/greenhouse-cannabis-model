@@ -811,17 +811,24 @@ function RoofPanel({
   peak: number;
   side: "north" | "south";
 }) {
-  // Slope from eave to peak
+  // `width` here is the half-span (ridge→eave horizontal run). The glazing
+  // plane must lie ON the roof slope: it runs the full `length` along the
+  // ridge and `slopeLength` down the slope, centred between ridge and eave.
   const slopeLength = Math.sqrt(width * width + (peak - eave) * (peak - eave));
-  const angle = Math.atan2(peak - eave, width);
-  const z = side === "south" ? -width / 2 : width / 2;
+  const angleFromHoriz = Math.atan2(peak - eave, width);
+  // planeGeometry is vertical (x-y plane) by default. Tilt it down to sit
+  // `angleFromHoriz` above horizontal — i.e. rotate (π/2 − angle) about X.
+  // The previous code rotated by `angle`, leaving the pane ~70° from
+  // horizontal (near-vertical), which overshot above the ridge and read as
+  // two stray diagonal panels at the gable ends.
+  const tilt = Math.PI / 2 - angleFromHoriz;
+  const zCenter = side === "south" ? -width / 2 : width / 2;
   const yPos = (eave + peak) / 2 + 0.5;
   const rot: [number, number, number] =
-    side === "south" ? [angle, 0, 0] : [-angle, 0, 0];
-  const localZ = side === "south" ? width / 4 : -width / 4;
+    side === "south" ? [-tilt, 0, 0] : [tilt, 0, 0];
 
   return (
-    <mesh position={[0, yPos, z + localZ]} rotation={rot}>
+    <mesh position={[0, yPos, zCenter]} rotation={rot}>
       <planeGeometry args={[length, slopeLength]} />
       <meshPhysicalMaterial
         color="#cfe9f7"
