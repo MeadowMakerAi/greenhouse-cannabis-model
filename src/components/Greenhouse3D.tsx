@@ -30,6 +30,7 @@ import {
   skyParamsFromElevation,
 } from "../models/kelvinModel";
 import { solveFixtureGrid } from "../models/fixtureGrid";
+import WeatherParticles from "./WeatherParticles";
 
 interface Props {
   floorAreaSqFt: number;
@@ -2632,6 +2633,7 @@ export default function Greenhouse3D({
   bleed = false,
   fill = false,
   heightOverride,
+  weather,
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
@@ -2646,6 +2648,8 @@ export default function Greenhouse3D({
   fill?: boolean;
   /** Override the default 760px canvas height. Useful for substrate mode. */
   heightOverride?: number;
+  /** Live weather conditions for precipitation / thunder / cloud-cover rendering. */
+  weather?: import("../context/useLiveWeather").LiveWeatherState;
 }) {
   // Canopy footprint — match the GREENHOUSE aspect when explicit
   // length/width are provided, falling back to the legacy 1.5 default
@@ -3008,6 +3012,20 @@ export default function Greenhouse3D({
             <Vignette eskil={false} offset={0.22} darkness={0.6} />
             <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
           </EffectComposer>
+
+          {/* Live weather — rain, snow, lightning, cloud cover, fog.
+              Rendered outside EffectComposer so particles don't get
+              SSAO contact-darkening (they're atmospheric, not solid). */}
+          {weather && weather.loaded && (
+            <WeatherParticles
+              weather={weather}
+              floorLength={floorLength}
+              floorWidth={floorWidth}
+              peak={peakHeightFt}
+              eave={eaveHeightFt}
+            />
+          )}
+
         </Suspense>
       </Canvas>
     </div>

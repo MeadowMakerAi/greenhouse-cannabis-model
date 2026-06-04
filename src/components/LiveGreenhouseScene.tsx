@@ -9,6 +9,7 @@ import { useDerived } from "../context/useDerived";
 import { useLiveDynamics } from "../context/useLiveDynamics";
 import { useSimulation } from "../context/SimulationContext";
 import { useIsDesktop } from "../hooks/useIsDesktop";
+import { useLiveWeather } from "../context/useLiveWeather";
 import { dayOfYearToMonth } from "../models/simulationModel";
 import {
   getFixtureFormFactor,
@@ -63,6 +64,7 @@ export default function LiveGreenhouseScene({
   const live = useLiveDynamics();
   const sim = useSimulation();
   const isDesktop = useIsDesktop();
+  const weather = useLiveWeather();
 
   // Active fixture identity drives the 3D scene's lamp geometry, emissive
   // color, and footprint tint. Resolved here so the scene reacts whenever
@@ -148,6 +150,7 @@ export default function LiveGreenhouseScene({
       plantGrowth={syncToSim ? live.snapshot.plant : undefined}
       bleed={fill ? true : bleed}
       fill={fill}
+      weather={weather}
     />
   );
 

@@ -1,6 +1,7 @@
 import { useScenario } from "../context/ScenarioContext";
 import { useSimulation } from "../context/SimulationContext";
 import { useLiveDynamics } from "../context/useLiveDynamics";
+import { useLiveWeather } from "../context/useLiveWeather";
 import { dayOfYearToMonth, type VentReason } from "../models/simulationModel";
 
 /**
@@ -62,8 +63,15 @@ export default function Greenhouse3DHud({
   const { inputs } = useScenario();
   const sim = useSimulation();
   const { snapshot } = useLiveDynamics();
+  const weather = useLiveWeather();
 
   const sunArrowAngle = (snapshot.sun.azimuthDeg - ridgeAzimuthDeg) % 360;
+
+  const weatherIcon: Record<string, string> = {
+    clear: "☀️", cloudy: "☁️", fog: "🌫️",
+    drizzle: "🌦️", rain: "🌧️", snow: "❄️", thunderstorm: "⛈️",
+  };
+  const wIcon = weatherIcon[weather.category] ?? "🌡️";
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 select-none">
@@ -105,6 +113,26 @@ export default function Greenhouse3DHud({
             env {(snapshot.plant.combinedFactor * 100).toFixed(0)}%
           </div>
         </div>
+        {/* Live weather — shows after the first successful fetch */}
+        {weather.loaded && (
+          <div className="mt-2 border-t border-ink-300/30 pt-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-ink-500">Live weather</div>
+            <div className="font-mono text-xs text-ink-900">
+              {wIcon} {weather.label}
+            </div>
+            <div className="font-mono text-[10px] text-ink-500 tabular-nums">
+              {weather.windSpeedMs > 0.5 && (
+                <>wind {(weather.windSpeedMs * 2.237).toFixed(0)} mph · </>
+              )}
+              {weather.cloudCover > 0.1 && (
+                <>{Math.round(weather.cloudCover * 100)}% clouds · </>
+              )}
+              {weather.rainIntensity > 0 && <>precip · </>}
+              {weather.snowIntensity > 0 && <>snow · </>}
+              {weather.error && <span className="text-warn-500">offline</span>}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Top-right: compass with sun pointer */}
