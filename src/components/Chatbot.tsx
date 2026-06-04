@@ -15,6 +15,8 @@ import { useAllFixtures } from "../context/useAllFixtures";
 import { useLiveDynamics } from "../context/useLiveDynamics";
 import { fixtureKWFromPPFD, type FixtureSpec } from "../models/fixtureModel";
 import { DAYS_IN_MONTH } from "../utils/formatting";
+import AgentAvatar from "./AgentAvatar";
+import { AGENT_NAME } from "./AgentObservations";
 
 const KEY_STORAGE_PREFIX = "greenhouse-model:apiKey:";
 const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
@@ -107,6 +109,45 @@ export default function Chatbot() {
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Proactive-agent wiring. `obs` mirrors AgentObservations' active-count so
+  // the launcher can badge it; sendRef keeps the latest send() for the
+  // event-driven deep-dive without stale closures.
+  const [obs, setObs] = useState<{ active: number; topSeverity: string | null }>({
+    active: 0,
+    topSeverity: null,
+  });
+  const sendRef = useRef<(t?: string) => void>(() => {});
+
+  // Tell the proactive layer whether the chat panel is open (so it doesn't
+  // overlap), and badge the launcher with the live observation count.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("greenhouse-model:agent-chat-state", { detail: { open } }),
+    );
+  }, [open]);
+  useEffect(() => {
+    const onObs = (e: Event) =>
+      setObs((e as CustomEvent).detail ?? { active: 0, topSeverity: null });
+    window.addEventListener("greenhouse-model:agent-observations", onObs);
+    return () =>
+      window.removeEventListener("greenhouse-model:agent-observations", onObs);
+  }, []);
+  // Open + deep-dive when an observation card asks Sage about itself.
+  useEffect(() => {
+    const onOpenAgent = (e: Event) => {
+      const seed = (e as CustomEvent).detail?.seed as string | undefined;
+      setOpen(true);
+      if (seed) {
+        const canAutoSend = !!apiKey || !cfg.requiresKey;
+        if (canAutoSend) sendRef.current(seed);
+        else setDraft(seed); // no key yet — prefill so they can review + send
+      }
+    };
+    window.addEventListener("greenhouse-model:open-agent", onOpenAgent);
+    return () =>
+      window.removeEventListener("greenhouse-model:open-agent", onOpenAgent);
+  }, [apiKey, cfg.requiresKey]);
 
   const switchProvider = (next: ProviderId) => {
     setProviderId(next);
@@ -423,8 +464,9 @@ export default function Chatbot() {
     }
   };
 
-  const send = async () => {
-    const hasInput = draft.trim() || attachments.length > 0;
+  const send = async (overrideText?: string) => {
+    const text = overrideText !== undefined ? overrideText : draft;
+    const hasInput = text.trim() || attachments.length > 0;
     if (!hasInput || busy) return;
     // Filter out attachments the selected provider can't handle so we
     // don't send images to text-only Groq/Ollama, or PDFs to OpenAI/
@@ -442,7 +484,7 @@ export default function Chatbot() {
       }
       return true;
     });
-    const baseUserMsg = draft.trim() || (sentAttachments.length > 0 ? "Please analyze the attached spec sheet and update the model accordingly." : "");
+    const baseUserMsg = text.trim() || (sentAttachments.length > 0 ? "Please analyze the attached spec sheet and update the model accordingly." : "");
     const droppedNote =
       dropped.length > 0
         ? `[Dropped ${dropped.length} attachment(s) before sending: ` +
@@ -497,6 +539,8 @@ export default function Chatbot() {
       setBusy(false);
     }
   };
+  // Keep the latest send() reachable from the (mount-once) open-agent listener.
+  sendRef.current = send;
 
   void customFixtures;
 
@@ -514,16 +558,38 @@ export default function Chatbot() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-4 right-4 z-50 rounded-full bg-leaf-500 px-4 py-3 font-semibold text-white shadow-lg hover:bg-leaf-600"
+          className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full border border-leaf-500/40 bg-white py-1.5 pl-1.5 pr-4 shadow-lg transition hover:shadow-xl"
+          title={`Ask ${AGENT_NAME}, your cultivation agent`}
         >
-          ✦ Ask the model
+          <span
+            className={`rounded-full ${obs.active > 0 ? "agent-ring" : ""}`}
+          >
+            <AgentAvatar
+              state={obs.topSeverity === "warn" ? "alert" : "idle"}
+              size={36}
+            />
+          </span>
+          <span className="text-sm font-semibold text-ink-900">
+            Ask {AGENT_NAME}
+          </span>
+          {obs.active > 0 && (
+            <span
+              className={`ml-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white ${
+                obs.topSeverity === "warn" ? "bg-warn-500" : "bg-leaf-500"
+              }`}
+            >
+              {obs.active}
+            </span>
+          )}
         </button>
       )}
       {open && (
         <div className="fixed bottom-4 right-4 z-50 flex h-[640px] w-[460px] flex-col rounded-xl border border-ink-300/40 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-ink-300/40 px-3 py-2">
-            <div>
-              <div className="text-sm font-semibold">Greenhouse model assistant</div>
+            <div className="flex items-center gap-2">
+              <AgentAvatar state={busy ? "thinking" : "idle"} size={30} />
+              <div>
+              <div className="text-sm font-semibold">{AGENT_NAME} · cultivation agent</div>
               <div className="text-[10px] text-ink-500">
                 {cfg.label} · {model}
                 {apiKey ? (
@@ -550,6 +616,7 @@ export default function Chatbot() {
                     </button>
                   </>
                 ) : null}
+              </div>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-1">
@@ -822,7 +889,7 @@ export default function Chatbot() {
               />
               <button
                 type="button"
-                onClick={send}
+                onClick={() => send()}
                 disabled={busy || (!draft.trim() && attachments.length === 0)}
                 className="btn-primary"
               >

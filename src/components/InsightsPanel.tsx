@@ -1,6 +1,5 @@
-import { useScenario } from "../context/ScenarioContext";
-import { useDerived } from "../context/useDerived";
-import { generateProactiveInsights, type Insight } from "../models/proactiveInsights";
+import { useProactiveInsights } from "../context/useProactiveInsights";
+import type { Insight } from "../models/proactiveInsights";
 
 const STYLE_BY_SEVERITY: Record<Insight["severity"], { dot: string; ring: string; tag: string; chip: string; bg: string }> = {
   savings: {
@@ -34,38 +33,7 @@ const STYLE_BY_SEVERITY: Record<Insight["severity"], { dot: string; ring: string
 };
 
 export default function InsightsPanel() {
-  const { inputs } = useScenario();
-  const d = useDerived();
-
-  const insights = generateProactiveInsights({
-    cyclesPerYear: inputs.cyclesPerYear,
-    targetDLI: d.target.targetDLI,
-    co2Enabled: inputs.co2Enabled,
-    co2SetpointPpm: inputs.co2SetpointPpm,
-    ventilationMode: inputs.ventilationMode,
-    cropTargetId: inputs.cropTargetId as string,
-    cultivationPhase: inputs.cultivationPhase,
-    thermalScreenEnabled: inputs.thermalScreenEnabled,
-    envelopeUValueBTUhrFtF: inputs.envelopeUValueBTUhrFtF,
-    evapEfficiencyPct: inputs.evapEfficiencyPct,
-    shadeEnabled: inputs.shadeEnabled,
-    fixtureSource: d.fixture.source,
-    fixturePPE: d.fixture.ppe,
-    fixtureSupports120V: d.activeFixtureSupports120V,
-    fixtureSupports240V: d.activeFixtureSupports240V,
-    serviceVoltagePrimary: inputs.serviceVoltagePrimary,
-    yieldDLIFactor: d.yieldProjection.dliFactor,
-    yieldTempFactor: d.yieldProjection.tempFactor,
-    yieldCO2Factor: d.yieldProjection.co2Factor,
-    energyUseIntensity: d.energyUseIntensity_kWhPerGram,
-    peakBotrytis: d.peakBotrytis,
-    peakPM: d.peakPM,
-    peakNetHeatingLoad: d.peakNetHeatingLoad,
-    installedRadiantCapacity: inputs.radiantHeatingCapacityBTUhr,
-    cropSteeringAlignment: d.cropSteering.alignmentScore,
-    evapFailMonths: d.months.filter((m) => !m.evapReachesTarget).length,
-    highHumidityMonths: d.months.filter((m) => m.highHumidityRisk).length,
-  });
+  const insights = useProactiveInsights();
 
   if (insights.length === 0) {
     return (

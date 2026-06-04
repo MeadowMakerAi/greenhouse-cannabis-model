@@ -189,5 +189,19 @@ export function generateProactiveInsights(input: InsightInput): Insight[] {
     });
   }
 
+  // ---- The headline tension: light intensity vs. ability to keep it cool ----
+  // The single hardest balance in greenhouse cultivation — every extra mole of
+  // light is heat you then have to reject. Surface it as a synthesizing call
+  // when the scenario is pushing DLI past the cooling system's reach.
+  if (input.targetDLI >= 38 && input.evapFailMonths >= 1) {
+    insights.push({
+      id: "light-cooling-tension",
+      severity: "warn",
+      title: "Light vs. cooling — you're outrunning your cooling",
+      body: `Target ${input.targetDLI} DLI is aggressive, but evaporative cooling can't hold the indoor band in ${input.evapFailMonths} month${input.evapFailMonths > 1 ? "s" : ""}. This is THE greenhouse tradeoff: every mole of light is heat to reject. Shade-and-coast the hot months, add mechanical cooling (heat pump / chiller), or accept a lower summer DLI — the right answer depends on your $/gram target.`,
+      hint: "Put the Shade tradeoff and HVAC screening tabs side by side.",
+    });
+  }
+
   return insights;
 }

@@ -3,6 +3,7 @@ import { ScenarioProvider } from "./context/ScenarioContext";
 import { SimulationProvider } from "./context/SimulationContext";
 import DashboardLayout from "./components/DashboardLayout";
 import Chatbot from "./components/Chatbot";
+import AgentObservations from "./components/AgentObservations";
 import LandingScreen from "./components/LandingScreen";
 
 const LANDING_DISMISSED_KEY = "greenhouse-model:landingDismissed";
@@ -38,6 +39,7 @@ export default function App() {
     <ScenarioProvider>
       <SimulationProvider>
         <DashboardLayout />
+        <AgentObservations />
         <Chatbot />
       </SimulationProvider>
     </ScenarioProvider>
