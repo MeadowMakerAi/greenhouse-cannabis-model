@@ -17,6 +17,7 @@ import { fixtureKWFromPPFD, type FixtureSpec } from "../models/fixtureModel";
 import { DAYS_IN_MONTH } from "../utils/formatting";
 import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
+import { runAuditSwarm, AUDIT_PASSES } from "../services/agentSwarm";
 
 const KEY_STORAGE_PREFIX = "greenhouse-model:apiKey:";
 const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
@@ -119,6 +120,11 @@ export default function Chatbot() {
   });
   const sendRef = useRef<(t?: string) => void>(() => {});
 
+  // Sage swarm — parallel multi-pass audit. auditDone tracks which passes
+  // have returned for the progress indicator.
+  const [auditing, setAuditing] = useState(false);
+  const [auditDone, setAuditDone] = useState<string[]>([]);
+
   // Tell the proactive layer whether the chat panel is open (so it doesn't
   // overlap), and badge the launcher with the live observation count.
   useEffect(() => {
@@ -148,6 +154,13 @@ export default function Chatbot() {
     return () =>
       window.removeEventListener("greenhouse-model:open-agent", onOpenAgent);
   }, [apiKey, cfg.requiresKey]);
+  // Any UI element can ask Sage to run the full swarm audit.
+  useEffect(() => {
+    const onAudit = () => runAuditRef.current();
+    window.addEventListener("greenhouse-model:run-audit", onAudit);
+    return () =>
+      window.removeEventListener("greenhouse-model:run-audit", onAudit);
+  }, []);
 
   const switchProvider = (next: ProviderId) => {
     setProviderId(next);
@@ -542,6 +555,97 @@ export default function Chatbot() {
   // Keep the latest send() reachable from the (mount-once) open-agent listener.
   sendRef.current = send;
 
+  // Compact snapshot of the operation handed to every audit specialist.
+  const buildAuditContext = () =>
+    JSON.stringify({
+      location: {
+        latitude: inputs.latitude,
+        longitude: inputs.longitude,
+        siteAddress: inputs.siteAddress,
+        weatherStation: inputs.weatherStation,
+      },
+      greenhouse: {
+        lengthFt: inputs.greenhouseLengthFt,
+        widthFt: inputs.greenhouseWidthFt,
+        eaveFt: inputs.eaveHeightFt,
+        peakFt: inputs.peakHeightFt,
+        canopyAreaSqFt: inputs.canopyAreaSqFt,
+        glazingTransmissionPct: inputs.envelope.baseTransmissionPct,
+        envelopeUValue: inputs.envelopeUValueBTUhrFtF,
+        thermalScreen: inputs.thermalScreenEnabled,
+        shade: inputs.shadeEnabled,
+      },
+      targets: {
+        targetDLI: derived.target.targetDLI,
+        photoperiodHours: inputs.flowerPhotoperiodHours,
+        indoorTargetTempF: inputs.indoorTargetDryBulbF,
+        nightTempF: inputs.targetNightTempF,
+        targetRHPct: inputs.targetRHPct,
+        co2Enabled: inputs.co2Enabled,
+        co2Ppm: inputs.co2SetpointPpm,
+        ventilationMode: inputs.ventilationMode,
+        crop: inputs.cropTargetId,
+        phase: inputs.cultivationPhase,
+      },
+      fixture: {
+        label: derived.fixture.label,
+        ppe: derived.fixture.ppe,
+        source: derived.fixture.source,
+        peakCount: derived.peakFixtureCount,
+      },
+      derived: {
+        energyUseIntensity_kWhPerGram: derived.energyUseIntensity_kWhPerGram,
+        peakBotrytis: derived.peakBotrytis,
+        peakPM: derived.peakPM,
+        peakNetHeatingLoad_BTUhr: derived.peakNetHeatingLoad,
+        installedRadiantCapacity_BTUhr: inputs.radiantHeatingCapacityBTUhr,
+        cropSteeringAlignmentPct: derived.cropSteering.alignmentScore,
+        yieldFactors: derived.yieldProjection,
+        evapFailMonths: derived.months.filter((m) => !m.evapReachesTarget).length,
+        highHumidityMonths: derived.months.filter((m) => m.highHumidityRisk).length,
+      },
+      cyclesPerYear: inputs.cyclesPerYear,
+    });
+
+  const runAudit = async () => {
+    if (auditing || busy) return;
+    setOpen(true);
+    if (cfg.requiresKey && !apiKey) {
+      setError(`Configure a ${cfg.label} API key first to run the audit.`);
+      return;
+    }
+    setError(null);
+    setHistory((h) => [
+      ...h,
+      { role: "user", content: "🔬 Run a full operational audit." },
+    ]);
+    setAuditing(true);
+    setAuditDone([]);
+    try {
+      const report = await runAuditSwarm({
+        providerId,
+        apiKey,
+        model,
+        contextJson: buildAuditContext(),
+        onPassDone: (k) =>
+          setAuditDone((d) => (d.includes(k) ? d : [...d, k])),
+      });
+      setHistory((h) => [...h, { role: "assistant", content: report }]);
+    } catch (e) {
+      const msg = (e as Error).message;
+      setError(msg);
+      setHistory((h) => [
+        ...h,
+        { role: "assistant", content: `_Audit failed: ${msg}_` },
+      ]);
+    } finally {
+      setAuditing(false);
+      setAuditDone([]);
+    }
+  };
+  const runAuditRef = useRef<() => void>(() => {});
+  runAuditRef.current = runAudit;
+
   void customFixtures;
 
   return (
@@ -587,7 +691,7 @@ export default function Chatbot() {
         <div className="fixed bottom-4 right-4 z-50 flex h-[640px] w-[460px] flex-col rounded-xl border border-ink-300/40 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-ink-300/40 px-3 py-2">
             <div className="flex items-center gap-2">
-              <AgentAvatar state={busy ? "thinking" : "idle"} size={30} />
+              <AgentAvatar state={busy || auditing ? "thinking" : "idle"} size={30} />
               <div>
               <div className="text-sm font-semibold">{AGENT_NAME} · cultivation agent</div>
               <div className="text-[10px] text-ink-500">
@@ -835,6 +939,34 @@ export default function Chatbot() {
               onFilesPicked(e.dataTransfer.files);
             }}
           >
+            {/* Sage swarm — full audit quick action + live progress. */}
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => runAudit()}
+                disabled={auditing || busy}
+                className="flex items-center gap-1.5 rounded-lg border border-leaf-500/40 bg-leaf-50 px-2.5 py-1 text-xs font-semibold text-leaf-700 transition hover:bg-leaf-500/15 disabled:opacity-60"
+                title="Sage runs 5 specialists in parallel — climate, cooling, electrical, pathogen, economics — then synthesizes."
+              >
+                🔬 {auditing ? "Auditing…" : "Run full audit"}
+              </button>
+              {auditing && (
+                <span className="flex flex-wrap items-center gap-1 text-[10px] text-ink-500">
+                  {AUDIT_PASSES.map((p) => (
+                    <span
+                      key={p.key}
+                      className={`rounded px-1.5 py-0.5 ${
+                        auditDone.includes(p.key)
+                          ? "bg-leaf-500/15 text-leaf-700"
+                          : "bg-ink-100 text-ink-400"
+                      }`}
+                    >
+                      {auditDone.includes(p.key) ? "✓" : "•"} {p.label}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
             {unsupportedAttachmentWarning && (
               <div className="mb-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-[10.5px] text-warn-500">
                 ⚠ {unsupportedAttachmentWarning}
