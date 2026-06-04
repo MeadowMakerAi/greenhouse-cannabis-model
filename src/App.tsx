@@ -5,6 +5,12 @@ import DashboardLayout from "./components/DashboardLayout";
 import Chatbot from "./components/Chatbot";
 import AgentObservations from "./components/AgentObservations";
 import LandingScreen from "./components/LandingScreen";
+import { useEquipmentPhysics } from "./context/useEquipmentPhysics";
+
+function PhysicsHooks() {
+  useEquipmentPhysics();
+  return null;
+}
 
 const LANDING_DISMISSED_KEY = "greenhouse-model:landingDismissed";
 
@@ -38,6 +44,7 @@ export default function App() {
   return (
     <ScenarioProvider>
       <SimulationProvider>
+        <PhysicsHooks />
         <DashboardLayout />
         <AgentObservations />
         <Chatbot />

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -226,6 +227,19 @@ export interface ScenarioInputs {
   serviceVoltageSecondary: number; // typically the other available voltage
   branchCircuitAmps: number; // 20 typical for general, 30 for dedicated 240
   servicePowerFactor: number; // assumed PF for amperage calc when fixture doesn't provide one
+
+  /** Placed equipment objects — drives both the 3D scene and physics hooks. */
+  equipment: PlacedEquipment[];
+}
+
+export interface PlacedEquipment {
+  /** Unique instance id. */
+  instanceId: string;
+  /** Key into EQUIPMENT_LIBRARY.id. */
+  defId: string;
+  /** Scene position in greenhouse-local feet (x along length, z along width). */
+  x: number;
+  z: number;
 }
 
 // Auto-derive area + envelope + volume from exterior dimensions.
@@ -346,6 +360,7 @@ export const defaultScenario: ScenarioInputs = {
   serviceVoltageSecondary: defaultElectricalService.serviceVoltages[0] ?? 120,
   branchCircuitAmps: defaultElectricalService.branchCircuitAmps,
   servicePowerFactor: defaultElectricalService.powerFactor,
+  equipment: [] as PlacedEquipment[],
 };
 
 export interface ClimateState {
@@ -365,6 +380,8 @@ interface ScenarioContextValue {
   customFixtures: FixtureSpec[];
   addCustomFixture: (f: FixtureSpec) => void;
   removeCustomFixture: (id: string) => void;
+  addEquipment: (defId: string) => void;
+  removeEquipment: (instanceId: string) => void;
 }
 
 const Ctx = createContext<ScenarioContextValue | null>(null);
@@ -546,6 +563,22 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // addEquipment / removeEquipment — declared after setInputs so they can call it.
+  const inputsRef = useRef(inputs);
+  inputsRef.current = inputs;
+
+  const addEquipment = useCallback((defId: string) => {
+    const cur = inputsRef.current;
+    const instanceId = `${defId}-${Date.now()}`;
+    const count = (cur.equipment ?? []).length;
+    const x = (count + 1) * 8 - cur.greenhouseLengthFt / 2;
+    setInputs({ equipment: [...(cur.equipment ?? []), { instanceId, defId, x, z: 0 }] });
+  }, [setInputs]);
+
+  const removeEquipment = useCallback((instanceId: string) => {
+    setInputs({ equipment: (inputsRef.current.equipment ?? []).filter((e: PlacedEquipment) => e.instanceId !== instanceId) });
+  }, [setInputs]);
+
   const reset = useCallback(() => setInputsState(defaultScenario), []);
 
   const refreshClimate = useCallback(
@@ -656,6 +689,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       customFixtures,
       addCustomFixture,
       removeCustomFixture,
+      addEquipment,
+      removeEquipment,
     }),
     [
       inputs,
@@ -666,6 +701,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       customFixtures,
       addCustomFixture,
       removeCustomFixture,
+      addEquipment,
+      removeEquipment,
     ],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

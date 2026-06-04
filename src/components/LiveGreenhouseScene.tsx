@@ -10,6 +10,7 @@ import { useLiveDynamics } from "../context/useLiveDynamics";
 import { useSimulation } from "../context/SimulationContext";
 import { useIsDesktop } from "../hooks/useIsDesktop";
 import { useLiveWeather } from "../context/useLiveWeather";
+import { useDragResize } from "../hooks/useDragResize";
 import { dayOfYearToMonth } from "../models/simulationModel";
 import {
   getFixtureFormFactor,
@@ -65,6 +66,9 @@ export default function LiveGreenhouseScene({
   const sim = useSimulation();
   const isDesktop = useIsDesktop();
   const weather = useLiveWeather();
+  const { handleRef: resizeHandleRef, size: sceneHeight } = useDragResize(
+    760, 320, 1200, "greenhouse-model:sceneHeight",
+  );
 
   // Active fixture identity drives the 3D scene's lamp geometry, emissive
   // color, and footprint tint. Resolved here so the scene reacts whenever
@@ -151,6 +155,8 @@ export default function LiveGreenhouseScene({
       bleed={fill ? true : bleed}
       fill={fill}
       weather={weather}
+      heightOverride={!fill && isDesktop ? sceneHeight : undefined}
+      equipment={inputs.equipment ?? []}
     />
   );
 
@@ -393,6 +399,17 @@ export default function LiveGreenhouseScene({
           <div className="relative">
             {renderScene(false)}
             {syncToSim && <Greenhouse3DHud ridgeAzimuthDeg={ridgeAzimuth} />}
+            {/* Drag handle — lets growers resize the scene vertically.
+                Desktop only; persists to localStorage. */}
+            <div
+              ref={resizeHandleRef}
+              role="separator"
+              aria-label="Drag to resize scene"
+              title="Drag to resize scene"
+              className="absolute inset-x-0 -bottom-2 z-30 flex h-4 cursor-row-resize items-center justify-center select-none"
+            >
+              <div className="h-1 w-14 rounded-full bg-ink-300/70 transition hover:bg-leaf-500/60 hover:w-20" />
+            </div>
             <button
               type="button"
               onClick={() => setFullscreen(true)}

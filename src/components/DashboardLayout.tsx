@@ -24,6 +24,7 @@ import SeasonalStrategyCalendar from "./SeasonalStrategyCalendar";
 import SiteIntelligencePanel from "./SiteIntelligencePanel";
 import OptimizedSystemPanel from "./OptimizedSystemPanel";
 import BuildSheet from "./BuildSheet";
+import EquipmentPalette from "./EquipmentPalette";
 import CultivationSciencePanel from "./CultivationSciencePanel";
 import TimeControls from "./TimeControls";
 import DailyDynamicsChart from "./DailyDynamicsChart";
@@ -389,7 +390,12 @@ export default function DashboardLayout() {
                 </div>
               </div>
             )}
-            {tab === "build" && <BuildSheet />}
+            {tab === "build" && (
+              <div className="space-y-3">
+                <BuildSheet />
+                <EquipmentPalette />
+              </div>
+            )}
             {tab === "optimized" && <OptimizedSystemPanel />}
             {tab === "science" && (
               <div className="space-y-4">
