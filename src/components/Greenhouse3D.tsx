@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { Mesh } from "three";
 import {
@@ -15,6 +15,7 @@ import {
   ToneMapping,
   Vignette,
   SSAO,
+  GodRays,
 } from "@react-three/postprocessing";
 import { BlendFunction, ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
@@ -1932,11 +1933,17 @@ function Sun({
   month = 5,
   liveAzimuthDeg,
   liveElevationDeg,
+  diskRef,
+  onDiskReady,
 }: {
   latitudeDeg: number;
   month?: number;
   liveAzimuthDeg?: number;
   liveElevationDeg?: number;
+  /** Ref to the sun-disk mesh so the GodRays effect can use it as its source. */
+  diskRef?: React.MutableRefObject<Mesh | null>;
+  /** Fires once the disk mesh exists / disappears, so GodRays can mount/unmount. */
+  onDiskReady?: (ready: boolean) => void;
 }) {
   let azDeg: number;
   let elevDeg: number;
@@ -1990,7 +1997,13 @@ function Sun({
         />
       )}
       {elevAbove > -2 && (
-        <mesh position={[x, Math.max(2, y), z]}>
+        <mesh
+          position={[x, Math.max(2, y), z]}
+          ref={(m) => {
+            if (diskRef) diskRef.current = m;
+            onDiskReady?.(!!m && elevDeg > 1);
+          }}
+        >
           <sphereGeometry args={[elevDeg > 5 ? 7 : 11, 16, 16]} />
           <meshBasicMaterial color={sunColor} />
         </mesh>
@@ -2658,6 +2671,15 @@ export default function Greenhouse3D({
   /** Live weather conditions for precipitation / thunder / cloud-cover rendering. */
   weather?: import("../context/useLiveWeather").LiveWeatherState;
 }) {
+  // God-rays source: a ref to the sun-disk mesh + a ready flag so the
+  // volumetric light shafts only mount when the sun is actually up.
+  const sunDiskRef = useRef<Mesh | null>(null);
+  const [sunDiskReady, setSunDiskReady] = useState(false);
+  const cloudCover = weather?.cloudCover ?? 0;
+  // Mesh when rays should show (sun up + not fully overcast), else null.
+  const godRaysSun: Mesh | null =
+    sunDiskReady && cloudCover <= 0.8 ? sunDiskRef.current : null;
+
   // Canopy footprint — match the GREENHOUSE aspect when explicit
   // length/width are provided, falling back to the legacy 1.5 default
   // only when dimensions aren't passed. Previously the canopy always
@@ -2803,6 +2825,8 @@ export default function Greenhouse3D({
             month={month}
             liveAzimuthDeg={liveSunAzimuthDeg}
             liveElevationDeg={liveSunElevationDeg}
+            diskRef={sunDiskRef}
+            onDiskReady={setSunDiskReady}
           />
           <ElegantSky
             azimuthDeg={liveSunAzimuthDeg ?? 180}
@@ -3010,6 +3034,24 @@ export default function Greenhouse3D({
               worldProximityThreshold={6}
               worldProximityFalloff={1}
             />
+            {/* Volumetric god-rays streaming through the glazing + structure
+                (Axel #1). Only mounts when the sun disk is up; weight eased
+                back under cloud cover so overcast days don't shaft. The cast
+                satisfies EffectComposer's strict child type — React.Children
+                filters the null at runtime when the sun is down. */}
+            {(godRaysSun ? (
+              <GodRays
+                sun={godRaysSun}
+                blendFunction={BlendFunction.SCREEN}
+                samples={60}
+                density={0.95}
+                decay={0.9}
+                weight={0.5 * (1 - cloudCover * 0.7)}
+                exposure={0.32 * (1 - cloudCover * 0.6)}
+                clampMax={1}
+                blur
+              />
+            ) : null) as React.ReactElement}
             <Bloom
               intensity={0.55}
               luminanceThreshold={0.92}
