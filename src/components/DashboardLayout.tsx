@@ -21,6 +21,7 @@ import WetBulbRiskChart from "./WetBulbRiskChart";
 import VPDChart from "./VPDChart";
 import CoolingModePanel from "./CoolingModePanel";
 import SeasonalStrategyCalendar from "./SeasonalStrategyCalendar";
+import SiteIntelligencePanel from "./SiteIntelligencePanel";
 import OptimizedSystemPanel from "./OptimizedSystemPanel";
 import BuildSheet from "./BuildSheet";
 import CultivationSciencePanel from "./CultivationSciencePanel";
@@ -437,7 +438,12 @@ export default function DashboardLayout() {
                 <CoolingModePanel />
               </div>
             )}
-            {tab === "calendar" && <SeasonalStrategyCalendar />}
+            {tab === "calendar" && (
+              <div className="space-y-3">
+                <SiteIntelligencePanel />
+                <SeasonalStrategyCalendar />
+              </div>
+            )}
           </div>
           <Warnings />
           <InsightsPanel />
