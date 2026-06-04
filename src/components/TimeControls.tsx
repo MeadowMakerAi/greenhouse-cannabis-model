@@ -82,6 +82,11 @@ function formatDayOfYear(doy: number) {
 
 export default function TimeControls() {
   const sim = useSimulation();
+  // Span of the date range, for the prominent at-a-glance readout.
+  const spanDays =
+    sim.rangeEndDOY + sim.rangeEndHour / 24 - (sim.rangeStartDOY + sim.rangeStartHour / 24);
+  const rangeSpanLabel =
+    spanDays >= 1 ? `${spanDays.toFixed(spanDays < 10 ? 1 : 0)} days` : `${Math.round(spanDays * 24)} h`;
   return (
     <div className="card">
       <div className="card-header">
@@ -169,9 +174,34 @@ export default function TimeControls() {
         </div>
 
         <div className="rounded border border-leaf-500/30 bg-leaf-500/[0.04] p-2">
+          {/* Prominent, labeled header so the date range is easy to find and
+              its current value is obvious at a glance (was a faint label that
+              users missed). */}
+          <div className="mb-2">
+            <div className="flex items-center gap-2">
+              <span aria-hidden className="text-base">📅</span>
+              <span className="text-sm font-bold text-leaf-700">Date range to simulate</span>
+            </div>
+            <p className="mt-0.5 text-[11px] text-ink-500">
+              Choose the span the player sweeps through — drag <strong>Start</strong> /{" "}
+              <strong>End</strong> below, or pick a preset. Then hit <strong>▶ Play range</strong>.
+            </p>
+            <div className="mt-1.5 inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-leaf-500/40 bg-white px-2.5 py-1.5 font-mono text-xs tabular-nums text-ink-900">
+              <span className="font-semibold text-leaf-700">
+                {formatDayOfYear(sim.rangeStartDOY)} · {formatHour(sim.rangeStartHour)}
+              </span>
+              <span className="text-ink-400">→</span>
+              <span className="font-semibold text-warn-600">
+                {formatDayOfYear(sim.rangeEndDOY)} · {formatHour(sim.rangeEndHour)}
+              </span>
+              <span className="ml-1 rounded bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-600">
+                {rangeSpanLabel}
+              </span>
+            </div>
+          </div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-leaf-600">
-              Date-range player
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+              Quick set
             </span>
             <button
               type="button"
@@ -219,18 +249,6 @@ export default function TimeControls() {
             </button>
           </div>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            <div className="text-xs">
-              <span className="text-ink-500">Start: </span>
-              <span className="font-mono text-ink-900">
-                {formatDayOfYear(sim.rangeStartDOY)} · {formatHour(sim.rangeStartHour)}
-              </span>
-            </div>
-            <div className="text-xs">
-              <span className="text-ink-500">End: </span>
-              <span className="font-mono text-ink-900">
-                {formatDayOfYear(sim.rangeEndDOY)} · {formatHour(sim.rangeEndHour)}
-              </span>
-            </div>
             <RangeEndpoint
               label="START"
               accent="leaf"
