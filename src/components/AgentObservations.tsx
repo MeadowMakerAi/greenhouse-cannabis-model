@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProactiveInsights } from "../context/useProactiveInsights";
+import { useRegionalDiseaseRisk } from "../context/useRegionalDiseaseRisk";
 import type { Insight, InsightSeverity } from "../models/proactiveInsights";
 import AgentAvatar, { type AgentState } from "./AgentAvatar";
 
@@ -74,7 +75,25 @@ function loadSnoozed(): Set<string> {
  */
 export default function AgentObservations() {
   const insights = useProactiveInsights();
+  const disease = useRegionalDiseaseRisk();
   const [dismissed, setDismissed] = useState<Set<string>>(loadSnoozed);
+
+  // Live, weather-driven regional pathogen pressure (NEWA-style methodology on
+  // real ambient weather). Surfaced as a high-priority observation when the
+  // ambient is genuinely pushing on the crop.
+  const diseaseInsight: Insight | null = useMemo(() => {
+    if (!disease || disease.overall < 50) return null;
+    const isBot = disease.dominant === "botrytis";
+    const which = isBot ? "Botrytis" : "Powdery mildew";
+    const hrs = isBot ? disease.botrytisHighHours : disease.pmHighHours;
+    return {
+      id: "regional-disease",
+      severity: "warn",
+      title: `Regional ${which.toLowerCase()} pressure — ${disease.trend}`,
+      body: `Ambient weather at your coordinates produced ${hrs} high-pressure hours over the last 3 days (peak ${Math.round(disease.overall)}/100), and the 48-hour outlook is ${disease.trend}. ${which} rides in on humid air — hold dew-point margin and dehumidification tight in late flower, and don't vent into a saturated front.`,
+      hint: "Ask Sage for the IPM play for the next 72 hours.",
+    };
+  }, [disease]);
   const [index, setIndex] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
   const prevActiveKey = useRef<string>("");
@@ -86,13 +105,12 @@ export default function AgentObservations() {
     return () => window.removeEventListener("greenhouse-model:agent-chat-state", onState);
   }, []);
 
-  const active = useMemo(
-    () =>
-      [...insights]
-        .filter((i) => !dismissed.has(i.id))
-        .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]),
-    [insights, dismissed],
-  );
+  const active = useMemo(() => {
+    const merged = diseaseInsight ? [diseaseInsight, ...insights] : insights;
+    return merged
+      .filter((i) => !dismissed.has(i.id))
+      .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+  }, [insights, diseaseInsight, dismissed]);
 
   // When the set of active observations changes (the scenario shifted and a
   // new thing is worth saying), pop back to the top so Sage "speaks up".
