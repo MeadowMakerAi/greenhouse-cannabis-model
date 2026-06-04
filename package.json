@@ -17,6 +17,7 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@react-three/postprocessing": "^3.0.4",
+    "@supabase/supabase-js": "^2.107.0",
     "autoprefixer": "^10.5.0",
     "grow-core": "github:MeadowMakerAi/grow-core#v0.2.1",
     "postcss": "^8.5.14",

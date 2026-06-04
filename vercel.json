@@ -7,5 +7,6 @@
   "installCommand": "npm install",
   "github": {
     "silent": true
-  }
+  },
+  "crons": [{ "path": "/api/monitor", "schedule": "0 7 * * *" }]
 }

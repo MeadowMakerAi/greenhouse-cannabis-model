@@ -6,6 +6,11 @@ import Chatbot from "./components/Chatbot";
 import AgentObservations from "./components/AgentObservations";
 import LandingScreen from "./components/LandingScreen";
 import { useEquipmentPhysics } from "./context/useEquipmentPhysics";
+// Monitoring layer — only activates when VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY are set.
+// Absent env vars → renders null, no network calls, open simulator experience preserved.
+import { AuthProvider } from "./context/AuthContext";
+import AccountMenu from "./components/AccountMenu";
+import ForecastWatch from "./components/ForecastWatch";
 
 function PhysicsHooks() {
   useEquipmentPhysics();
@@ -42,13 +47,17 @@ export default function App() {
   }
 
   return (
-    <ScenarioProvider>
-      <SimulationProvider>
-        <PhysicsHooks />
-        <DashboardLayout />
-        <AgentObservations />
-        <Chatbot />
-      </SimulationProvider>
-    </ScenarioProvider>
+    <AuthProvider>
+      <ScenarioProvider>
+        <SimulationProvider>
+          <PhysicsHooks />
+          <DashboardLayout />
+          <AgentObservations />
+          <Chatbot />
+          <AccountMenu />
+          <ForecastWatch />
+        </SimulationProvider>
+      </ScenarioProvider>
+    </AuthProvider>
   );
 }
