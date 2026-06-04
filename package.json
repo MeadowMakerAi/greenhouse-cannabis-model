@@ -18,6 +18,7 @@
     "@react-three/fiber": "^9.6.1",
     "@react-three/postprocessing": "^3.0.4",
     "autoprefixer": "^10.5.0",
+    "grow-core": "github:MeadowMakerAi/grow-core#v0.2.1",
     "postcss": "^8.5.14",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
