@@ -1823,8 +1823,6 @@ function CanopyAndPlants({
   canopyOffsetZ,
   canopyLength,
   canopyWidth,
-  rows,
-  cols,
   plantHeight,
   plantGrowth,
 }: {
@@ -1832,11 +1830,24 @@ function CanopyAndPlants({
   canopyOffsetZ: number;
   canopyLength: number;
   canopyWidth: number;
-  rows: number;
-  cols: number;
   plantHeight: number;
   plantGrowth?: PlantGrowthGeom;
 }) {
+  // Realistic plant layout — decoupled from the FIXTURE grid. (The bug: plants
+  // were tiled one-per-fixture, so rows went sparse/unrealistic as the
+  // greenhouse grew.) Flowering cannabis sits ~2 ft on-center, far denser than
+  // fixtures. We derive the plant grid from canopy size + plant spacing, cap
+  // the rendered count for performance, and scale spacing up on very large
+  // canopies so rows stay uniform instead of exploding into thousands of meshes.
+  const PLANT_SPACING_FT = 2.2;
+  const MAX_PLANTS = 160;
+  let cols = Math.max(2, Math.round(canopyLength / PLANT_SPACING_FT));
+  let rows = Math.max(2, Math.round(canopyWidth / PLANT_SPACING_FT));
+  if (rows * cols > MAX_PLANTS) {
+    const scale = Math.sqrt((rows * cols) / MAX_PLANTS);
+    cols = Math.max(2, Math.round(cols / scale));
+    rows = Math.max(2, Math.round(rows / scale));
+  }
   const colSpacing = canopyLength / cols;
   const rowSpacing = canopyWidth / rows;
   const plants: { x: number; z: number; seed: number }[] = [];
@@ -2958,8 +2969,6 @@ export default function Greenhouse3D({
               canopyOffsetZ={canopyOffsetZ}
               canopyLength={canopyLength}
               canopyWidth={canopyWidth}
-              rows={Math.max(2, rows)}
-              cols={Math.max(2, cols)}
               plantHeight={plantHeight}
               plantGrowth={plantGrowth}
             />
