@@ -1576,16 +1576,23 @@ function FanLeafCluster({
                 does. Sheen gives the soft falloff at glancing angles.
                 ~2× memory of meshStandardMaterial but reads as alive. */}
             <coneGeometry args={[leafThick, leafLen * lenScale, 5]} />
+            {/* Leaf subsurface scattering (Axel #1 realism — Habel 2007).
+                transmission=0.28: light passes through thin leaf tissue.
+                attenuationColor: the warm yellow-green you see when sunlight
+                backlights a cannabis leaf — the key "alive" cue.
+                sheen: soft velvet falloff at grazing angles (waxy cuticle). */}
             <meshPhysicalMaterial
               color={color}
-              roughness={0.88}
+              roughness={0.82}
               metalness={0}
-              transmission={0.08}
-              thickness={0.04}
-              ior={1.4}
-              sheen={1}
-              sheenRoughness={0.7}
-              sheenColor="#cfe89a"
+              transmission={0.28}
+              thickness={0.06}
+              ior={1.42}
+              attenuationColor="#c8e87a"
+              attenuationDistance={0.18}
+              sheen={0.9}
+              sheenRoughness={0.65}
+              sheenColor="#d4f0a0"
               side={THREE.DoubleSide}
             />
           </mesh>
