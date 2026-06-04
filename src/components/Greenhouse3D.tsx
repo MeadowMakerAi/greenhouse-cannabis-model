@@ -2622,6 +2622,7 @@ export default function Greenhouse3D({
   fixtureWatts = 720,
   fixtureType = "LED",
   bleed = false,
+  fill = false,
   heightOverride,
 }: Props & {
   resetCameraSignal?: number;
@@ -2631,6 +2632,10 @@ export default function Greenhouse3D({
    *  page substrate (Tesla 2026.14 / Bookmap pattern). Used on Live +
    *  Cultivation Science tabs where the scene IS the focus. */
   bleed?: boolean;
+  /** When true, the canvas fills its parent (h-full w-full) instead of using
+   *  the responsive fixed height. Used by the mobile full-screen overlay so
+   *  the greenhouse owns the whole viewport. */
+  fill?: boolean;
   /** Override the default 760px canvas height. Useful for substrate mode. */
   heightOverride?: number;
 }) {
@@ -2763,21 +2768,27 @@ export default function Greenhouse3D({
   // eating touch) blocked scroll. Cap to ~60% of the small viewport on
   // mobile with a usable floor; restore the exact 760px at md+. An
   // explicit heightOverride (substrate mode) still wins via inline style.
-  const heightClass = bleed
-    ? "h-[58svh] min-h-[300px] md:h-[760px]"
-    : "h-[60svh] min-h-[320px] md:h-[760px]";
+  const heightClass = fill
+    ? "h-full w-full"
+    : bleed
+      ? "h-[58svh] min-h-[300px] md:h-[760px]"
+      : "h-[60svh] min-h-[320px] md:h-[760px]";
   // `gh-scene` is the hook for the canvas touch-action rule in index.css —
   // R3F's <Canvas style> lands on an inner container it then forces to
   // touch-action:none, so the <canvas> itself must be targeted via CSS to
   // let a vertical swipe scroll the page on mobile (see index.css).
-  const wrapperClass = bleed
-    ? `gh-scene scene-bleed relative overflow-hidden ${heightClass}`
-    : `gh-scene relative overflow-hidden rounded border border-ink-300/40 bg-ink-900/[0.02] ${heightClass}`;
+  // In `fill` mode the overlay owns scroll, so the canvas can keep full
+  // touch (pan-y still applies via the rule below; harmless there).
+  const wrapperClass = fill
+    ? `gh-scene gh-scene-fill scene-bleed relative overflow-hidden ${heightClass}`
+    : bleed
+      ? `gh-scene scene-bleed relative overflow-hidden ${heightClass}`
+      : `gh-scene relative overflow-hidden rounded border border-ink-300/40 bg-ink-900/[0.02] ${heightClass}`;
 
   return (
     <div
       className={wrapperClass}
-      style={heightOverride ? { height: heightOverride } : undefined}
+      style={!fill && heightOverride ? { height: heightOverride } : undefined}
     >
       <Canvas
         shadows
