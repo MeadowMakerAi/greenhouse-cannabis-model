@@ -65,6 +65,9 @@ export default function Greenhouse3DHud({
   const { snapshot } = useLiveDynamics();
   const weather = useLiveWeather();
 
+  const sensorCount = (inputs.equipment ?? []).filter((e) => e.defId === "sensor-pod").length;
+  const sensorLabel = sensorCount > 0 ? `${sensorCount}× sensor pod` : "sim model";
+
   const sunArrowAngle = (snapshot.sun.azimuthDeg - ridgeAzimuthDeg) % 360;
 
   const weatherIcon: Record<string, string> = {
@@ -167,7 +170,7 @@ export default function Greenhouse3DHud({
        * naturally instead of crowding the Vents cell. */}
       <div className="pointer-events-auto absolute bottom-3 right-3 w-96 rounded-lg border border-white/30 bg-white/55 p-3 shadow-md backdrop-blur-md">
         <div className="mb-1.5 flex items-baseline justify-between gap-3">
-          <span className="text-[10px] uppercase tracking-wider text-ink-500">Indoor (canopy)</span>
+          <span className="text-[10px] uppercase tracking-wider text-ink-500">Indoor · {sensorLabel}</span>
           <span className="text-[9px] text-ink-500">leaf {inputs.leafTempOffsetC.toFixed(1)}°C</span>
         </div>
         <div className="grid grid-cols-3 gap-2">
