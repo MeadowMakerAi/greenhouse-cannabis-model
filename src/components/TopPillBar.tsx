@@ -175,24 +175,28 @@ export default function TopPillBar({ onCustomizeClick }: TopPillBarProps = {}) {
             value={inputs.greenhouseLengthFt}
             onChange={(n) => setInputs({ greenhouseLengthFt: n })}
             unit="ft"
+            debounceMs={500}
           />
           <NumberField
             label="Width"
             value={inputs.greenhouseWidthFt}
             onChange={(n) => setInputs({ greenhouseWidthFt: n })}
             unit="ft"
+            debounceMs={500}
           />
           <NumberField
             label="Eave"
             value={inputs.eaveHeightFt}
             onChange={(n) => setInputs({ eaveHeightFt: n })}
             unit="ft"
+            debounceMs={500}
           />
           <NumberField
             label="Peak"
             value={inputs.peakHeightFt}
             onChange={(n) => setInputs({ peakHeightFt: n })}
             unit="ft"
+            debounceMs={500}
           />
         </div>
         <NumberField
@@ -201,6 +205,7 @@ export default function TopPillBar({ onCustomizeClick }: TopPillBarProps = {}) {
           onChange={(n) => setInputs({ canopyAreaSqFt: n })}
           unit="ft²"
           hint="Defaults to ~85% of floor. Set manually to override."
+          debounceMs={500}
         />
       </InputPill>
 

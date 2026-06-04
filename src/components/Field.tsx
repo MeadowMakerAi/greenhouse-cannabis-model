@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 interface NumberFieldProps {
   label: string;
@@ -9,9 +9,66 @@ interface NumberFieldProps {
   max?: number;
   unit?: string;
   hint?: string;
+  /**
+   * When set, the field holds a local draft while typing and only commits
+   * `onChange` after this idle delay (and immediately on blur). Used for
+   * geometry inputs so erasing "48" → "4" doesn't flash a 4-ft greenhouse
+   * mid-edit — the scene waits until the user finishes. Omit for instant
+   * (live) inputs.
+   */
+  debounceMs?: number;
 }
 
-export function NumberField({ label, value, onChange, step = 1, min, max, unit, hint }: NumberFieldProps) {
+export function NumberField({ label, value, onChange, step = 1, min, max, unit, hint, debounceMs }: NumberFieldProps) {
+  // Draft holds the in-progress text only while debouncing. null = "show the
+  // committed prop value" (so external changes — presets, canopy auto-scale —
+  // flow straight through when the user isn't mid-edit).
+  const [draft, setDraft] = useState<string | null>(null);
+  const timer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  // parseFloat returns NaN for "", "-", ".", etc. — propagating NaN through
+  // setInputs poisoned canopyAreaSqFt and crashed the 3D scene with a cascade
+  // of NaN positions (Codex P1). So partial/empty input never commits.
+  const tryParse = (raw: string): number | null => {
+    if (raw === "" || raw === "-" || raw === ".") return null;
+    const parsed = parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const handleChange = (raw: string) => {
+    const parsed = tryParse(raw);
+    if (!debounceMs) {
+      if (parsed !== null) onChange(parsed);
+      return;
+    }
+    // Debounced: reflect the keystroke locally, commit after the idle delay.
+    setDraft(raw);
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    if (parsed !== null) {
+      timer.current = window.setTimeout(() => onChange(parsed), debounceMs);
+    }
+  };
+
+  const handleBlur = (raw: string) => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    const parsed = tryParse(raw);
+    if (parsed !== null) onChange(parsed);
+    setDraft(null); // resync display to the committed value
+  };
+
+  const display =
+    debounceMs && draft !== null ? draft : Number.isFinite(value) ? value : 0;
+
   return (
     <div>
       <label className="field-label">
@@ -20,23 +77,12 @@ export function NumberField({ label, value, onChange, step = 1, min, max, unit, 
       </label>
       <input
         type="number"
-        value={Number.isFinite(value) ? value : 0}
+        value={display}
         step={step}
         min={min}
         max={max}
-        onChange={(e) => {
-          const raw = e.target.value;
-          // Empty / partial input → don't call onChange. The displayed value
-          // briefly shows what the user is typing (controlled-input cycle
-          // tolerates this), but state stays at the last valid number.
-          // parseFloat returns NaN for "", "-", ".", etc. — propagating NaN
-          // through setInputs poisoned canopyAreaSqFt and crashed the 3D
-          // scene with a cascade of NaN positions. Codex P1.
-          if (raw === "" || raw === "-" || raw === ".") return;
-          const parsed = parseFloat(raw);
-          if (!Number.isFinite(parsed)) return;
-          onChange(parsed);
-        }}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={debounceMs ? (e) => handleBlur(e.target.value) : undefined}
       />
       {hint ? <p className="mt-1 text-[11px] text-ink-500">{hint}</p> : null}
     </div>

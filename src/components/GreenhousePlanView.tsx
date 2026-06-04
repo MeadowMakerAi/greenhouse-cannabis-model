@@ -1,3 +1,5 @@
+import { solveFixtureGrid } from "../models/fixtureGrid";
+
 interface Props {
   floorAreaSqFt: number;
   canopyAreaSqFt: number;
@@ -47,32 +49,17 @@ export default function GreenhousePlanView({
   const canopyX = floorX + (drawnFloorLengthPx - drawnCanopyLengthPx) / 2;
   const canopyY = floorY + (drawnFloorWidthPx - drawnCanopyWidthPx) / 2;
 
-  // Lay out fixtures in a clean rectangular grid. Same fix as Greenhouse3D:
-  // derive both rows and cols from gridSpacingFt so the grid never has a
-  // partial last row. If snapped count is far from fixtureCount, search for
-  // the (rows × cols) pair best matching count + canopy aspect.
-  const colsFromSpacing = Math.max(1, Math.round(canopyLength / gridSpacingFt));
-  const rowsFromSpacing = Math.max(1, Math.round(canopyWidth / gridSpacingFt));
-  const perfectGridCount = colsFromSpacing * rowsFromSpacing;
-  let cols = colsFromSpacing;
-  let rows = rowsFromSpacing;
-  if (Math.abs(perfectGridCount - fixtureCount) > 2 && fixtureCount > 0) {
-    const targetAspect = canopyLength / canopyWidth;
-    let best = { rows: rowsFromSpacing, cols: colsFromSpacing, score: Infinity };
-    for (let testCols = 1; testCols <= fixtureCount; testCols++) {
-      const testRows = Math.max(1, Math.round(fixtureCount / testCols));
-      const product = testCols * testRows;
-      const aspect = testCols / testRows;
-      const countErr = Math.abs(product - fixtureCount);
-      const aspectErr = Math.abs(aspect - targetAspect);
-      const score = countErr * 5 + aspectErr;
-      if (score < best.score) best = { rows: testRows, cols: testCols, score };
-    }
-    rows = best.rows;
-    cols = best.cols;
-  }
-  const colSpacingPx = drawnCanopyLengthPx / cols;
-  const rowSpacingPx = drawnCanopyWidthPx / rows;
+  // Lay out fixtures in a clean rectangular grid via the shared solver
+  // (src/models/fixtureGrid.ts) — kept in lockstep with Greenhouse3D and
+  // guarded against the single-row collapse.
+  const { rows, cols } = solveFixtureGrid({
+    fixtureCount,
+    canopyLengthFt: canopyLength,
+    canopyWidthFt: canopyWidth,
+    gridSpacingFt,
+  });
+  const colSpacingPx = drawnCanopyLengthPx / Math.max(1, cols);
+  const rowSpacingPx = drawnCanopyWidthPx / Math.max(1, rows);
   const fixtures: { x: number; y: number }[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {

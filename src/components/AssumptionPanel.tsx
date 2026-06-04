@@ -119,6 +119,7 @@ export default function AssumptionPanel() {
           label="Length"
           value={inputs.greenhouseLengthFt}
           onChange={(n) => setInputs({ greenhouseLengthFt: n })}
+          debounceMs={500}
           unit="ft"
           hint="Long-axis exterior length (gutter run direction). Suggested 16–300 ft for a single-zone commercial greenhouse."
         />
@@ -126,6 +127,7 @@ export default function AssumptionPanel() {
           label="Width"
           value={inputs.greenhouseWidthFt}
           onChange={(n) => setInputs({ greenhouseWidthFt: n })}
+          debounceMs={500}
           unit="ft"
           hint="Short-axis exterior width (eave-to-eave). Suggested 18–60 ft for a single bay; gutter-connect multi-bay houses exceed this."
         />
@@ -133,6 +135,7 @@ export default function AssumptionPanel() {
           label="Eave height"
           value={inputs.eaveHeightFt}
           onChange={(n) => setInputs({ eaveHeightFt: n })}
+          debounceMs={500}
           unit="ft"
           hint="Sidewall vertical height before roof slope. Suggested 8–18 ft (commercial high-bay range)."
         />
@@ -140,6 +143,7 @@ export default function AssumptionPanel() {
           label="Peak height"
           value={inputs.peakHeightFt}
           onChange={(n) => setInputs({ peakHeightFt: n })}
+          debounceMs={500}
           unit="ft"
           hint="Ridge / peak vertical height. Suggested 10–28 ft."
         />
@@ -147,6 +151,7 @@ export default function AssumptionPanel() {
           label="Canopy area"
           value={inputs.canopyAreaSqFt}
           onChange={(n) => setInputs({ canopyAreaSqFt: n })}
+          debounceMs={500}
           unit="ft²"
           hint="Active flowering footprint — what fixtures sit over (typically smaller than floor)."
         />
