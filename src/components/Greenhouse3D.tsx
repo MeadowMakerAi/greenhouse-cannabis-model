@@ -32,6 +32,9 @@ import {
 } from "../models/kelvinModel";
 import { solveFixtureGrid } from "../models/fixtureGrid";
 import WeatherParticles from "./WeatherParticles";
+import EquipmentObjects from "./EquipmentObjects";
+import type { PlacedEquipment } from "../context/ScenarioContext";
+import type { LiveWeatherState } from "../context/useLiveWeather";
 
 interface Props {
   floorAreaSqFt: number;
@@ -2665,6 +2668,7 @@ export default function Greenhouse3D({
   fill = false,
   heightOverride,
   weather,
+  equipment,
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
@@ -2680,7 +2684,9 @@ export default function Greenhouse3D({
   /** Override the default 760px canvas height. Useful for substrate mode. */
   heightOverride?: number;
   /** Live weather conditions for precipitation / thunder / cloud-cover rendering. */
-  weather?: import("../context/useLiveWeather").LiveWeatherState;
+  weather?: LiveWeatherState;
+  /** Placed equipment objects to render inside the greenhouse. */
+  equipment?: PlacedEquipment[];
 }) {
   // God-rays source: a ref to the sun-disk mesh + a ready flag so the
   // volumetric light shafts only mount when the sun is actually up.
@@ -2998,6 +3004,15 @@ export default function Greenhouse3D({
               intensityScale={wattRatio}
             />
           </group>
+
+          {/* Placed equipment objects — real-scale 3D with physics-aware dimensions. */}
+          {equipment && equipment.length > 0 && (
+            <EquipmentObjects
+              equipment={equipment}
+              eaveHeightFt={eaveHeightFt}
+              peakHeightFt={peakHeightFt}
+            />
+          )}
 
           <CompassRose
             size={6}
