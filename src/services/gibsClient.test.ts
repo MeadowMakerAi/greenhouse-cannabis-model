@@ -125,11 +125,24 @@ describe("buildSiteMosaic", () => {
     expect(m.markerTopPct).toBeLessThan(100);
   });
 
-  it("keeps the mosaic on-matrix near an edge", () => {
-    // Far western/ northern corner — start indices must not go negative.
+  it("clamps Y at the pole and keeps every tile on-matrix", () => {
+    // Near the north pole: the grid must shift down, never index a row < 0.
     const m = buildSiteMosaic(GIBS_LAYERS.trueColor, "2026-06-10", 89, -179, 8, 3);
-    expect(m.tiles.every((t) => t.x >= 0 && t.y >= 0)).toBe(true);
-    expect(m.tiles.every((t) => t.x < GIBS_250M_MATRIX[8].cols)).toBe(true);
-    expect(m.tiles.every((t) => t.y < GIBS_250M_MATRIX[8].rows)).toBe(true);
+    expect(m.tiles.every((t) => t.x >= 0 && t.x < GIBS_250M_MATRIX[8].cols)).toBe(true);
+    expect(m.tiles.every((t) => t.y >= 0 && t.y < GIBS_250M_MATRIX[8].rows)).toBe(true);
+  });
+
+  it("wraps X across the antimeridian so the site stays centered", () => {
+    const cols = GIBS_250M_MATRIX[8].cols; // 320
+    // lon 179.9 sits in the easternmost column; its west neighbor is column 0.
+    const m = buildSiteMosaic(GIBS_LAYERS.trueColor, "2026-06-10", 41.475, 179.9, 8, 3);
+    const xs = m.tiles.map((t) => t.x);
+    // Mosaic must span the seam: include both a high column and column 0.
+    expect(xs).toContain(0);
+    expect(xs.some((x) => x === cols - 1)).toBe(true);
+    expect(m.tiles.every((t) => t.x >= 0 && t.x < cols)).toBe(true);
+    // Site still reads as centered (not a one-sided strip).
+    expect(m.markerLeftPct).toBeGreaterThan(30);
+    expect(m.markerLeftPct).toBeLessThan(90);
   });
 });

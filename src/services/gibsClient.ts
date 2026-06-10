@@ -58,7 +58,7 @@ export const GIBS_LAYERS: Record<GibsLayerId, GibsLayerSpec> = {
     earliestDate: "2025-02-12",
     defaultDate: "2026-06-09",
     attribution: "NASA EOSDIS GIBS · MODIS Terra NDVI 8-Day (250 m)",
-    note: "8-day vegetation-greenness composite. Greener = denser/healthier canopy. Regional 250 m — not field-scale.",
+    note: "8-day vegetation-greenness composite. Higher NDVI usually means more green vegetation at pixel scale, but mixed land cover, bare soil, or clouds can confound it. Regional 250 m — not a crop-health readout.",
   },
 };
 
@@ -192,8 +192,14 @@ export interface SiteMosaic {
 /**
  * Build a square tile mosaic centered on the site, with the site-marker
  * position resolved to sub-tile precision. `size` should be odd so the site
- * tile sits in the middle (default 3 → 3×3). Tiles are clamped to the matrix
- * edges; the marker fraction stays accurate even when clamping shifts a tile.
+ * tile sits in the middle (default 3 → 3×3).
+ *
+ * X (longitude) WRAPS at the antimeridian — there is always a tile to either
+ * side, so a site near ±180° stays centered (the mosaic crosses the seam)
+ * rather than collapsing to a one-sided strip. Y (latitude) CLAMPS at the
+ * poles — there is no tile above +90° / below −90°, so near a pole the grid
+ * shifts to stay on-matrix. The marker fraction is measured against the
+ * unwrapped/clamped start, so it tracks the true site either way.
  */
 export function buildSiteMosaic(
   layer: GibsLayerSpec,
@@ -206,20 +212,21 @@ export function buildSiteMosaic(
   const zz = clampZoom(z);
   const { cols, rows } = GIBS_250M_MATRIX[zz];
   const half = Math.floor(size / 2);
+  const wrap = (n: number, m: number) => ((n % m) + m) % m;
 
-  const centerXf = lonToTileXf(lon, zz);
-  const centerYf = latToTileYf(lat, zz);
-  const centerX = Math.max(0, Math.min(cols - 1, Math.floor(centerXf)));
+  const centerXf = lonToTileXf(lon, zz); // fractional col, [0, cols]
+  const centerYf = latToTileYf(lat, zz); // fractional row, [0, rows]
+
+  // X: unclamped integer start, tiles wrapped modulo cols across the seam.
+  const startXUnwrapped = Math.floor(centerXf) - half;
+  // Y: clamp the start so the grid never runs off the top/bottom of the matrix.
   const centerY = Math.max(0, Math.min(rows - 1, Math.floor(centerYf)));
-
-  // Top-left tile of the mosaic, clamped so the whole grid stays on-matrix.
-  const startX = Math.max(0, Math.min(cols - size, centerX - half));
-  const startY = Math.max(0, Math.min(rows - size, centerY - half));
+  const startY = Math.max(0, Math.min(Math.max(0, rows - size), centerY - half));
 
   const tiles: MosaicTile[] = [];
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
-      const x = startX + c;
+      const x = wrap(startXUnwrapped + c, cols);
       const y = startY + r;
       tiles.push({
         z: zz,
@@ -232,8 +239,9 @@ export function buildSiteMosaic(
     }
   }
 
-  // Marker: where the site falls across the mosaic span, in [0,1].
-  const markerLeftPct = ((centerXf - startX) / size) * 100;
+  // Marker fraction across the mosaic span, in [0,100]. Measured against the
+  // unwrapped X start and the clamped Y start so the site stays put.
+  const markerLeftPct = ((centerXf - startXUnwrapped) / size) * 100;
   const markerTopPct = ((centerYf - startY) / size) * 100;
 
   return {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useScenario } from "../context/ScenarioContext";
 import {
   GIBS_LAYERS,
@@ -31,21 +31,24 @@ export default function SatellitePanel() {
   const { inputs } = useScenario();
   const [layerId, setLayerId] = useState<GibsLayerId>("trueColor");
   const [zoom, setZoom] = useState(MAX_ZOOM);
-  // Ceiling for the date picker — actual current date, not the static
-  // authoring-time default (which would freeze as the archive advances).
-  const todayIso = useMemo(() => recentIsoDate(0), []);
-  // One date in state; clamped to whichever layer is active when used.
+  // One date in state; clamped to the active layer's verified window. The
+  // ceiling is each layer's advertised `defaultDate` — GIBS 404s on dates past
+  // it (it does NOT snap forward), so requesting "today" would false-error.
+  // These dates are a capabilities snapshot (2026-06-10); refresh them, or
+  // fetch the live layer Default at runtime, to track newer imagery.
   const [rawDate, setRawDate] = useState<string>(() =>
-    clampDateToLayer(
-      GIBS_LAYERS.trueColor,
-      recentIsoDate(DEFAULT_DAYS_BACK),
-      recentIsoDate(0),
-    ),
+    clampDateToLayer(GIBS_LAYERS.trueColor, recentIsoDate(DEFAULT_DAYS_BACK)),
   );
   const [tileError, setTileError] = useState(false);
 
   const layer = GIBS_LAYERS[layerId];
-  const date = clampDateToLayer(layer, rawDate, todayIso);
+  const date = clampDateToLayer(layer, rawDate);
+
+  // A transient tile miss shouldn't leave the error overlay stuck once the
+  // mosaic inputs change to a fresh, valid request.
+  useEffect(() => {
+    setTileError(false);
+  }, [layerId, date, zoom, inputs.latitude, inputs.longitude]);
 
   const mosaic = useMemo(
     () =>
@@ -64,7 +67,7 @@ export default function SatellitePanel() {
     setTileError(false);
     setLayerId(id);
     // Re-clamp the visible date into the new layer's window.
-    setRawDate((d) => clampDateToLayer(GIBS_LAYERS[id], d, todayIso));
+    setRawDate((d) => clampDateToLayer(GIBS_LAYERS[id], d));
   };
 
   const askSage = () => {
@@ -178,7 +181,7 @@ export default function SatellitePanel() {
               type="date"
               value={date}
               min={layer.earliestDate}
-              max={todayIso}
+              max={layer.defaultDate}
               onChange={(e) => {
                 setTileError(false);
                 setRawDate(e.target.value || recentIsoDate(DEFAULT_DAYS_BACK));
