@@ -30,6 +30,8 @@ export interface ChatTurnInput {
   attachments?: FileAttachment[];
   toolHandler: ToolHandler;
   maxRoundtrips?: number;
+  /** Caller cancel signal; combined with a per-request timeout in the provider. */
+  signal?: AbortSignal;
 }
 
 export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
@@ -87,5 +89,6 @@ export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
     tools: CHATBOT_TOOLS,
     systemPrompt: CHATBOT_SYSTEM_PROMPT,
     maxRoundtrips: args.maxRoundtrips,
+    signal: args.signal,
   });
 }

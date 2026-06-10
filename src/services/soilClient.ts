@@ -19,18 +19,11 @@ import {
   type SoilProfile,
   type LiveSoil,
 } from "../models/soilModel";
+import { timedSignal, SOIL_TIMEOUT_MS } from "./abortTimeout";
 
 const SOILGRIDS = "https://rest.isric.org/soilgrids/v2.0/properties/query";
 const OPEN_METEO = "https://api.open-meteo.com/v1/forecast";
 const DEPTH = "0-5cm";
-/** Cap any single soil request so a stalled host can't hang the panel forever. */
-const TIMEOUT_MS = 15000;
-
-/** Combine the caller's abort signal with a hard timeout, so fetch always settles. */
-function timedSignal(signal?: AbortSignal): AbortSignal {
-  const timeout = AbortSignal.timeout(TIMEOUT_MS);
-  return signal ? AbortSignal.any([signal, timeout]) : timeout;
-}
 
 /** SoilGrids properties we read, with how each decoded value maps onto SoilProfile. */
 const SOILGRIDS_PROPS = ["phh2o", "soc", "sand", "silt", "clay", "cec", "bdod"] as const;
@@ -74,7 +67,7 @@ export async function fetchSoilProfile(
     params.append("value", "mean");
 
     const res = await fetch(`${SOILGRIDS}?${params}`, {
-      signal: timedSignal(signal),
+      signal: timedSignal(SOIL_TIMEOUT_MS, signal),
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return null;
@@ -157,7 +150,7 @@ export async function fetchLiveSoil(
       timezone: "auto",
     });
     const res = await fetch(`${OPEN_METEO}?${params}`, {
-      signal: timedSignal(signal),
+      signal: timedSignal(SOIL_TIMEOUT_MS, signal),
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return null;

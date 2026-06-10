@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
 
 /**
  * OpenAI-compatible Chat Completions provider. Works for:
@@ -120,6 +121,7 @@ export const openAICompatibleProvider: ChatProvider = {
     tools,
     systemPrompt,
     maxRoundtrips = 6,
+    signal,
   }: ChatTurnArgs): Promise<ChatMessage> {
     const oaiTools = translateTools(tools);
 
@@ -150,24 +152,34 @@ export const openAICompatibleProvider: ChatProvider = {
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model,
-          messages,
-          tools: oaiTools.length > 0 ? oaiTools : undefined,
-          tool_choice: oaiTools.length > 0 ? "auto" : undefined,
-          max_tokens: 1500,
-        }),
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(
-          `${new URL(url).hostname} ${res.status}: ${txt.slice(0, 300)}`,
-        );
+      let json: OAIResponse;
+      try {
+        // Body parsing stays inside the abort guard — an abort can fire
+        // mid-body too and must map to the same friendly message.
+        const res = await fetch(url, {
+          method: "POST",
+          signal: timedSignal(CHAT_TIMEOUT_MS, signal),
+          headers,
+          body: JSON.stringify({
+            model,
+            messages,
+            tools: oaiTools.length > 0 ? oaiTools : undefined,
+            tool_choice: oaiTools.length > 0 ? "auto" : undefined,
+            max_tokens: 1500,
+          }),
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(
+            `${new URL(url).hostname} ${res.status}: ${txt.slice(0, 300)}`,
+          );
+        }
+        json = (await res.json()) as OAIResponse;
+      } catch (err) {
+        const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
+        if (aborted) throw new Error(aborted);
+        throw err;
       }
-      const json: OAIResponse = await res.json();
       const choice = json.choices?.[0];
       if (!choice) {
         throw new Error("Provider returned no choices.");

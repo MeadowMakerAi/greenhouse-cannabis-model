@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
 
 /**
  * Google Gemini native API. Picked specifically because the free tier has
@@ -87,6 +88,7 @@ export const geminiProvider: ChatProvider = {
     tools,
     systemPrompt,
     maxRoundtrips = 6,
+    signal,
   }: ChatTurnArgs): Promise<ChatMessage> {
     const contents: GeminiContent[] = history.map<GeminiContent>((m) => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -124,16 +126,26 @@ export const geminiProvider: ChatProvider = {
         generationConfig: { maxOutputTokens: 1500 },
       };
 
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`Gemini API ${res.status}: ${txt.slice(0, 300)}`);
+      let json: GeminiResponse;
+      try {
+        // Body parsing stays inside the abort guard — an abort can fire
+        // mid-body too and must map to the same friendly message.
+        const res = await fetch(url, {
+          method: "POST",
+          signal: timedSignal(CHAT_TIMEOUT_MS, signal),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(`Gemini API ${res.status}: ${txt.slice(0, 300)}`);
+        }
+        json = (await res.json()) as GeminiResponse;
+      } catch (err) {
+        const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
+        if (aborted) throw new Error(aborted);
+        throw err;
       }
-      const json: GeminiResponse = await res.json();
       if (json.error) {
         throw new Error(`Gemini API error: ${json.error.message}`);
       }

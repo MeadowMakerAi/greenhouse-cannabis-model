@@ -57,6 +57,8 @@ interface SwarmInput {
   contextJson: string;
   /** Called as each pass completes, for progress UI. */
   onPassDone?: (key: string) => void;
+  /** Caller cancel signal; each pass also has a per-request timeout. */
+  signal?: AbortSignal;
 }
 
 const NOOP_TOOL = async () =>
@@ -91,6 +93,7 @@ async function runPass(
       userMessage: passPrompt(pass, input.contextJson),
       toolHandler: NOOP_TOOL,
       maxRoundtrips: 1,
+      signal: input.signal,
     });
     input.onPassDone?.(pass.key);
     return { pass, text: reply.content.trim() };
@@ -105,6 +108,11 @@ async function runPass(
  */
 export async function runAuditSwarm(input: SwarmInput): Promise<string> {
   const results = await Promise.all(AUDIT_PASSES.map((p) => runPass(p, input)));
+
+  // User stopped mid-run — don't spend another call synthesizing aborted passes.
+  if (input.signal?.aborted) {
+    throw new Error("Audit stopped.");
+  }
 
   const findings = results
     .map((r) => `### ${r.pass.label}\n${r.text}`)
@@ -130,11 +138,17 @@ export async function runAuditSwarm(input: SwarmInput): Promise<string> {
       userMessage: synthesisPrompt,
       toolHandler: NOOP_TOOL,
       maxRoundtrips: 1,
+      signal: input.signal,
     });
     return synth.content.trim();
   } catch (e) {
-    // Synthesis failed — still return the raw specialist findings so the
-    // grower gets value.
+    // The user stopped mid-synthesis — honor it. Returning the findings
+    // anyway would make Stop produce an audit result.
+    if (input.signal?.aborted) {
+      throw new Error("Audit stopped.");
+    }
+    // Synthesis failed on its own — still return the raw specialist findings
+    // so the grower gets value.
     return `**Full audit** (synthesis unavailable: ${(e as Error).message})\n\n${findings}`;
   }
 }
