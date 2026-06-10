@@ -39,6 +39,21 @@ export function decodeSoilGrids(mapped: number, dFactor: number): number {
 }
 
 /**
+ * A value from an external API is trustworthy only if it's a finite number and
+ * (optionally) within a physical range. Anything else → null, never a bogus
+ * reading that poisons downstream reasoning. Guards Open-Meteo soil fields.
+ */
+export function finiteOrNull(
+  v: number | null | undefined,
+  min = -Infinity,
+  max = Infinity,
+): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  if (v < min || v > max) return null;
+  return v;
+}
+
+/**
  * USDA texture class from sand/silt/clay percentages.
  * Inputs are percentages (0–100); they are renormalised to sum to 100 first so
  * SoilGrids fractions (which can sum to slightly off 100 after rounding) land

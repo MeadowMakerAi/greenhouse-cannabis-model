@@ -14,6 +14,7 @@
 
 import {
   decodeSoilGrids,
+  finiteOrNull,
   usdaTextureClass,
   type SoilProfile,
   type LiveSoil,
@@ -21,6 +22,15 @@ import {
 
 const SOILGRIDS = "https://rest.isric.org/soilgrids/v2.0/properties/query";
 const OPEN_METEO = "https://api.open-meteo.com/v1/forecast";
+const DEPTH = "0-5cm";
+/** Cap any single soil request so a stalled host can't hang the panel forever. */
+const TIMEOUT_MS = 15000;
+
+/** Combine the caller's abort signal with a hard timeout, so fetch always settles. */
+function timedSignal(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
 
 /** SoilGrids properties we read, with how each decoded value maps onto SoilProfile. */
 const SOILGRIDS_PROPS = ["phh2o", "soc", "sand", "silt", "clay", "cec", "bdod"] as const;
@@ -34,9 +44,12 @@ interface SoilGridsResponse {
   properties?: { layers?: SoilGridsLayer[] };
 }
 
-/** Decode one layer's 0–5 cm mean into target units via its own d_factor. */
+/** Decode a layer's requested-depth mean into target units via its own d_factor. */
 function decodeLayer(layer: SoilGridsLayer | undefined): number | null {
-  const mapped = layer?.depths?.[0]?.values?.mean;
+  // Select the depth by label, not position — guards against API reordering.
+  const depth =
+    layer?.depths?.find((d) => d.label === DEPTH) ?? layer?.depths?.[0];
+  const mapped = depth?.values?.mean;
   const dFactor = layer?.unit_measure?.d_factor;
   if (mapped == null || dFactor == null) return null;
   const v = decodeSoilGrids(mapped, dFactor);
@@ -57,11 +70,11 @@ export async function fetchSoilProfile(
     params.set("lat", latitude.toFixed(4));
     params.set("lon", longitude.toFixed(4));
     for (const p of SOILGRIDS_PROPS) params.append("property", p);
-    params.append("depth", "0-5cm");
+    params.append("depth", DEPTH);
     params.append("value", "mean");
 
     const res = await fetch(`${SOILGRIDS}?${params}`, {
-      signal,
+      signal: timedSignal(signal),
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return null;
@@ -81,15 +94,33 @@ export async function fetchSoilProfile(
         ? usdaTextureClass(sandPct, siltPct, clayPct)
         : null;
 
+    const phH2O = decodeLayer(byName("phh2o"));
+    const socGkg = decodeLayer(byName("soc"));
+    const cecCmolKg = decodeLayer(byName("cec"));
+    const bulkDensityKgDm3 = decodeLayer(byName("bdod"));
+
+    // A 200 with every field null (e.g. an ocean coordinate) is not a profile —
+    // return null so the panel shows "unavailable" instead of seeding the agent
+    // with all-empty data.
+    const anyValue =
+      phH2O != null ||
+      socGkg != null ||
+      sandPct != null ||
+      siltPct != null ||
+      clayPct != null ||
+      cecCmolKg != null ||
+      bulkDensityKgDm3 != null;
+    if (!anyValue) return null;
+
     return {
       depthLabel: "0–5 cm",
-      phH2O: decodeLayer(byName("phh2o")),
-      socGkg: decodeLayer(byName("soc")),
+      phH2O,
+      socGkg,
       sandPct,
       siltPct,
       clayPct,
-      cecCmolKg: decodeLayer(byName("cec")),
-      bulkDensityKgDm3: decodeLayer(byName("bdod")),
+      cecCmolKg,
+      bulkDensityKgDm3,
       texture,
     };
   } catch {
@@ -126,17 +157,22 @@ export async function fetchLiveSoil(
       timezone: "auto",
     });
     const res = await fetch(`${OPEN_METEO}?${params}`, {
-      signal,
+      signal: timedSignal(signal),
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return null;
     const json = (await res.json()) as OpenMeteoSoilResponse;
     const c = json.current ?? {};
-    return {
-      moisture0to1: c.soil_moisture_0_to_1cm ?? null,
-      moisture3to9: c.soil_moisture_3_to_9cm ?? null,
-      soilTempC: c.soil_temperature_0cm ?? null,
+    const live: LiveSoil = {
+      // Volumetric moisture is a fraction → clamp to [0, 1]; temp just finite.
+      moisture0to1: finiteOrNull(c.soil_moisture_0_to_1cm, 0, 1),
+      moisture3to9: finiteOrNull(c.soil_moisture_3_to_9cm, 0, 1),
+      soilTempC: finiteOrNull(c.soil_temperature_0cm),
     };
+    if (live.moisture0to1 == null && live.moisture3to9 == null && live.soilTempC == null) {
+      return null;
+    }
+    return live;
   } catch {
     return null;
   }

@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { decodeSoilGrids, usdaTextureClass } from "./soilModel";
+import { decodeSoilGrids, usdaTextureClass, finiteOrNull } from "./soilModel";
+
+describe("finiteOrNull — external-value trust guard", () => {
+  it("passes a finite value through", () => {
+    expect(finiteOrNull(0.103)).toBe(0.103);
+  });
+  it("rejects NaN / Infinity / null / undefined", () => {
+    expect(finiteOrNull(NaN)).toBeNull();
+    expect(finiteOrNull(Infinity)).toBeNull();
+    expect(finiteOrNull(null)).toBeNull();
+    expect(finiteOrNull(undefined)).toBeNull();
+  });
+  it("rejects out-of-range (moisture clamp [0,1])", () => {
+    expect(finiteOrNull(1.4, 0, 1)).toBeNull();
+    expect(finiteOrNull(-0.2, 0, 1)).toBeNull();
+    expect(finiteOrNull(0.42, 0, 1)).toBe(0.42);
+  });
+});
 
 describe("decodeSoilGrids — the unit-trap guard", () => {
   it("decodes pH×10 to real pH", () => {
