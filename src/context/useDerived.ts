@@ -5,6 +5,7 @@ import { fixtureLibrary } from "../data/fixtureLibrary";
 import { cropTargets } from "../data/cropTargets";
 import { yieldRealismCases } from "../data/yieldRealism";
 import { computeMonthlySolar, netCanopyTransmissionPct } from "../models/solarModel";
+import { envelopeForMode } from "../models/growMode";
 import { dliToPPFD, ppfdToDLI } from "../models/dliModel";
 import { fixtureKWFromPPFD } from "../models/fixtureModel";
 import { computeUnderCanopy } from "../models/underCanopyModel";
@@ -110,11 +111,17 @@ export function useDerived() {
         ? inputs.customTargetDLIOverride
         : presetTarget.targetDLI;
     const target = { ...presetTarget, targetDLI: effectiveTargetDLI };
-    const transmission = netCanopyTransmissionPct(inputs.envelope);
+    const outdoor = inputs.mode === "outdoor";
+    // Outdoor mode = no glass envelope. Feed a no-loss envelope so the solar
+    // model's greenhouse-transmitted DLI collapses to the true outdoor DLI, and
+    // disable shade-cloth (a greenhouse structure). This is the honesty seam —
+    // grow-core is untouched. See models/growMode.ts.
+    const effectiveEnvelope = envelopeForMode(inputs.envelope, inputs.mode);
+    const transmission = netCanopyTransmissionPct(effectiveEnvelope);
 
     const solarOutputs = computeMonthlySolar(climate.data, {
-      envelope: inputs.envelope,
-      shadeEnabled: inputs.shadeEnabled,
+      envelope: effectiveEnvelope,
+      shadeEnabled: outdoor ? false : inputs.shadeEnabled,
       shadeTransmissionPct: inputs.shadeTransmissionPct,
       shadeStartMonth: inputs.shadeStartMonth,
       shadeEndMonth: inputs.shadeEndMonth,
@@ -217,7 +224,7 @@ export function useDerived() {
 
       const meanSolarWm2 = (climateRow.shortwaveKwhPerM2PerDay * 1000) / 12;
       const shadeActive = isShadeActive(idx, climateRow.meanTempF, meanSolarWm2, {
-        shadeEnabled: inputs.shadeEnabled,
+        shadeEnabled: outdoor ? false : inputs.shadeEnabled,
         shadeTransmissionPct: inputs.shadeTransmissionPct,
         shadeStartMonth: inputs.shadeStartMonth,
         shadeEndMonth: inputs.shadeEndMonth,

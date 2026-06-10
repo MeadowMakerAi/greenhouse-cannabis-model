@@ -157,6 +157,7 @@ export default function LiveGreenhouseScene({
       weather={weather}
       heightOverride={!fill && isDesktop ? sceneHeight : undefined}
       equipment={inputs.equipment ?? []}
+      showEnvelope={inputs.mode === "greenhouse"}
     />
   );
 
@@ -227,10 +228,17 @@ export default function LiveGreenhouseScene({
         {formatDOY(sim.dayOfYear)} · {formatHour(sim.hourOfDay)}
       </span>
       <span className="text-[11px] text-ink-500">
-        sun {fmt1(live.snapshot.sun.elevationDeg)}° · lights{" "}
-        {live.snapshot.lights.on
-          ? `${(live.snapshot.lights.dimLevel * 100).toFixed(0)}%`
-          : "off"}
+        sun {fmt1(live.snapshot.sun.elevationDeg)}°
+        {/* No supplemental fixtures open-air — drop the lights readout. */}
+        {inputs.mode === "greenhouse" && (
+          <>
+            {" "}
+            · lights{" "}
+            {live.snapshot.lights.on
+              ? `${(live.snapshot.lights.dimLevel * 100).toFixed(0)}%`
+              : "off"}
+          </>
+        )}
       </span>
     </div>
   ) : null;
@@ -268,20 +276,25 @@ export default function LiveGreenhouseScene({
         />
         <span className="font-mono text-ink-900">{ridgeAzimuth}°</span>
       </label>
-      {!syncToSim && (
-        <label className="flex items-center gap-1">
-          <input type="checkbox" checked={showVentsOpen} onChange={(e) => setShowVentsOpen(e.target.checked)} />
-          <span>Roof vents open</span>
-        </label>
+      {/* Envelope controls — only meaningful under a greenhouse roof. */}
+      {inputs.mode === "greenhouse" && (
+        <>
+          {!syncToSim && (
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={showVentsOpen} onChange={(e) => setShowVentsOpen(e.target.checked)} />
+              <span>Roof vents open</span>
+            </label>
+          )}
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={thermalActive} onChange={(e) => setShowThermal(e.target.checked)} />
+            <span>Thermal screen</span>
+          </label>
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={shadeActive} onChange={(e) => setShowShade(e.target.checked)} />
+            <span>Shade cloth</span>
+          </label>
+        </>
       )}
-      <label className="flex items-center gap-1">
-        <input type="checkbox" checked={thermalActive} onChange={(e) => setShowThermal(e.target.checked)} />
-        <span>Thermal screen</span>
-      </label>
-      <label className="flex items-center gap-1">
-        <input type="checkbox" checked={shadeActive} onChange={(e) => setShowShade(e.target.checked)} />
-        <span>Shade cloth</span>
-      </label>
       <button
         type="button"
         className="btn px-2 py-0.5 text-[11px]"

@@ -44,6 +44,13 @@ export type VentilationMode =
   | "sealed";
 
 export interface ScenarioInputs {
+  // Cultivation environment — greenhouse (controlled) vs outdoor (open-air).
+  // Outdoor removes the glass envelope entirely: DLI is natural (no glazing
+  // transmission loss), there are no supplemental fixtures / HVAC, and the
+  // dashboard shows only the open-air-valid layers. Default is greenhouse, so
+  // existing behavior and share-links stay byte-for-byte unchanged.
+  mode: "greenhouse" | "outdoor";
+
   // Site
   siteAddress: string;
   latitude: number;
@@ -279,6 +286,7 @@ const _defaultDerived = geometryFromDims(
 );
 
 export const defaultScenario: ScenarioInputs = {
+  mode: "greenhouse",
   ...defaultSite,
   weatherStation: defaultSite.nearestWeatherAnchor,
   ...defaultGreenhouseGeometry,
@@ -468,6 +476,14 @@ export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
   // Typical flower runs 12 h; veg runs 18 h.
   clampMin("flowerPhotoperiodHours", 1);
   clampMax("flowerPhotoperiodHours", 24);
+  // Mode is an enum, not a number. Guard against a stale/malicious share URL
+  // injecting an unknown value: an invalid mode would split the app — nav and
+  // the 3D scene treat any non-"greenhouse" value as outdoor, while the derived
+  // math and crown only special-case "outdoor", producing an outdoor-looking UI
+  // with greenhouse numbers. Clamp anything unrecognized to the safe default.
+  if (merged.mode !== "greenhouse" && merged.mode !== "outdoor") {
+    merged.mode = "greenhouse";
+  }
   return merged;
 }
 
