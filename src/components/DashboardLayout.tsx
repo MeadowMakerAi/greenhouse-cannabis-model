@@ -22,6 +22,7 @@ import VPDChart from "./VPDChart";
 import CoolingModePanel from "./CoolingModePanel";
 import SeasonalStrategyCalendar from "./SeasonalStrategyCalendar";
 import SiteIntelligencePanel from "./SiteIntelligencePanel";
+import SoilPanel from "./SoilPanel";
 import OptimizedSystemPanel from "./OptimizedSystemPanel";
 import BuildSheet from "./BuildSheet";
 import EquipmentPalette from "./EquipmentPalette";
@@ -447,6 +448,7 @@ export default function DashboardLayout() {
             {tab === "calendar" && (
               <div className="space-y-3">
                 <SiteIntelligencePanel />
+                <SoilPanel />
                 <SeasonalStrategyCalendar />
               </div>
             )}

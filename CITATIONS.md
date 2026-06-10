@@ -95,6 +95,19 @@ This greenhouse model is a synthesis of peer-reviewed plant science, greenhouse 
 
 ---
 
+## Soil & site
+
+**ISRIC — World Soil Information** — Poggio, L., de Sousa, L.M., Batjes, N.H., Heuvelink, G.B.M., Kempen, B., Ribeiro, E. & Rossiter, D. (2021). *SoilGrids 2.0: producing soil information for the globe with quantified spatial uncertainty.* SOIL, 7, 217–240. DOI: 10.5194/soil-7-217-2021.
+- Global digital soil map at 250 m. Source for the static soil profile (pH, organic carbon, sand/silt/clay, CEC, bulk density) in `soilClient.ts`. Each property is decoded with the layer's own `d_factor` reported by the API — no hard-coded scaling. Screening-level: a model surface, not a field soil test.
+
+**USDA Natural Resources Conservation Service (NRCS)** — *Soil Survey Manual* (USDA Handbook No. 18), soil textural classes and the texture triangle.
+- The 12-class texture triangle implemented in `usdaTextureClass()` (`soilModel.ts`). Boundaries are definitional (a classification standard), not an empirical coefficient.
+
+**Penn State Extension** — *Industrial Hemp Production* agronomy guidance (verified 2026-06: "best adapted to well-drained soil with a pH between 6.0 and 7.0").
+- Basis for the pH comfort-band readout in `SoilPanel.tsx`. Corroborated by Oklahoma State Extension (~6–7.5) and University of Kentucky (~6.4).
+
+---
+
 ## Acknowledgments
 
 Built solo by **Alex Buckner Claiborne** (alexbcl@mit.edu / @alxclaiborne) using **Claude Opus 4.7 (Anthropic)** as a paired-coding agent. Roughly 70 source files, 128 unit tests, ~9k LOC. Every model parameter and coefficient was verified live against the source above — no values pulled from training data.
