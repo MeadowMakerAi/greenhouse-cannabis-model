@@ -106,6 +106,10 @@ This greenhouse model is a synthesis of peer-reviewed plant science, greenhouse 
 **Penn State Extension** — *Industrial Hemp Production* agronomy guidance (verified 2026-06: "best adapted to well-drained soil with a pH between 6.0 and 7.0").
 - Basis for the pH comfort-band readout in `SoilPanel.tsx`. Corroborated by Oklahoma State Extension (~6–7.5) and University of Kentucky (~6.4).
 
+**NASA EOSDIS GIBS (Global Imagery Browse Services)** — NASA Earth Observing System Data and Information System. WMTS endpoint `gibs.earthdata.nasa.gov/wmts/epsg4326/best`, EPSG:4326 `250m` TileMatrixSet. Verified live 2026-06-10: no API key, CORS `access-control-allow-origin: *`.
+- Source for `SatellitePanel.tsx` regional imagery via `gibsClient.ts`. Layers: **MODIS_Terra_CorrectedReflectance_TrueColor** (Terra/MODIS, daily true-color, data from 2000-02-24) and **MODIS_Terra_NDVI_8Day** (Terra/MODIS 8-day NDVI composite, 250 m, data from 2025-02-12). Tile-matrix dimensions are copied verbatim from WMTSCapabilities, not derived from a formula. Screening-level: MODIS is 250 m/pixel — regional context, not a field-scale instrument. Field-resolution vegetation (Sentinel-2, 10 m) is intentionally out of scope for this client-only sim.
+- Underlying products: MODIS/Terra Surface Reflectance (MOD09) and Vegetation Indices 16-Day/8-Day composites (MOD13), NASA LP DAAC.
+
 ---
 
 ## Acknowledgments

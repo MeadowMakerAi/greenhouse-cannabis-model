@@ -23,7 +23,8 @@
                       r3f drei runtime style injection)
       font-src      — fonts.gstatic.com for the Inter/JetBrains Mono pair
       img-src       — data:/blob: for canvas + R3F textures + spec-sheet
-                      previews; self for any /public assets
+                      previews; self for any /public assets; NASA GIBS host
+                      for satellite/NDVI tiles (no-key, CORS *, <img> loads)
 
       anthropic-dangerous-direct-browser-access is still required by the
       Anthropic API for browser calls. The CSP doesn't replace that header,
@@ -36,7 +37,7 @@
                script-src 'self' 'unsafe-inline' 'unsafe-eval';
                style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
                font-src 'self' https://fonts.gstatic.com data:;
-               img-src 'self' data: blob:;
+               img-src 'self' data: blob: https://gibs.earthdata.nasa.gov;
                worker-src 'self' blob:;
                base-uri 'self';
                form-action 'self';"
