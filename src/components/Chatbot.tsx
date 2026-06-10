@@ -110,6 +110,11 @@ export default function Chatbot() {
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // In-flight request controller, so the user can Stop a hung/slow turn. The
+  // provider also enforces a hard per-request timeout (abortTimeout) so a
+  // stalled call can't pin the spinner forever even without a manual stop.
+  const abortRef = useRef<AbortController | null>(null);
+  const stop = () => abortRef.current?.abort();
 
   // Proactive-agent wiring. `obs` mirrors AgentObservations' active-count so
   // the launcher can badge it; sendRef keeps the latest send() for the
@@ -530,6 +535,8 @@ export default function Chatbot() {
     };
     setHistory((h) => [...h, userMessage]);
     setBusy(true);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
       const reply = await chatTurn({
         providerId,
@@ -539,6 +546,7 @@ export default function Chatbot() {
         userMessage: userMsg,
         attachments: sentAttachments,
         toolHandler,
+        signal: ctrl.signal,
       });
       setHistory((h) => [...h, reply]);
     } catch (err) {
@@ -549,6 +557,7 @@ export default function Chatbot() {
         { role: "assistant", content: `_Error: ${msg}_` },
       ]);
     } finally {
+      abortRef.current = null;
       setBusy(false);
     }
   };
@@ -621,6 +630,8 @@ export default function Chatbot() {
     ]);
     setAuditing(true);
     setAuditDone([]);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
       const report = await runAuditSwarm({
         providerId,
@@ -629,6 +640,7 @@ export default function Chatbot() {
         contextJson: buildAuditContext(),
         onPassDone: (k) =>
           setAuditDone((d) => (d.includes(k) ? d : [...d, k])),
+        signal: ctrl.signal,
       });
       setHistory((h) => [...h, { role: "assistant", content: report }]);
     } catch (e) {
@@ -639,6 +651,7 @@ export default function Chatbot() {
         { role: "assistant", content: `_Audit failed: ${msg}_` },
       ]);
     } finally {
+      abortRef.current = null;
       setAuditing(false);
       setAuditDone([]);
     }
@@ -918,8 +931,16 @@ export default function Chatbot() {
               </div>
             ))}
             {busy && (
-              <div className="mr-6 rounded bg-ink-300/10 p-2 text-sm text-ink-500">
+              <div className="mr-6 flex items-center justify-between gap-2 rounded bg-ink-300/10 p-2 text-sm text-ink-500">
                 <span className="inline-block animate-pulse">Thinking…</span>
+                <button
+                  type="button"
+                  onClick={stop}
+                  className="rounded border border-ink-300 px-2 py-0.5 text-xs font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
+                  title="Stop this response"
+                >
+                  Stop
+                </button>
               </div>
             )}
             {error && (
@@ -965,6 +986,16 @@ export default function Chatbot() {
                     </span>
                   ))}
                 </span>
+              )}
+              {auditing && (
+                <button
+                  type="button"
+                  onClick={stop}
+                  className="ml-auto rounded border border-ink-300 px-2 py-0.5 text-[10px] font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
+                  title="Stop the audit"
+                >
+                  Stop
+                </button>
               )}
             </div>
             {unsupportedAttachmentWarning && (

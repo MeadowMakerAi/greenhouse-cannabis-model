@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
 
 /**
  * Google Gemini native API. Picked specifically because the free tier has
@@ -87,6 +88,7 @@ export const geminiProvider: ChatProvider = {
     tools,
     systemPrompt,
     maxRoundtrips = 6,
+    signal,
   }: ChatTurnArgs): Promise<ChatMessage> {
     const contents: GeminiContent[] = history.map<GeminiContent>((m) => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -124,11 +126,19 @@ export const geminiProvider: ChatProvider = {
         generationConfig: { maxOutputTokens: 1500 },
       };
 
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          signal: timedSignal(CHAT_TIMEOUT_MS, signal),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
+        if (aborted) throw new Error(aborted);
+        throw err;
+      }
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(`Gemini API ${res.status}: ${txt.slice(0, 300)}`);

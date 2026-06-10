@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
 
 /**
  * OpenAI-compatible Chat Completions provider. Works for:
@@ -120,6 +121,7 @@ export const openAICompatibleProvider: ChatProvider = {
     tools,
     systemPrompt,
     maxRoundtrips = 6,
+    signal,
   }: ChatTurnArgs): Promise<ChatMessage> {
     const oaiTools = translateTools(tools);
 
@@ -150,17 +152,25 @@ export const openAICompatibleProvider: ChatProvider = {
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model,
-          messages,
-          tools: oaiTools.length > 0 ? oaiTools : undefined,
-          tool_choice: oaiTools.length > 0 ? "auto" : undefined,
-          max_tokens: 1500,
-        }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          signal: timedSignal(CHAT_TIMEOUT_MS, signal),
+          headers,
+          body: JSON.stringify({
+            model,
+            messages,
+            tools: oaiTools.length > 0 ? oaiTools : undefined,
+            tool_choice: oaiTools.length > 0 ? "auto" : undefined,
+            max_tokens: 1500,
+          }),
+        });
+      } catch (err) {
+        const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
+        if (aborted) throw new Error(aborted);
+        throw err;
+      }
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(

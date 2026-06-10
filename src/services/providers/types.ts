@@ -75,6 +75,12 @@ export interface ChatTurnArgs {
   tools: ToolDefinition[];
   systemPrompt: string;
   maxRoundtrips?: number;
+  /**
+   * Optional caller cancel signal. Providers combine it with a hard per-request
+   * timeout (see abortTimeout.timedSignal) so a stalled model call can't hang
+   * the chat UI forever.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ChatProvider {
