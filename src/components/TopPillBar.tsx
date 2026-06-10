@@ -47,6 +47,7 @@ function fmtCoord(value: number, axis: "lat" | "lon"): string {
  */
 /** Pill ids — used by the single-open coordinator below. */
 type PillId =
+  | "mode"
   | "location"
   | "dimensions"
   | "light"
@@ -110,6 +111,37 @@ export default function TopPillBar({ onCustomizeClick }: TopPillBarProps = {}) {
       <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.10em] text-ink-500">
         Your scenario
       </span>
+
+      {/* ENVIRONMENT — greenhouse vs outdoor. First pill: it's the most
+          fundamental choice (gates which 3D scene, data layers, and outputs
+          you see). Defaults greenhouse, so first-run is unchanged. */}
+      <InputPill
+        id="mode"
+        isOpen={openPill === "mode"}
+        onToggle={() => toggle("mode")}
+        label="Environment"
+        value={inputs.mode === "greenhouse" ? "Greenhouse" : "Outdoor"}
+        secondary={inputs.mode === "greenhouse" ? "Controlled" : "Open-air"}
+        popoverHint="Greenhouse = controlled glass house (lighting, climate, HVAC). Outdoor = open-air field (natural light, soil, season)."
+      >
+        <SelectField
+          label="Cultivation environment"
+          value={inputs.mode}
+          onChange={(v) => setInputs({ mode: v })}
+          options={[
+            { value: "greenhouse", label: "Greenhouse · controlled" },
+            { value: "outdoor", label: "Outdoor · open-air" },
+          ]}
+        />
+        <p className="text-[11px] text-ink-500">
+          <span className="font-semibold text-ink-700">Outdoor</span> drops the
+          glass envelope: natural DLI (no glazing loss), no supplemental fixtures
+          or HVAC, and the dashboard shows only the open-air layers — light, soil,
+          and the growing season. Switch back to{" "}
+          <span className="font-semibold text-ink-700">Greenhouse</span> anytime;
+          your settings are preserved.
+        </p>
+      </InputPill>
 
       {/* LOCATION — first-run starting point */}
       <InputPill

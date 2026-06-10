@@ -85,6 +85,22 @@ const TAB_GROUPS: { id: string; label: string; tabIds: TabId[] }[] = [
   },
 ];
 
+/**
+ * Tabs that survive outdoor (open-air) mode. Everything else assumes a glass
+ * envelope — supplemental fixtures, HVAC, indoor climate, the BOM, yield with
+ * controlled setpoints — so it's hidden when `mode === "outdoor"`. Outdoor keeps
+ * the open-air-valid layers: the live 3D field, natural DLI, and the site /
+ * soil / seasonal calendar. (Yield is intentionally deferred — an honest outdoor
+ * yield needs a season model + sungrown citations.)
+ */
+const OUTDOOR_VISIBLE_TABS = new Set<TabId>(["live", "dli", "calendar"]);
+function isTabVisibleInMode(
+  tabId: TabId,
+  mode: "greenhouse" | "outdoor",
+): boolean {
+  return mode === "greenhouse" || OUTDOOR_VISIBLE_TABS.has(tabId);
+}
+
 /** Editorial section header above each tab's content — small-caps index +
  *  title + subtitle, hairline rule below. Anchors the eye and signals
  *  hierarchy. Pattern: editorial magazine spread. */
@@ -232,6 +248,13 @@ export default function DashboardLayout() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  // Switching to outdoor mode can hide the active tab (e.g. you're on "HVAC"
+  // then flip to outdoor). Fall back to the live scene so you're never stranded
+  // on an invisible tab.
+  useEffect(() => {
+    if (!isTabVisibleInMode(tab, inputs.mode)) setTab("live");
+  }, [inputs.mode, tab]);
+
   const openCustomize = () => {
     setCustomizeAutoFocusSearch(false);
     setCustomizeOpen(true);
@@ -320,7 +343,14 @@ export default function DashboardLayout() {
           <OutputSummary />
           {/* Single navigation — four labeled tab groups. */}
           <nav className="flex flex-col gap-2 rounded-xl bg-ink-100/70 p-1.5 shadow-recessed">
-            {TAB_GROUPS.map((group) => (
+            {TAB_GROUPS.map((group) => {
+              const visibleTabIds = group.tabIds.filter((tabId) =>
+                isTabVisibleInMode(tabId, inputs.mode),
+              );
+              // Whole group (e.g. "Build & electrical") drops out of the nav in
+              // outdoor mode when none of its tabs apply open-air.
+              if (visibleTabIds.length === 0) return null;
+              return (
               <div
                 key={group.id}
                 role="group"
@@ -333,7 +363,7 @@ export default function DashboardLayout() {
                 >
                   {group.label}
                 </span>
-                {group.tabIds.map((tabId) => {
+                {visibleTabIds.map((tabId) => {
                   const t = TABS.find((x) => x.id === tabId);
                   if (!t) return null;
                   const isStarred = t.label.startsWith("★");
@@ -350,12 +380,13 @@ export default function DashboardLayout() {
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </nav>
 
           <div key={tab} className="tab-content space-y-4">
             <TabHeader tabId={tab} />
-            {tab !== "live" && tab !== "science" && (
+            {tab !== "live" && tab !== "science" && inputs.mode === "greenhouse" && (
               <div className="card">
                 <div className="card-header-strong">
                   <span>Visual model snapshot</span>

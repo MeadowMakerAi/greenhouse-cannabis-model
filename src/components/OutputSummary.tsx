@@ -40,6 +40,21 @@ export default function OutputSummary() {
     d.months.reduce((a, m) => a + m.flowerWindowDLI, 0) / d.months.length;
   const onTarget = d.target.targetDLI > 0;
 
+  // Outdoor mode swaps the power-economics crown for natural-light outputs:
+  // electricity/HVAC/fixtures don't exist open-air, so a $/gram crown would read
+  // ~$0 and mislead. Natural DLI is the honest headline (no glazing loss).
+  const outdoor = inputs.mode === "outdoor";
+  const peakOutdoorDLI = d.months.length
+    ? Math.max(...d.months.map((m) => m.outdoorDLI))
+    : 0;
+  const annualMeanOutdoorDLI = d.months.length
+    ? d.months.reduce((a, m) => a + m.outdoorDLI, 0) / d.months.length
+    : 0;
+  const peakMonth = d.months.reduce(
+    (best, m) => (m.outdoorDLI > best.outdoorDLI ? m : best),
+    d.months[0] ?? { outdoorDLI: 0, monthLabel: "—" },
+  );
+
   return (
     <section className="relative overflow-hidden">
       {/* Decision-support disclaimer — every output discloses its level
@@ -75,6 +90,38 @@ export default function OutputSummary() {
         }}
       />
 
+      {outdoor ? (
+        <div className="relative">
+          {/* ── Crown: natural light (open-air) ── */}
+          <div className="pb-4">
+            <div className="kpi-eyebrow">
+              <span className="text-leaf-700">☀</span> Natural light · open-air
+            </div>
+            <div className="mt-1 flex flex-wrap items-end gap-x-4 gap-y-1">
+              <div
+                className="kpi-hero"
+                title="Peak-month daily light integral on an open-air canopy at this latitude — full sun, no greenhouse glazing loss. DLI is the whole day's light added up (mol/m²/day)."
+              >
+                {fmt1(peakOutdoorDLI)}
+                <span className="kpi-hero-unit"> DLI peak</span>
+              </div>
+              <div className="kpi-context-lead mb-1">
+                {fmt1(annualMeanOutdoorDLI)} mol/m²/day annual mean · peaks in{" "}
+                <span className="font-medium text-ink-700">
+                  {peakMonth.monthLabel}
+                </span>
+              </div>
+            </div>
+            <div className="kpi-context mt-1 proportional-nums">
+              Open-air sunlight at the canopy — no glazing loss. Outdoor mode
+              models natural light, soil, and the frost / growing-season window.{" "}
+              <span className="font-medium text-ink-700">Not yet modeled:</span>{" "}
+              yield, water, and outdoor pathogen pressure — those need a season
+              model and sun-grown citations.
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="relative">
         {/* ── Crown: power cost per gram ── */}
         <div className="pb-4">
@@ -196,6 +243,7 @@ export default function OutputSummary() {
           </Group>
         </div>
       </div>
+      )}
     </section>
   );
 }

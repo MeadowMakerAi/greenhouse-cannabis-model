@@ -2669,6 +2669,7 @@ export default function Greenhouse3D({
   heightOverride,
   weather,
   equipment,
+  showEnvelope = true,
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
@@ -2687,6 +2688,10 @@ export default function Greenhouse3D({
   weather?: LiveWeatherState;
   /** Placed equipment objects to render inside the greenhouse. */
   equipment?: PlacedEquipment[];
+  /** When false (outdoor mode), hide the glass envelope, fixtures, light
+   *  footprints, and placed equipment — the scene becomes an open-air field of
+   *  plants under sky. Plants + ground + sun stay. Defaults true (greenhouse). */
+  showEnvelope?: boolean;
 }) {
   // God-rays source: a ref to the sun-disk mesh + a ready flag so the
   // volumetric light shafts only mount when the sun is actually up.
@@ -2955,20 +2960,24 @@ export default function Greenhouse3D({
           />
 
           <group rotation={[0, (ridgeAzimuthDeg * Math.PI) / 180, 0]}>
-            <GreenhouseStructure
-              length={floorLength}
-              width={floorWidth}
-              eave={eaveHeightFt}
-              peak={peakHeightFt}
-              thermalScreenActive={thermalScreenActive}
-              shadeActive={shadeActive}
-              shadeTransmissionPct={shadeTransmissionPct}
-              roofVentFraction={roofVentFraction}
-              blackoutActive={blackoutActive}
-              thermalScreenElevation={thermalScreenElevation}
-              shadeElevation={shadeElevation}
-              blackoutElevation={blackoutElevation}
-            />
+            {/* Outdoor mode (showEnvelope=false) drops the glass house entirely —
+                the crop stands in an open field. Plants below are unconditional. */}
+            {showEnvelope && (
+              <GreenhouseStructure
+                length={floorLength}
+                width={floorWidth}
+                eave={eaveHeightFt}
+                peak={peakHeightFt}
+                thermalScreenActive={thermalScreenActive}
+                shadeActive={shadeActive}
+                shadeTransmissionPct={shadeTransmissionPct}
+                roofVentFraction={roofVentFraction}
+                blackoutActive={blackoutActive}
+                thermalScreenElevation={thermalScreenElevation}
+                shadeElevation={shadeElevation}
+                blackoutElevation={blackoutElevation}
+              />
+            )}
 
             <CanopyAndPlants
               canopyOffsetX={canopyOffsetX}
@@ -2979,34 +2988,39 @@ export default function Greenhouse3D({
               plantGrowth={plantGrowth}
             />
 
-            <Fixtures
-              positions={fixtures}
-              fixtureLength={fixtureMeshLength}
-              fixtureWidth={fixtureMeshWidth}
-              hangHeight={fixtureZ + 0.5}
-              ridgeHeight={peakHeightFt + 0.5}
-              dimLevel={lightsDimLevel}
-              formFactor={fixtureFormFactor}
-              emissiveColor={emissiveColor}
-              emissiveIntensity={emissiveIntensity}
-              surfaceColor={surfaceColor}
-            />
+            {/* Supplemental lighting only exists under a greenhouse roof. */}
+            {showEnvelope && (
+              <>
+                <Fixtures
+                  positions={fixtures}
+                  fixtureLength={fixtureMeshLength}
+                  fixtureWidth={fixtureMeshWidth}
+                  hangHeight={fixtureZ + 0.5}
+                  ridgeHeight={peakHeightFt + 0.5}
+                  dimLevel={lightsDimLevel}
+                  formFactor={fixtureFormFactor}
+                  emissiveColor={emissiveColor}
+                  emissiveIntensity={emissiveIntensity}
+                  surfaceColor={surfaceColor}
+                />
 
-            <LightFootprints
-              positions={fixtures}
-              fixtureZ={fixtureZ + 0.5}
-              canopyZ={canopyTopZ}
-              footprintLength={footprintLength}
-              footprintWidth={footprintWidth}
-              dimLevel={lightsDimLevel}
-              color={emissiveColor}
-              formFactor={fixtureFormFactor}
-              intensityScale={wattRatio}
-            />
+                <LightFootprints
+                  positions={fixtures}
+                  fixtureZ={fixtureZ + 0.5}
+                  canopyZ={canopyTopZ}
+                  footprintLength={footprintLength}
+                  footprintWidth={footprintWidth}
+                  dimLevel={lightsDimLevel}
+                  color={emissiveColor}
+                  formFactor={fixtureFormFactor}
+                  intensityScale={wattRatio}
+                />
+              </>
+            )}
           </group>
 
           {/* Placed equipment objects — real-scale 3D with physics-aware dimensions. */}
-          {equipment && equipment.length > 0 && (
+          {showEnvelope && equipment && equipment.length > 0 && (
             <EquipmentObjects
               equipment={equipment}
               eaveHeightFt={eaveHeightFt}
