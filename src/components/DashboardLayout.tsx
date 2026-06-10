@@ -23,6 +23,7 @@ import CoolingModePanel from "./CoolingModePanel";
 import SeasonalStrategyCalendar from "./SeasonalStrategyCalendar";
 import SiteIntelligencePanel from "./SiteIntelligencePanel";
 import SoilPanel from "./SoilPanel";
+import SatellitePanel from "./SatellitePanel";
 import OptimizedSystemPanel from "./OptimizedSystemPanel";
 import BuildSheet from "./BuildSheet";
 import EquipmentPalette from "./EquipmentPalette";
@@ -509,6 +510,10 @@ export default function DashboardLayout() {
               <div className="space-y-3">
                 <SiteIntelligencePanel />
                 <SoilPanel />
+                {/* Regional satellite (NASA GIBS / MODIS) — outdoor siting
+                    context next to soil. Open-air only; the greenhouse calendar
+                    stays unchanged. */}
+                {inputs.mode === "outdoor" && <SatellitePanel />}
                 {/* Strategy bullets are greenhouse crop-steering (photoperiod,
                     supplemental, shade) — not valid open-air, so hidden outdoors.
                     Site + soil panels above carry the honest frost/season window. */}
