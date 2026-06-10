@@ -1,4 +1,5 @@
 import { useSimulation, SPEED_PRESETS } from "../context/SimulationContext";
+import { useScenario } from "../context/ScenarioContext";
 import { dayOfYearToMonth } from "../models/simulationModel";
 
 const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -82,6 +83,8 @@ function formatDayOfYear(doy: number) {
 
 export default function TimeControls() {
   const sim = useSimulation();
+  const { inputs } = useScenario();
+  const outdoor = inputs.mode === "outdoor";
   // Span of the date range, for the prominent at-a-glance readout.
   const spanDays =
     sim.rangeEndDOY + sim.rangeEndHour / 24 - (sim.rangeStartDOY + sim.rangeStartHour / 24);
@@ -337,7 +340,15 @@ export default function TimeControls() {
         </div>
 
         <p className="text-[11px] text-ink-500">
-          Sun position, sky color, atmosphere, fixture brightness, and vent state all follow this clock. Press <strong>Play range</strong> to watch a chosen span (a day, week, season) play out in 5–60 seconds. The 3D scene's sky shifts through dawn → noon → twilight → night colors, fixtures dim/glow with the photoperiod schedule + natural-light deficit, and vents open when indoor T crosses the setpoint.
+          {outdoor ? (
+            <>
+              Sun position, sky color, and atmosphere all follow this clock. Press <strong>Play range</strong> to watch a chosen span (a day, week, season) play out in 5–60 seconds. The 3D scene's sky shifts through dawn → noon → twilight → night colors as the open-air canopy tracks the sun.
+            </>
+          ) : (
+            <>
+              Sun position, sky color, atmosphere, fixture brightness, and vent state all follow this clock. Press <strong>Play range</strong> to watch a chosen span (a day, week, season) play out in 5–60 seconds. The 3D scene's sky shifts through dawn → noon → twilight → night colors, fixtures dim/glow with the photoperiod schedule + natural-light deficit, and vents open when indoor T crosses the setpoint.
+            </>
+          )}
         </p>
       </div>
     </div>

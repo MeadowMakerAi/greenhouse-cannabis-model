@@ -228,10 +228,17 @@ export default function LiveGreenhouseScene({
         {formatDOY(sim.dayOfYear)} · {formatHour(sim.hourOfDay)}
       </span>
       <span className="text-[11px] text-ink-500">
-        sun {fmt1(live.snapshot.sun.elevationDeg)}° · lights{" "}
-        {live.snapshot.lights.on
-          ? `${(live.snapshot.lights.dimLevel * 100).toFixed(0)}%`
-          : "off"}
+        sun {fmt1(live.snapshot.sun.elevationDeg)}°
+        {/* No supplemental fixtures open-air — drop the lights readout. */}
+        {inputs.mode === "greenhouse" && (
+          <>
+            {" "}
+            · lights{" "}
+            {live.snapshot.lights.on
+              ? `${(live.snapshot.lights.dimLevel * 100).toFixed(0)}%`
+              : "off"}
+          </>
+        )}
       </span>
     </div>
   ) : null;

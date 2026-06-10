@@ -105,8 +105,21 @@ function isTabVisibleInMode(
  *  title + subtitle, hairline rule below. Anchors the eye and signals
  *  hierarchy. Pattern: editorial magazine spread. */
 function TabHeader({ tabId }: { tabId: TabId }) {
+  const { inputs } = useScenario();
   const t = TABS.find((x) => x.id === tabId);
   if (!t) return null;
+  // Several tab subtitles name greenhouse-only concepts (lights/vents,
+  // greenhouse-transmitted DLI). Open-air has none of those, so swap to
+  // mode-accurate copy for the outdoor-visible tabs.
+  let subtitle: string = t.subtitle;
+  if (inputs.mode === "outdoor") {
+    if (t.id === "live")
+      subtitle = "Sun and the open-air canopy follow the time-range player.";
+    else if (t.id === "dli")
+      subtitle = "Open-air canopy DLI and its flower-window slice, by month.";
+    else if (t.id === "calendar")
+      subtitle = "Site, soil, and the growing-season window.";
+  }
   return (
     <div className="space-y-2 border-b border-ink-200/80 pb-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -143,7 +156,7 @@ function TabHeader({ tabId }: { tabId: TabId }) {
           </h2>
         </div>
         <p className="max-w-xl text-sm leading-snug text-ink-500 proportional-nums">
-          {t.subtitle}
+          {subtitle}
         </p>
       </div>
     </div>
@@ -254,6 +267,12 @@ export default function DashboardLayout() {
   useEffect(() => {
     if (!isTabVisibleInMode(tab, inputs.mode)) setTab("live");
   }, [inputs.mode, tab]);
+
+  // Render-safe effective tab: if the active tab isn't valid in the current mode
+  // (e.g. you were on HVAC then flipped to outdoor), render "live" THIS frame
+  // instead of flashing the forbidden greenhouse panel for one paint before the
+  // effect above corrects state.
+  const activeTab = isTabVisibleInMode(tab, inputs.mode) ? tab : "live";
 
   const openCustomize = () => {
     setCustomizeAutoFocusSearch(false);
@@ -367,7 +386,7 @@ export default function DashboardLayout() {
                   const t = TABS.find((x) => x.id === tabId);
                   if (!t) return null;
                   const isStarred = t.label.startsWith("★");
-                  const active = tab === t.id;
+                  const active = activeTab === t.id;
                   return (
                     <button
                       key={t.id}
@@ -384,9 +403,9 @@ export default function DashboardLayout() {
             })}
           </nav>
 
-          <div key={tab} className="tab-content space-y-4">
-            <TabHeader tabId={tab} />
-            {tab !== "live" && tab !== "science" && inputs.mode === "greenhouse" && (
+          <div key={activeTab} className="tab-content space-y-4">
+            <TabHeader tabId={activeTab} />
+            {activeTab !== "live" && activeTab !== "science" && inputs.mode === "greenhouse" && (
               <div className="card">
                 <div className="card-header-strong">
                   <span>Visual model snapshot</span>
@@ -422,14 +441,14 @@ export default function DashboardLayout() {
                 </div>
               </div>
             )}
-            {tab === "build" && (
+            {activeTab === "build" && (
               <div className="space-y-3">
                 <BuildSheet />
                 <EquipmentPalette />
               </div>
             )}
-            {tab === "optimized" && <OptimizedSystemPanel />}
-            {tab === "science" && (
+            {activeTab === "optimized" && <OptimizedSystemPanel />}
+            {activeTab === "science" && (
               <div className="space-y-4">
                 <ScenePanel
                   title="Greenhouse · live 3D model"
@@ -439,19 +458,29 @@ export default function DashboardLayout() {
                 <CultivationSciencePanel />
               </div>
             )}
-            {tab === "live" && (
+            {activeTab === "live" && (
               <div className="space-y-4">
                 <ScenePanel
-                  title="Greenhouse · live 3D model"
-                  subtitle="Sun · lights · vents · plant growth all follow the simulation clock"
+                  title={
+                    inputs.mode === "outdoor"
+                      ? "Open-air · live 3D field"
+                      : "Greenhouse · live 3D model"
+                  }
+                  subtitle={
+                    inputs.mode === "outdoor"
+                      ? "Sun + plant growth follow the simulation clock — open-air, no climate systems"
+                      : "Sun · lights · vents · plant growth all follow the simulation clock"
+                  }
                   bleed
                 />
                 <TimeControls />
-                <DailyDynamicsChart />
+                {/* Daily climate dynamics are an indoor-control readout — hidden
+                    outdoors where there's no envelope to regulate. */}
+                {inputs.mode === "greenhouse" && <DailyDynamicsChart />}
               </div>
             )}
-            {tab === "dli" && <AnnualDLIChart />}
-            {tab === "supplemental" && (
+            {activeTab === "dli" && <AnnualDLIChart />}
+            {activeTab === "supplemental" && (
               <div className="space-y-3">
                 <PPFDGapChart />
                 <FixtureKWByMonth />
@@ -459,33 +488,42 @@ export default function DashboardLayout() {
                 <FixtureOptimization />
               </div>
             )}
-            {tab === "ledHps" && <LightingScenarioChart />}
-            {tab === "underCanopy" && <UnderCanopyLightingPanel />}
-            {tab === "co2" && <CO2ResponsePanel />}
-            {tab === "shade" && <ShadeClothControlPanel />}
-            {tab === "humidity" && (
+            {activeTab === "ledHps" && <LightingScenarioChart />}
+            {activeTab === "underCanopy" && <UnderCanopyLightingPanel />}
+            {activeTab === "co2" && <CO2ResponsePanel />}
+            {activeTab === "shade" && <ShadeClothControlPanel />}
+            {activeTab === "humidity" && (
               <div className="space-y-3">
                 <WetBulbRiskChart />
                 <VPDChart />
               </div>
             )}
-            {tab === "hvac" && (
+            {activeTab === "hvac" && (
               <div className="space-y-3">
                 <HeatLoadChart />
                 <HeatingPanel />
                 <CoolingModePanel />
               </div>
             )}
-            {tab === "calendar" && (
+            {activeTab === "calendar" && (
               <div className="space-y-3">
                 <SiteIntelligencePanel />
                 <SoilPanel />
-                <SeasonalStrategyCalendar />
+                {/* Strategy bullets are greenhouse crop-steering (photoperiod,
+                    supplemental, shade) — not valid open-air, so hidden outdoors.
+                    Site + soil panels above carry the honest frost/season window. */}
+                {inputs.mode === "greenhouse" && <SeasonalStrategyCalendar />}
               </div>
             )}
           </div>
-          <Warnings />
-          <InsightsPanel />
+          {/* Warnings + insights are derived from greenhouse climate-control
+              state; outdoors they'd assert systems that don't exist. */}
+          {inputs.mode === "greenhouse" && (
+            <>
+              <Warnings />
+              <InsightsPanel />
+            </>
+          )}
         </div>
       </main>
       {/* Customize drawer — sibling of the grid so it overlays the

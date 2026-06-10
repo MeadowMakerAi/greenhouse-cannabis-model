@@ -65,6 +65,11 @@ export default function Greenhouse3DHud({
   const { snapshot } = useLiveDynamics();
   const weather = useLiveWeather();
 
+  // Outdoor = open-air: there is no climate envelope, so the entire indoor
+  // sensor/systems quadrant (lights, vents, thermal/shade/blackout screens,
+  // supplemental PPFD) would assert hardware that doesn't exist. Hide it.
+  const outdoor = inputs.mode === "outdoor";
+
   const sensorCount = (inputs.equipment ?? []).filter((e) => e.defId === "sensor-pod").length;
   const sensorLabel = sensorCount > 0 ? `${sensorCount}× sensor pod` : "sim model";
 
@@ -105,17 +110,24 @@ export default function Greenhouse3DHud({
             </div>
           </div>
         </div>
-        <div className="mt-2 border-t border-ink-300/30 pt-1.5">
-          <div className="text-[10px] uppercase tracking-wider text-ink-500">Crop</div>
-          <div className="font-mono text-xs text-ink-900">
-            day {snapshot.plant.daysElapsed} ·{" "}
-            <span className="text-leaf-700">{snapshot.plant.phase.replace("-", " ")}</span>
+        {/* Crop readout (phase/height/colas/env-factor) is driven by the
+            greenhouse growth sim — its env-factor folds in indoor temp/VPD and
+            supplemented PPFD. Outdoor growth isn't modeled yet (see the crown's
+            disclosure), so showing precise growth numbers would contradict it.
+            The 3D plants stay as visual context; the quantitative readout hides. */}
+        {!outdoor && (
+          <div className="mt-2 border-t border-ink-300/30 pt-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-ink-500">Crop</div>
+            <div className="font-mono text-xs text-ink-900">
+              day {snapshot.plant.daysElapsed} ·{" "}
+              <span className="text-leaf-700">{snapshot.plant.phase.replace("-", " ")}</span>
+            </div>
+            <div className="font-mono text-[10px] text-ink-500 tabular-nums">
+              ht {snapshot.plant.heightFt.toFixed(1)} ft · {snapshot.plant.colaCount} colas ·{" "}
+              env {(snapshot.plant.combinedFactor * 100).toFixed(0)}%
+            </div>
           </div>
-          <div className="font-mono text-[10px] text-ink-500 tabular-nums">
-            ht {snapshot.plant.heightFt.toFixed(1)} ft · {snapshot.plant.colaCount} colas ·{" "}
-            env {(snapshot.plant.combinedFactor * 100).toFixed(0)}%
-          </div>
-        </div>
+        )}
         {/* Live weather — shows after the first successful fetch */}
         {weather.loaded && (
           <div className="mt-2 border-t border-ink-300/30 pt-1.5">
@@ -167,7 +179,9 @@ export default function Greenhouse3DHud({
       {/* Bottom-right: indoor — wider w-96 so 3-col stats + status rows
        * can't overlap. Lights reason moved to its own muted line beneath
        * the dim-% so long reasons (e.g. "natural-light-sufficient") wrap
-       * naturally instead of crowding the Vents cell. */}
+       * naturally instead of crowding the Vents cell.
+       * Hidden in outdoor mode — no envelope, no climate systems. */}
+      {!outdoor && (
       <div className="pointer-events-auto absolute bottom-3 right-3 w-96 rounded-lg border border-white/30 bg-white/55 p-3 shadow-md backdrop-blur-md">
         <div className="mb-1.5 flex items-baseline justify-between gap-3">
           <span className="text-[10px] uppercase tracking-wider text-ink-500">Indoor · {sensorLabel}</span>
@@ -284,6 +298,7 @@ export default function Greenhouse3DHud({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
