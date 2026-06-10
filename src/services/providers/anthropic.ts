@@ -82,11 +82,14 @@ export const anthropicProvider: ChatProvider = {
     let finalText = "";
 
     for (let i = 0; i < maxRoundtrips; i++) {
-      let res: Response;
+      let json: APIResponse;
       try {
         // Each roundtrip gets its own timeout, combined with the caller's
         // cancel signal — a stalled call rejects instead of hanging forever.
-        res = await fetch(baseUrl, {
+        // Body parsing stays inside the same guard: an abort can also fire
+        // mid-body (headers arrived, stream stalled) and must map to the
+        // same friendly message.
+        const res = await fetch(baseUrl, {
           method: "POST",
           signal: timedSignal(CHAT_TIMEOUT_MS, signal),
           headers: {
@@ -103,16 +106,16 @@ export const anthropicProvider: ChatProvider = {
             messages: apiHistory,
           }),
         });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(`Anthropic API ${res.status}: ${txt.slice(0, 200)}`);
+        }
+        json = (await res.json()) as APIResponse;
       } catch (err) {
         const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
         if (aborted) throw new Error(aborted);
         throw err;
       }
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`Anthropic API ${res.status}: ${txt.slice(0, 200)}`);
-      }
-      const json: APIResponse = await res.json();
 
       apiHistory.push({ role: "assistant", content: json.content });
 

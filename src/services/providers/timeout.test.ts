@@ -77,4 +77,24 @@ describe.each(PROVIDERS)("$name provider freeze-guard", ({ provider, baseUrl }) 
       provider.chat(baseArgs({ baseUrl, signal: ctrl.signal })),
     ).rejects.toThrow(/stopped/i);
   });
+
+  it("translates an abort that fires MID-BODY (headers ok, stream stalls)", async () => {
+    // fetch resolves, but consuming the body rejects the way an aborted
+    // stream does — the friendly mapping must cover this path too.
+    vi.stubGlobal("fetch", async () =>
+      ({
+        ok: true,
+        status: 200,
+        text: async () => {
+          throw new DOMException("timed out", "TimeoutError");
+        },
+        json: async () => {
+          throw new DOMException("timed out", "TimeoutError");
+        },
+      }) as unknown as Response,
+    );
+    await expect(provider.chat(baseArgs({ baseUrl }))).rejects.toThrow(
+      /timed out after \d+s/,
+    );
+  });
 });

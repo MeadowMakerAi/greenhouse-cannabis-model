@@ -152,9 +152,11 @@ export const openAICompatibleProvider: ChatProvider = {
       if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
       }
-      let res: Response;
+      let json: OAIResponse;
       try {
-        res = await fetch(url, {
+        // Body parsing stays inside the abort guard — an abort can fire
+        // mid-body too and must map to the same friendly message.
+        const res = await fetch(url, {
           method: "POST",
           signal: timedSignal(CHAT_TIMEOUT_MS, signal),
           headers,
@@ -166,18 +168,18 @@ export const openAICompatibleProvider: ChatProvider = {
             max_tokens: 1500,
           }),
         });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(
+            `${new URL(url).hostname} ${res.status}: ${txt.slice(0, 300)}`,
+          );
+        }
+        json = (await res.json()) as OAIResponse;
       } catch (err) {
         const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
         if (aborted) throw new Error(aborted);
         throw err;
       }
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(
-          `${new URL(url).hostname} ${res.status}: ${txt.slice(0, 300)}`,
-        );
-      }
-      const json: OAIResponse = await res.json();
       const choice = json.choices?.[0];
       if (!choice) {
         throw new Error("Provider returned no choices.");

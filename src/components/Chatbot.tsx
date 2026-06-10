@@ -110,11 +110,15 @@ export default function Chatbot() {
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // In-flight request controller, so the user can Stop a hung/slow turn. The
+  // In-flight request controllers, so the user can Stop a hung/slow call. The
   // provider also enforces a hard per-request timeout (abortTimeout) so a
   // stalled call can't pin the spinner forever even without a manual stop.
-  const abortRef = useRef<AbortController | null>(null);
-  const stop = () => abortRef.current?.abort();
+  // Chat turns and audits get SEPARATE controllers — they can overlap, and a
+  // shared ref would let one Stop abort the other's request (or orphan it).
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const auditAbortRef = useRef<AbortController | null>(null);
+  const stopChat = () => chatAbortRef.current?.abort();
+  const stopAudit = () => auditAbortRef.current?.abort();
 
   // Proactive-agent wiring. `obs` mirrors AgentObservations' active-count so
   // the launcher can badge it; sendRef keeps the latest send() for the
@@ -536,7 +540,7 @@ export default function Chatbot() {
     setHistory((h) => [...h, userMessage]);
     setBusy(true);
     const ctrl = new AbortController();
-    abortRef.current = ctrl;
+    chatAbortRef.current = ctrl;
     try {
       const reply = await chatTurn({
         providerId,
@@ -557,7 +561,7 @@ export default function Chatbot() {
         { role: "assistant", content: `_Error: ${msg}_` },
       ]);
     } finally {
-      abortRef.current = null;
+      chatAbortRef.current = null;
       setBusy(false);
     }
   };
@@ -631,7 +635,7 @@ export default function Chatbot() {
     setAuditing(true);
     setAuditDone([]);
     const ctrl = new AbortController();
-    abortRef.current = ctrl;
+    auditAbortRef.current = ctrl;
     try {
       const report = await runAuditSwarm({
         providerId,
@@ -651,7 +655,7 @@ export default function Chatbot() {
         { role: "assistant", content: `_Audit failed: ${msg}_` },
       ]);
     } finally {
-      abortRef.current = null;
+      auditAbortRef.current = null;
       setAuditing(false);
       setAuditDone([]);
     }
@@ -935,7 +939,7 @@ export default function Chatbot() {
                 <span className="inline-block animate-pulse">Thinking…</span>
                 <button
                   type="button"
-                  onClick={stop}
+                  onClick={stopChat}
                   className="rounded border border-ink-300 px-2 py-0.5 text-xs font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
                   title="Stop this response"
                 >
@@ -990,7 +994,7 @@ export default function Chatbot() {
               {auditing && (
                 <button
                   type="button"
-                  onClick={stop}
+                  onClick={stopAudit}
                   className="ml-auto rounded border border-ink-300 px-2 py-0.5 text-[10px] font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
                   title="Stop the audit"
                 >

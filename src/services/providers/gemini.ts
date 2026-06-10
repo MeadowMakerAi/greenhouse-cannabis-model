@@ -126,24 +126,26 @@ export const geminiProvider: ChatProvider = {
         generationConfig: { maxOutputTokens: 1500 },
       };
 
-      let res: Response;
+      let json: GeminiResponse;
       try {
-        res = await fetch(url, {
+        // Body parsing stays inside the abort guard — an abort can fire
+        // mid-body too and must map to the same friendly message.
+        const res = await fetch(url, {
           method: "POST",
           signal: timedSignal(CHAT_TIMEOUT_MS, signal),
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(`Gemini API ${res.status}: ${txt.slice(0, 300)}`);
+        }
+        json = (await res.json()) as GeminiResponse;
       } catch (err) {
         const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
         if (aborted) throw new Error(aborted);
         throw err;
       }
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`Gemini API ${res.status}: ${txt.slice(0, 300)}`);
-      }
-      const json: GeminiResponse = await res.json();
       if (json.error) {
         throw new Error(`Gemini API error: ${json.error.message}`);
       }

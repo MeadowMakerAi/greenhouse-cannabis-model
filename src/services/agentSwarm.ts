@@ -142,8 +142,13 @@ export async function runAuditSwarm(input: SwarmInput): Promise<string> {
     });
     return synth.content.trim();
   } catch (e) {
-    // Synthesis failed — still return the raw specialist findings so the
-    // grower gets value.
+    // The user stopped mid-synthesis — honor it. Returning the findings
+    // anyway would make Stop produce an audit result.
+    if (input.signal?.aborted) {
+      throw new Error("Audit stopped.");
+    }
+    // Synthesis failed on its own — still return the raw specialist findings
+    // so the grower gets value.
     return `**Full audit** (synthesis unavailable: ${(e as Error).message})\n\n${findings}`;
   }
 }
