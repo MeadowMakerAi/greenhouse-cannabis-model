@@ -45,16 +45,42 @@ function storedKeyFor(providerId: ProviderId): string {
   return "";
 }
 
+// Model ids dropped from a provider's picker that should map to a current
+// successor rather than silently resetting the user to the default tier.
+const MODEL_REMAP: Record<string, string> = {
+  "claude-opus-4-7": "claude-opus-4-8",
+};
+
+/**
+ * Resolve a stored model id to one the provider still offers. A model removed
+ * from the picker (e.g. claude-opus-4-7) would otherwise stay active in
+ * localStorage forever — invisible in the dropdown, and stranding the user off
+ * the current default. Respect a still-listed choice; remap a known successor;
+ * otherwise fall back to the provider default.
+ */
+function resolveModel(providerId: ProviderId, candidate: string): string {
+  const cfg = PROVIDER_CONFIGS[providerId];
+  if (cfg.models.some((m) => m.value === candidate)) return candidate;
+  const remapped = MODEL_REMAP[candidate];
+  if (remapped && cfg.models.some((m) => m.value === remapped)) return remapped;
+  return cfg.defaultModel;
+}
+
 function storedModelFor(providerId: ProviderId): string {
   const cur = localStorage.getItem(MODEL_KEY_PREFIX + providerId);
-  if (cur) return cur;
+  if (cur) {
+    const resolved = resolveModel(providerId, cur);
+    if (resolved !== cur) localStorage.setItem(MODEL_KEY_PREFIX + providerId, resolved);
+    return resolved;
+  }
   // Migrate v1 single-model key for Anthropic.
   if (providerId === "anthropic") {
     const legacy = localStorage.getItem(LEGACY_MODEL_KEY);
     if (legacy) {
-      localStorage.setItem(MODEL_KEY_PREFIX + "anthropic", legacy);
+      const resolved = resolveModel("anthropic", legacy);
+      localStorage.setItem(MODEL_KEY_PREFIX + "anthropic", resolved);
       localStorage.removeItem(LEGACY_MODEL_KEY);
-      return legacy;
+      return resolved;
     }
   }
   return PROVIDER_CONFIGS[providerId].defaultModel;

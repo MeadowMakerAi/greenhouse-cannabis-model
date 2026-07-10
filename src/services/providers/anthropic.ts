@@ -100,7 +100,10 @@ export const anthropicProvider: ChatProvider = {
           },
           body: JSON.stringify({
             model,
-            max_tokens: 1500,
+            // 4096 (was 1500) so a multi-tool actuation turn — reason + several
+            // set_scenario/add_custom_fixture calls + a final summary — can't get
+            // truncated mid-sequence, which read as "Sage failed to actuate".
+            max_tokens: 4096,
             system: systemPrompt,
             tools,
             messages: apiHistory,

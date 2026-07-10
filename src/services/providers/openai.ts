@@ -142,6 +142,17 @@ export const openAICompatibleProvider: ChatProvider = {
 
     const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
 
+    // GPT-5.x / o-series on api.openai.com REJECT `max_tokens` (HTTP 400,
+    // "Unsupported parameter … use max_completion_tokens instead") and require
+    // `max_completion_tokens`. The other OpenAI-compatible hosts routed through
+    // this client (xAI/Grok, OpenRouter, Groq, Ollama) still use classic
+    // `max_tokens`. Pick the cap key by host. 4096 = headroom for a multi-tool
+    // actuation turn without truncation.
+    const tokenCap =
+      new URL(url).hostname === "api.openai.com"
+        ? { max_completion_tokens: 4096 }
+        : { max_tokens: 4096 };
+
     const toolTrace: { name: string; input: unknown; output: unknown }[] = [];
     let finalText = "";
 
@@ -165,7 +176,7 @@ export const openAICompatibleProvider: ChatProvider = {
             messages,
             tools: oaiTools.length > 0 ? oaiTools : undefined,
             tool_choice: oaiTools.length > 0 ? "auto" : undefined,
-            max_tokens: 1500,
+            ...tokenCap,
           }),
         });
         if (!res.ok) {

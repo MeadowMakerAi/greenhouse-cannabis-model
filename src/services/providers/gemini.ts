@@ -123,7 +123,8 @@ export const geminiProvider: ChatProvider = {
             ? [{ functionDeclarations }]
             : undefined,
         safetySettings: HARMLESS_SETTINGS,
-        generationConfig: { maxOutputTokens: 1500 },
+        // 4096 (was 1500): headroom for multi-tool actuation turns without truncation.
+        generationConfig: { maxOutputTokens: 4096 },
       };
 
       let json: GeminiResponse;

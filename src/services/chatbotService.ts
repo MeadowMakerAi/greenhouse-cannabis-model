@@ -16,6 +16,25 @@ import type {
 export type { ChatMessage, ChatRole, FileAttachment, ToolHandler, ProviderId };
 export { PROVIDER_CONFIGS, isProviderKeyValid, isAnthropicKeyFormat };
 
+/**
+ * Cap how much prior conversation is re-sent each turn. The transcript grows by
+ * a user + assistant message every turn and is re-encoded on every tool-use
+ * roundtrip, so an unbounded history is a top latency driver on long chats.
+ * Keep the last N messages.
+ * ponytail: plain tail slice, not summarization — add a summarizer in Stage B
+ * only if long-conversation drift actually shows up.
+ */
+const MAX_HISTORY_MESSAGES = 24; // ~12 turns
+
+function windowHistory(history: ChatMessage[]): ChatMessage[] {
+  if (history.length <= MAX_HISTORY_MESSAGES) return history;
+  let windowed = history.slice(-MAX_HISTORY_MESSAGES);
+  // Anthropic requires the first message to be role "user"; a mid-conversation
+  // tail slice could land on an assistant turn, so drop a leading assistant.
+  if (windowed[0]?.role === "assistant") windowed = windowed.slice(1);
+  return windowed;
+}
+
 export interface ChatTurnInput {
   /** Which provider to route this turn through. */
   providerId: ProviderId;
@@ -82,7 +101,7 @@ export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
     apiKey: args.apiKey,
     baseUrl: resolvedBaseUrl,
     model: args.model,
-    history: args.history,
+    history: windowHistory(args.history),
     userMessage: args.userMessage,
     attachments: args.attachments,
     toolHandler: args.toolHandler,
