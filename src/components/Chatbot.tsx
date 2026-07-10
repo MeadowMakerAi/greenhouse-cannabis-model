@@ -20,6 +20,7 @@ import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
 import { assessCompleteness, recommendLighting } from "../services/scenarioAdvisor";
+import { cropTargets } from "../data/cropTargets";
 import {
   defaultSite,
   defaultGreenhouseGeometry,
@@ -437,6 +438,18 @@ export default function Chatbot() {
       case "set_scenario": {
         const rawPatches = (input.patches ?? {}) as Record<string, unknown>;
         const merged: Record<string, unknown> = { ...rawPatches };
+        // Registry-id fields must reference real entries — a model-invented id
+        // (found live: GPT-5 wrote a made-up cropTargetId) would persist into
+        // inputs and crash every derived-output consumer. Reject, don't apply.
+        const rejected: Record<string, string> = {};
+        if ("cropTargetId" in merged && !cropTargets[merged.cropTargetId as string]) {
+          rejected.cropTargetId = `unknown id "${merged.cropTargetId}" — valid: ${Object.keys(cropTargets).join(", ")}`;
+          delete merged.cropTargetId;
+        }
+        if ("fixtureId" in merged && !allFixtures[merged.fixtureId as string]) {
+          rejected.fixtureId = `unknown id "${merged.fixtureId}" — use list_fixtures for valid ids`;
+          delete merged.fixtureId;
+        }
         const envelopePatch = rawPatches.envelope;
         if (
           envelopePatch &&
@@ -450,7 +463,9 @@ export default function Chatbot() {
         }
         setInputs(merged as Partial<typeof inputs>);
         Object.assign(turnPatchRef.current, merged as Partial<typeof inputs>);
-        return { applied: merged };
+        return Object.keys(rejected).length
+          ? { applied: merged, rejected }
+          : { applied: merged };
       }
       case "list_fixtures":
         return Object.values(allFixtures).map((f) => ({

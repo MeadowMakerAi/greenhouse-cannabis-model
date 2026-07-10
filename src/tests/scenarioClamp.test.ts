@@ -99,3 +99,32 @@ describe("clampScenarioInputs", () => {
     ).toBe(12);
   });
 });
+
+describe("registry-keyed id validation (live GPT-5 white-screen regression)", () => {
+  // Found live TWICE in one spec-ingest session: the model invented a
+  // cropTargetId, then a cultivationPhase. Any unguarded registry[id].field
+  // dereference in the derived layer crashes the whole app.
+  it("snaps unknown ids to defaults", () => {
+    const r = clampScenarioInputs({
+      ...defaultScenario,
+      cropTargetId: "top-shelf-indoor" as ScenarioInputs["cropTargetId"],
+      yieldRealismCase: "optimistic!!" as ScenarioInputs["yieldRealismCase"],
+      cultivationPhase: "flowering" as ScenarioInputs["cultivationPhase"],
+      ventilationMode: "open" as ScenarioInputs["ventilationMode"],
+    });
+    expect(r.cropTargetId).toBe(defaultScenario.cropTargetId);
+    expect(r.yieldRealismCase).toBe(defaultScenario.yieldRealismCase);
+    expect(r.cultivationPhase).toBe(defaultScenario.cultivationPhase);
+    expect(r.ventilationMode).toBe(defaultScenario.ventilationMode);
+  });
+
+  it("passes valid ids through untouched", () => {
+    const r = clampScenarioInputs({
+      ...defaultScenario,
+      cultivationPhase: "vegetative",
+      ventilationMode: "sealed",
+    });
+    expect(r.cultivationPhase).toBe("vegetative");
+    expect(r.ventilationMode).toBe("sealed");
+  });
+});

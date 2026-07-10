@@ -11,7 +11,7 @@ import {
 import { fallbackMontgomeryClimate } from "../data/fallbackMontgomeryClimate";
 import { fixtureLibrary, underCanopyFixtureDefault } from "../data/fixtureLibrary";
 import { cropTargets } from "../data/cropTargets";
-import type { YieldRealismCase } from "../data/yieldRealism";
+import { yieldRealismCases, type YieldRealismCase } from "../data/yieldRealism";
 import {
   defaultEconomics,
   defaultElectricalService,
@@ -483,6 +483,25 @@ export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
   // with greenhouse numbers. Clamp anything unrecognized to the safe default.
   if (merged.mode !== "greenhouse" && merged.mode !== "outdoor") {
     merged.mode = "greenhouse";
+  }
+  // Registry-keyed ids: `registry[id].field` is dereferenced unguarded all
+  // over the derived layer, so ONE invalid id (a chatbot set_scenario write —
+  // found live twice: GPT-5 invented a cropTargetId, then a cultivationPhase —
+  // or a stale share link) white-screens the whole app. Snap unknown ids to
+  // the shipped default.
+  if (!cropTargets[merged.cropTargetId]) {
+    merged.cropTargetId = defaultScenario.cropTargetId;
+  }
+  if (!yieldRealismCases[merged.yieldRealismCase]) {
+    merged.yieldRealismCase = defaultScenario.yieldRealismCase;
+  }
+  const PHASES = ["vegetative", "earlyFlower", "midFlower", "lateFlower"] as const;
+  if (!PHASES.includes(merged.cultivationPhase)) {
+    merged.cultivationPhase = defaultScenario.cultivationPhase;
+  }
+  const VENT_MODES: VentilationMode[] = ["open_vented", "moderate", "low", "semi_sealed", "sealed"];
+  if (!VENT_MODES.includes(merged.ventilationMode)) {
+    merged.ventilationMode = defaultScenario.ventilationMode;
   }
   return merged;
 }

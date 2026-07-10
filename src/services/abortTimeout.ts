@@ -11,11 +11,12 @@
 
 /** Per-request hard caps (ms). Soil/weather are quick; LLM turns run longer. */
 export const SOIL_TIMEOUT_MS = 15_000;
-// 90s (was 60s): a full 4096-token, non-streaming generation from a slower
-// model (Fable 5 / Opus 4.8 / a slow free OpenRouter model) can legitimately
-// exceed 60s, and would trip a spurious "timed out" before the answer lands.
-// Stage B streaming would let partial output reset this; until then, give headroom.
-export const CHAT_TIMEOUT_MS = 90_000;
+// 240s (was 90s): reasoning models (GPT-5.x, o-series) buffer their whole
+// think-then-answer turn — a live Huifa spec ingest timed out at 90s on the
+// final GPT-5 roundtrip after the tools had all run. This is a stalled-socket
+// guard, not a work limiter: the user's Stop button aborts anytime, and
+// streaming providers show progress long before this fires.
+export const CHAT_TIMEOUT_MS = 240_000;
 
 /**
  * Combine a caller's AbortSignal (user cancel) with a hard timeout so the

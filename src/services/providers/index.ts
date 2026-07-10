@@ -68,6 +68,10 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
       { value: "gpt-5.6-sol", label: "GPT-5.6 Sol (flagship reasoning)" },
       { value: "gpt-5.6-terra", label: "GPT-5.6 Terra (balanced — recommended)" },
       { value: "gpt-5.6-luna", label: "GPT-5.6 Luna (fast, cheap)" },
+      // GPT-5.6 access is gated by OpenAI org verification/tier — keys without
+      // it 404 with model_not_found. Keep the prior generation available.
+      { value: "gpt-5", label: "GPT-5 (if 5.6 unavailable on your key)" },
+      { value: "gpt-5-mini", label: "GPT-5 mini (cheap)" },
       { value: "gpt-4o-mini", label: "GPT-4o mini (legacy, cheap)" },
       { value: "gpt-4o", label: "GPT-4o (legacy)" },
       { value: "o4-mini", label: "o4-mini (reasoning)" },

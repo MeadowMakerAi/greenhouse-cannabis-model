@@ -97,7 +97,12 @@ export function useDerived() {
   return useMemo(() => {
     const fixture =
       allFixtures[inputs.fixtureId] ?? fixtureLibrary[inputs.fixtureId] ?? fixtureLibrary.ledHighEfficiency;
-    const presetTarget = cropTargets[inputs.cropTargetId];
+    // Same fallback discipline as the fixture lookup above: an unknown
+    // cropTargetId (a chatbot write, a stale share link) must degrade to the
+    // default preset, not crash every consumer of `.targetDLI`. Found live:
+    // GPT-5 wrote an invented cropTargetId via set_scenario → app white-screen.
+    const presetTarget =
+      cropTargets[inputs.cropTargetId] ?? cropTargets.commercialPremium;
     // Apply the operator's custom DLI override if set; otherwise fall
     // back to the preset bucket. Lets indoor growers dial in a
     // specific DLI (e.g. exactly 45) instead of being limited to the
