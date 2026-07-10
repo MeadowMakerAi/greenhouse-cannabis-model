@@ -1,4 +1,19 @@
 import { chatTurn, type ProviderId } from "./chatbotService";
+import type { ChatUsage } from "./providers/types";
+
+/**
+ * Thrown when the user stops an audit mid-run. Carries the usage already
+ * accumulated from completed passes — the user was billed for those calls, so
+ * the cost meter must still see them even though no report was produced.
+ */
+export class AuditStoppedError extends Error {
+  usage: ChatUsage;
+  constructor(usage: ChatUsage) {
+    super("Audit stopped.");
+    this.name = "AuditStoppedError";
+    this.usage = usage;
+  }
+}
 
 /**
  * Sage's "swarm" — a full operational audit run as parallel focused analysis
@@ -83,7 +98,7 @@ function passPrompt(pass: AuditPass, contextJson: string): string {
 async function runPass(
   pass: AuditPass,
   input: SwarmInput,
-): Promise<{ pass: AuditPass; text: string }> {
+): Promise<{ pass: AuditPass; text: string; usage?: ChatUsage }> {
   try {
     const reply = await chatTurn({
       providerId: input.providerId,
@@ -96,7 +111,7 @@ async function runPass(
       signal: input.signal,
     });
     input.onPassDone?.(pass.key);
-    return { pass, text: reply.content.trim() };
+    return { pass, text: reply.content.trim(), usage: reply.usage };
   } catch (e) {
     input.onPassDone?.(pass.key);
     return { pass, text: `_(${pass.label} pass failed: ${(e as Error).message})_` };
@@ -106,12 +121,31 @@ async function runPass(
 /**
  * Fire all passes in parallel, then synthesize. Returns a markdown report.
  */
-export async function runAuditSwarm(input: SwarmInput): Promise<string> {
+export async function runAuditSwarm(
+  input: SwarmInput,
+): Promise<{ report: string; usage: ChatUsage }> {
   const results = await Promise.all(AUDIT_PASSES.map((p) => runPass(p, input)));
+
+  // Accumulate token usage across all 6 calls (5 specialists + synthesis) so the
+  // cost meter reflects the audit's real spend, not just chat turns.
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for (const r of results) {
+    if (r.usage) {
+      inputTokens += r.usage.inputTokens;
+      outputTokens += r.usage.outputTokens;
+    }
+  }
+  const usageOf = (): ChatUsage => ({
+    inputTokens,
+    outputTokens,
+    model: input.model,
+    provider: input.providerId,
+  });
 
   // User stopped mid-run — don't spend another call synthesizing aborted passes.
   if (input.signal?.aborted) {
-    throw new Error("Audit stopped.");
+    throw new AuditStoppedError(usageOf());
   }
 
   const findings = results
@@ -140,15 +174,22 @@ export async function runAuditSwarm(input: SwarmInput): Promise<string> {
       maxRoundtrips: 1,
       signal: input.signal,
     });
-    return synth.content.trim();
+    if (synth.usage) {
+      inputTokens += synth.usage.inputTokens;
+      outputTokens += synth.usage.outputTokens;
+    }
+    return { report: synth.content.trim(), usage: usageOf() };
   } catch (e) {
     // The user stopped mid-synthesis — honor it. Returning the findings
     // anyway would make Stop produce an audit result.
     if (input.signal?.aborted) {
-      throw new Error("Audit stopped.");
+      throw new AuditStoppedError(usageOf());
     }
     // Synthesis failed on its own — still return the raw specialist findings
     // so the grower gets value.
-    return `**Full audit** (synthesis unavailable: ${(e as Error).message})\n\n${findings}`;
+    return {
+      report: `**Full audit** (synthesis unavailable: ${(e as Error).message})\n\n${findings}`,
+      usage: usageOf(),
+    };
   }
 }

@@ -38,6 +38,210 @@ export function isAnthropicKeyFormat(key: string): boolean {
   return /^sk-ant-[a-zA-Z0-9_-]{40,}$/.test(key.trim());
 }
 
+interface AnthropicTurn {
+  content: APIContentBlock[];
+  stop_reason: APIResponse["stop_reason"];
+  usage: { input_tokens: number; output_tokens: number };
+}
+
+interface AnthropicRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  systemPrompt: string;
+  tools: unknown;
+  messages: APIMessage[];
+}
+
+const ANTHROPIC_HEADERS = (apiKey: string): Record<string, string> => ({
+  "Content-Type": "application/json",
+  "x-api-key": apiKey,
+  "anthropic-version": "2023-06-01",
+  "anthropic-dangerous-direct-browser-access": "true",
+});
+
+// 8192 = a generous safety ceiling, NOT a work limiter. A low cap truncated
+// multi-tool actuation turns ("Sage failed to actuate"); runaway is already
+// bounded by maxRoundtrips. Spend is controlled by the cost meter, not by
+// starving the response.
+const MAX_TOKENS = 8192;
+
+/**
+ * One request roundtrip. Streams (SSE) when `onDelta` is provided — the final
+ * answer's text arrives live — otherwise does a plain buffered JSON request.
+ * Either way it returns the same shape so the tool-use loop is identical.
+ */
+async function requestAnthropicTurn(
+  req: AnthropicRequest,
+  signal: AbortSignal | undefined,
+  onDelta?: (delta: string) => void,
+): Promise<AnthropicTurn> {
+  const streaming = typeof onDelta === "function";
+  const res = await fetch(req.baseUrl, {
+    method: "POST",
+    signal: timedSignal(CHAT_TIMEOUT_MS, signal),
+    headers: ANTHROPIC_HEADERS(req.apiKey),
+    body: JSON.stringify({
+      model: req.model,
+      max_tokens: MAX_TOKENS,
+      system: req.systemPrompt,
+      tools: req.tools,
+      messages: req.messages,
+      ...(streaming ? { stream: true } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Anthropic API ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  if (streaming) {
+    // We asked for SSE (stream:true); a missing body is a broken response, not
+    // something to silently re-parse as JSON.
+    if (!res.body) throw new Error("Anthropic streaming response had no body.");
+    return readAnthropicStream(res, onDelta);
+  }
+  const json = (await res.json()) as APIResponse;
+  return {
+    content: json.content,
+    stop_reason: json.stop_reason,
+    usage: {
+      input_tokens: json.usage?.input_tokens ?? 0,
+      output_tokens: json.usage?.output_tokens ?? 0,
+    },
+  };
+}
+
+/**
+ * Parse Anthropic's SSE stream into the same shape as a buffered response.
+ * Assembles text blocks (emitting each text delta via onDelta) and tool_use
+ * blocks (accumulating streamed partial_json, parsed at content_block_stop).
+ * Usage: input_tokens from message_start, final output_tokens from message_delta.
+ */
+export async function readAnthropicStream(
+  res: Response,
+  onDelta: (delta: string) => void,
+): Promise<AnthropicTurn> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const blocks: (APIContentBlock | undefined)[] = [];
+  const toolJson: Record<number, string> = {};
+  let stopReason: APIResponse["stop_reason"] = "end_turn";
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let sawMessageStop = false;
+
+  const processLine = (line: string): void => {
+    if (!line.startsWith("data:")) return;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    let evt: Record<string, unknown>;
+    try {
+      evt = JSON.parse(payload);
+    } catch {
+      return;
+    }
+    switch (evt.type) {
+      case "message_start": {
+        const u = (evt.message as { usage?: { input_tokens?: number } })?.usage;
+        inputTokens = u?.input_tokens ?? 0;
+        break;
+      }
+      case "content_block_start": {
+        const idx = evt.index as number;
+        const cb = (evt.content_block ?? {}) as {
+          type?: string;
+          id?: string;
+          name?: string;
+        };
+        if (cb.type === "tool_use") {
+          blocks[idx] = { type: "tool_use", id: cb.id, name: cb.name, input: {} };
+          toolJson[idx] = "";
+        } else {
+          blocks[idx] = { type: "text", text: "" };
+        }
+        break;
+      }
+      case "content_block_delta": {
+        const idx = evt.index as number;
+        const d = (evt.delta ?? {}) as {
+          type?: string;
+          text?: string;
+          partial_json?: string;
+        };
+        if (d.type === "text_delta") {
+          const b = blocks[idx];
+          if (b) b.text = (b.text ?? "") + (d.text ?? "");
+          if (d.text) onDelta(d.text);
+        } else if (d.type === "input_json_delta") {
+          toolJson[idx] = (toolJson[idx] ?? "") + (d.partial_json ?? "");
+        }
+        break;
+      }
+      case "content_block_stop": {
+        const idx = evt.index as number;
+        const b = blocks[idx];
+        if (b?.type === "tool_use") {
+          try {
+            b.input = JSON.parse(toolJson[idx] || "{}") as Record<string, unknown>;
+          } catch {
+            b.input = {};
+          }
+        }
+        break;
+      }
+      case "message_delta": {
+        const delta = (evt.delta ?? {}) as { stop_reason?: APIResponse["stop_reason"] };
+        if (delta.stop_reason) stopReason = delta.stop_reason;
+        const u = (evt.usage as { output_tokens?: number }) ?? {};
+        if (u.output_tokens != null) outputTokens = u.output_tokens;
+        break;
+      }
+      case "message_stop": {
+        sawMessageStop = true;
+        break;
+      }
+      case "error": {
+        // The API can push an error event mid-stream (e.g. overloaded_error).
+        // Surface it as a failure — never return the partial text as success.
+        const e = (evt.error ?? {}) as { type?: string; message?: string };
+        throw new Error(
+          `Anthropic stream error${e.type ? ` (${e.type})` : ""}: ${e.message ?? "unknown"}`,
+        );
+      }
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      processLine(line);
+    }
+  }
+  // Flush the decoder and any final line that arrived without a trailing \n.
+  buffer += decoder.decode();
+  for (const rest of buffer.split("\n")) processLine(rest.trim());
+
+  // A stream that ends without message_stop was cut off (network drop, proxy
+  // buffering, server hiccup) — treat as an error, not a shorter answer.
+  if (!sawMessageStop) {
+    throw new Error(
+      "Anthropic stream ended unexpectedly — the response may be incomplete. Try again.",
+    );
+  }
+
+  return {
+    content: blocks.filter((b): b is APIContentBlock => b != null),
+    stop_reason: stopReason,
+    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+  };
+}
+
 export const anthropicProvider: ChatProvider = {
   async chat({
     apiKey,
@@ -51,6 +255,8 @@ export const anthropicProvider: ChatProvider = {
     systemPrompt,
     maxRoundtrips = 6,
     signal,
+    onDelta,
+    onRoundtripStart,
   }: ChatTurnArgs): Promise<ChatMessage> {
     // Key format + host allowlist + HTTPS enforcement are validated by
     // the dispatcher in chatbotService.chatTurn before this is reached.
@@ -80,50 +286,36 @@ export const anthropicProvider: ChatProvider = {
 
     const toolTrace: { name: string; input: unknown; output: unknown }[] = [];
     let finalText = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
 
     for (let i = 0; i < maxRoundtrips; i++) {
-      let json: APIResponse;
+      // New roundtrip: let the UI clear its live buffer so a tool-use turn's
+      // preamble doesn't accumulate ahead of the final answer.
+      if (onDelta) onRoundtripStart?.();
+      let turn: AnthropicTurn;
       try {
-        // Each roundtrip gets its own timeout, combined with the caller's
-        // cancel signal — a stalled call rejects instead of hanging forever.
-        // Body parsing stays inside the same guard: an abort can also fire
-        // mid-body (headers arrived, stream stalled) and must map to the
-        // same friendly message.
-        const res = await fetch(baseUrl, {
-          method: "POST",
-          signal: timedSignal(CHAT_TIMEOUT_MS, signal),
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true",
-          },
-          body: JSON.stringify({
-            model,
-            // 4096 (was 1500) so a multi-tool actuation turn — reason + several
-            // set_scenario/add_custom_fixture calls + a final summary — can't get
-            // truncated mid-sequence, which read as "Sage failed to actuate".
-            max_tokens: 4096,
-            system: systemPrompt,
-            tools,
-            messages: apiHistory,
-          }),
-        });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(`Anthropic API ${res.status}: ${txt.slice(0, 200)}`);
-        }
-        json = (await res.json()) as APIResponse;
+        // Streams when onDelta is set (final answer arrives live); otherwise a
+        // plain buffered request. Each roundtrip gets its own timeout+cancel
+        // signal so a stalled call rejects instead of hanging forever.
+        turn = await requestAnthropicTurn(
+          { apiKey, baseUrl, model, systemPrompt, tools, messages: apiHistory },
+          signal,
+          onDelta,
+        );
       } catch (err) {
         const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
         if (aborted) throw new Error(aborted);
         throw err;
       }
 
-      apiHistory.push({ role: "assistant", content: json.content });
+      inputTokens += turn.usage.input_tokens;
+      outputTokens += turn.usage.output_tokens;
 
-      if (json.stop_reason !== "tool_use") {
-        finalText = json.content
+      apiHistory.push({ role: "assistant", content: turn.content });
+
+      if (turn.stop_reason !== "tool_use") {
+        finalText = turn.content
           .filter((b) => b.type === "text")
           .map((b) => b.text || "")
           .join("\n")
@@ -132,7 +324,7 @@ export const anthropicProvider: ChatProvider = {
       }
 
       const toolResultBlocks: APIContentBlock[] = [];
-      for (const block of json.content) {
+      for (const block of turn.content) {
         if (block.type !== "tool_use") continue;
         const name = block.name!;
         const input = (block.input ?? {}) as Record<string, unknown>;
@@ -156,6 +348,7 @@ export const anthropicProvider: ChatProvider = {
       role: "assistant",
       content: finalText || "(No final response after tool roundtrips.)",
       toolTrace: toolTrace.length ? toolTrace : undefined,
+      usage: { inputTokens, outputTokens, model },
     };
   },
 };

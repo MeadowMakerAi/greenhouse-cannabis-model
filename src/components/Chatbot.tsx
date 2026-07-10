@@ -8,6 +8,7 @@ import {
   type ProviderId,
 } from "../services/chatbotService";
 import { PROVIDER_ORDER } from "../services/providers";
+import { estimateCost, formatCost } from "../services/pricing";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
 import { useSimulation } from "../context/SimulationContext";
@@ -17,7 +18,7 @@ import { fixtureKWFromPPFD, type FixtureSpec } from "../models/fixtureModel";
 import { DAYS_IN_MONTH } from "../utils/formatting";
 import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
-import { runAuditSwarm, AUDIT_PASSES } from "../services/agentSwarm";
+import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
 
 const KEY_STORAGE_PREFIX = "greenhouse-model:apiKey:";
 const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
@@ -99,6 +100,11 @@ function isPublicHostname(): boolean {
   );
 }
 
+function fmtTokens(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(n >= 10_000 ? 0 : 1) + "k";
+  return String(n);
+}
+
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -132,6 +138,9 @@ export default function Chatbot() {
   const [draft, setDraft] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  // Live-streamed assistant text for the in-flight turn (Anthropic streams; other
+  // providers leave this null and show the "Thinking…" spinner until done).
+  const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -145,6 +154,25 @@ export default function Chatbot() {
   const auditAbortRef = useRef<AbortController | null>(null);
   const stopChat = () => chatAbortRef.current?.abort();
   const stopAudit = () => auditAbortRef.current?.abort();
+
+  // Session cost meter — derived from the usage each assistant reply carries, so
+  // it can never drift from the actual turns. Estimate only (see pricing.ts):
+  // sums priced turns, treats free tiers as $0, and flags if any turn is unpriced.
+  const sessionMeter = useMemo(() => {
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let usd = 0;
+    let anyUnpriced = false;
+    for (const m of history) {
+      if (!m.usage) continue;
+      inputTokens += m.usage.inputTokens;
+      outputTokens += m.usage.outputTokens;
+      const est = estimateCost(m.usage);
+      if (est && est.usd === null && !est.isFree) anyUnpriced = true;
+      else usd += est?.usd ?? 0;
+    }
+    return { inputTokens, outputTokens, usd, anyUnpriced };
+  }, [history]);
 
   // Proactive-agent wiring. `obs` mirrors AgentObservations' active-count so
   // the launcher can badge it; sendRef keeps the latest send() for the
@@ -515,7 +543,10 @@ export default function Chatbot() {
   const send = async (overrideText?: string) => {
     const text = overrideText !== undefined ? overrideText : draft;
     const hasInput = text.trim() || attachments.length > 0;
-    if (!hasInput || busy) return;
+    // Guard on `auditing` too: a chat turn concurrent with an audit can append
+    // consecutive same-role messages and corrupt the API's user/assistant
+    // alternation (Stage-A P2). Audit and chat must not run at once.
+    if (!hasInput || busy || auditing) return;
     // Filter out attachments the selected provider can't handle so we
     // don't send images to text-only Groq/Ollama, or PDFs to OpenAI/
     // OpenRouter/Groq/Ollama. The UI warning was only advisory before —
@@ -565,6 +596,7 @@ export default function Chatbot() {
     };
     setHistory((h) => [...h, userMessage]);
     setBusy(true);
+    setStreaming(null);
     const ctrl = new AbortController();
     chatAbortRef.current = ctrl;
     try {
@@ -577,6 +609,10 @@ export default function Chatbot() {
         attachments: sentAttachments,
         toolHandler,
         signal: ctrl.signal,
+        onDelta: (delta) => setStreaming((s) => (s ?? "") + delta),
+        // Each roundtrip starts a fresh live buffer — a tool-use turn's preamble
+        // is cleared instead of accumulating ahead of the final answer.
+        onRoundtripStart: () => setStreaming(null),
       });
       setHistory((h) => [...h, reply]);
     } catch (err) {
@@ -588,6 +624,7 @@ export default function Chatbot() {
       ]);
     } finally {
       chatAbortRef.current = null;
+      setStreaming(null);
       setBusy(false);
     }
   };
@@ -663,7 +700,7 @@ export default function Chatbot() {
     const ctrl = new AbortController();
     auditAbortRef.current = ctrl;
     try {
-      const report = await runAuditSwarm({
+      const { report, usage } = await runAuditSwarm({
         providerId,
         apiKey,
         model,
@@ -672,13 +709,19 @@ export default function Chatbot() {
           setAuditDone((d) => (d.includes(k) ? d : [...d, k])),
         signal: ctrl.signal,
       });
-      setHistory((h) => [...h, { role: "assistant", content: report }]);
+      setHistory((h) => [...h, { role: "assistant", content: report, usage }]);
     } catch (e) {
       const msg = (e as Error).message;
       setError(msg);
       setHistory((h) => [
         ...h,
-        { role: "assistant", content: `_Audit failed: ${msg}_` },
+        {
+          role: "assistant",
+          content: `_Audit failed: ${msg}_`,
+          // A stopped audit still billed its completed passes — keep the
+          // usage on the row so the session meter reflects real spend.
+          usage: e instanceof AuditStoppedError ? e.usage : undefined,
+        },
       ]);
     } finally {
       auditAbortRef.current = null;
@@ -764,6 +807,25 @@ export default function Chatbot() {
                   </>
                 ) : null}
               </div>
+              {sessionMeter.inputTokens + sessionMeter.outputTokens > 0 && (
+                <div
+                  className="text-[10px] text-ink-400"
+                  title="Session total — estimated cost, see pricing.ts"
+                >
+                  session {fmtTokens(sessionMeter.inputTokens + sessionMeter.outputTokens)} tok
+                  {" · "}
+                  {sessionMeter.usd > 0
+                    ? `~${formatCost({
+                        usd: sessionMeter.usd,
+                        isFree: false,
+                        inputTokens: 0,
+                        outputTokens: 0,
+                      })}${sessionMeter.anyUnpriced ? "+" : ""} est`
+                    : sessionMeter.anyUnpriced
+                      ? "unpriced"
+                      : "free"}
+                </div>
+              )}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-1">
@@ -958,9 +1020,37 @@ export default function Chatbot() {
                     ))}
                   </details>
                 )}
+                {m.usage && (m.usage.inputTokens > 0 || m.usage.outputTokens > 0) && (
+                  <div className="mt-1 text-[10px] text-ink-400" title="Estimated cost — see pricing.ts">
+                    {fmtTokens(m.usage.inputTokens)} in · {fmtTokens(m.usage.outputTokens)} out
+                    {(() => {
+                      const c = formatCost(estimateCost(m.usage));
+                      if (!c) return "";
+                      if (c === "free") return " · free";
+                      if (c === "—") return " · unpriced";
+                      return ` · ~${c} est`;
+                    })()}
+                  </div>
+                )}
               </div>
             ))}
-            {busy && (
+            {streaming != null && streaming.length > 0 && (
+              <div className="mr-6 rounded bg-ink-300/10 p-2 text-sm text-ink-900">
+                <div className="whitespace-pre-wrap">
+                  {streaming}
+                  <span className="ml-0.5 inline-block animate-pulse">▍</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={stopChat}
+                  className="mt-1 rounded border border-ink-300 px-2 py-0.5 text-xs font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
+                  title="Stop this response"
+                >
+                  Stop
+                </button>
+              </div>
+            )}
+            {busy && (streaming == null || streaming.length === 0) && (
               <div className="mr-6 flex items-center justify-between gap-2 rounded bg-ink-300/10 p-2 text-sm text-ink-500">
                 <span className="inline-block animate-pulse">Thinking…</span>
                 <button

@@ -51,6 +51,10 @@ export interface ChatTurnInput {
   maxRoundtrips?: number;
   /** Caller cancel signal; combined with a per-request timeout in the provider. */
   signal?: AbortSignal;
+  /** Streaming callback for live token rendering (Anthropic today; others no-op). */
+  onDelta?: (delta: string) => void;
+  /** Fired at each streamed roundtrip start — reset the live buffer (see types.ts). */
+  onRoundtripStart?: () => void;
 }
 
 export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
@@ -97,7 +101,7 @@ export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
   }
 
   const provider = getProvider(args.providerId);
-  return provider.chat({
+  const reply = await provider.chat({
     apiKey: args.apiKey,
     baseUrl: resolvedBaseUrl,
     model: args.model,
@@ -109,5 +113,11 @@ export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
     systemPrompt: CHATBOT_SYSTEM_PROMPT,
     maxRoundtrips: args.maxRoundtrips,
     signal: args.signal,
+    onDelta: args.onDelta,
+    onRoundtripStart: args.onRoundtripStart,
   });
+  // The provider knows the token counts + model; only the dispatcher knows which
+  // configured provider ran, so stamp it here for the cost meter's display.
+  if (reply.usage) reply.usage.provider = args.providerId;
+  return reply;
 }

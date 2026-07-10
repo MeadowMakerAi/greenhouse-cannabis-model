@@ -58,6 +58,11 @@ interface GeminiResponse {
     finishReason?: string;
   }[];
   promptFeedback?: { blockReason?: string };
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
   error?: { message: string };
 }
 
@@ -113,6 +118,8 @@ export const geminiProvider: ChatProvider = {
 
     const toolTrace: { name: string; input: unknown; output: unknown }[] = [];
     let finalText = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
 
     for (let i = 0; i < maxRoundtrips; i++) {
       const body = {
@@ -123,8 +130,8 @@ export const geminiProvider: ChatProvider = {
             ? [{ functionDeclarations }]
             : undefined,
         safetySettings: HARMLESS_SETTINGS,
-        // 4096 (was 1500): headroom for multi-tool actuation turns without truncation.
-        generationConfig: { maxOutputTokens: 4096 },
+        // 8192 = generous safety ceiling, not a work limiter (see anthropic.ts).
+        generationConfig: { maxOutputTokens: 8192 },
       };
 
       let json: GeminiResponse;
@@ -149,6 +156,10 @@ export const geminiProvider: ChatProvider = {
       }
       if (json.error) {
         throw new Error(`Gemini API error: ${json.error.message}`);
+      }
+      if (json.usageMetadata) {
+        inputTokens += json.usageMetadata.promptTokenCount ?? 0;
+        outputTokens += json.usageMetadata.candidatesTokenCount ?? 0;
       }
       const candidate = json.candidates?.[0];
       if (!candidate || !candidate.content) {
@@ -196,6 +207,7 @@ export const geminiProvider: ChatProvider = {
       role: "assistant",
       content: finalText || "(No final response after tool roundtrips.)",
       toolTrace: toolTrace.length ? toolTrace : undefined,
+      usage: { inputTokens, outputTokens, model },
     };
   },
 };
