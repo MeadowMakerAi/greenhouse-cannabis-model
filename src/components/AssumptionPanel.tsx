@@ -3,6 +3,7 @@ import { useAllFixtures } from "../context/useAllFixtures";
 import { cropTargets } from "../data/cropTargets";
 import { yieldRealismCases, type YieldRealismCase } from "../data/yieldRealism";
 import { netCanopyTransmissionPct } from "../models/solarModel";
+import { solveBenchLayout } from "../models/benchLayout";
 import { fmtPct } from "../utils/formatting";
 import { FieldGroup, NumberField, SelectField, ToggleField } from "./Field";
 import CustomFixtureForm from "./CustomFixtureForm";
@@ -14,6 +15,21 @@ export default function AssumptionPanel() {
   const { inputs, setInputs, climate, refreshClimate } = useScenario();
   const allFixtures = useAllFixtures();
   const transmission = netCanopyTransmissionPct(inputs.envelope);
+  const benched = inputs.layoutMode === "benched";
+  // Live bench solve for the derived summary + misfit warning. Pure + cheap;
+  // the same solver derives canopy in setInputs.
+  const benchSolve = benched
+    ? solveBenchLayout({
+        houseLengthFt: inputs.greenhouseLengthFt,
+        houseWidthFt: inputs.greenhouseWidthFt,
+        benchType: inputs.benchType,
+        benchWidthFt: inputs.benchWidthFt,
+        benchLengthFt: inputs.benchLengthFt,
+        aisleWidthFt: inputs.benchAisleWidthFt,
+        perimeterAisleFt: inputs.benchPerimeterAisleFt,
+        orientation: inputs.benchOrientation,
+      })
+    : null;
 
   return (
     <aside className="flex h-full flex-col overflow-y-auto px-3 py-1">
@@ -153,7 +169,11 @@ export default function AssumptionPanel() {
           onChange={(n) => setInputs({ canopyAreaSqFt: n })}
           debounceMs={500}
           unit="ft²"
-          hint="Active flowering footprint — what fixtures sit over (typically smaller than floor)."
+          hint={
+            benched
+              ? "Derived from the bench layout below (bench tops = canopy). Type here to override this cycle; the next bench change re-derives it."
+              : "Active flowering footprint — what fixtures sit over (typically smaller than floor)."
+          }
         />
         <div className="rounded-lg border border-ink-200 bg-ink-50 p-2 text-xs">
           <div className="text-[10px] uppercase tracking-wider text-ink-500">Auto-derived</div>
@@ -166,6 +186,122 @@ export default function AssumptionPanel() {
             <span className="text-right">{inputs.greenhouseVolumeCuFt.toLocaleString()} ft³</span>
           </div>
         </div>
+      </FieldGroup>
+
+      <FieldGroup
+        title="Bench layout · optional"
+        description={
+          "Not every greenhouse has benches. Floor / ground-bed grows stay OPEN — " +
+          "canopy is the number you typed above. Switch to BENCHED and the canopy is " +
+          "derived from a real bench grid with aisles. Rolling benches share one movable " +
+          "aisle for the whole block, so they pack more canopy per floor foot than fixed."
+        }
+      >
+        <SelectField
+          label="Layout"
+          value={inputs.layoutMode}
+          onChange={(v) => setInputs({ layoutMode: v })}
+          options={[
+            { value: "open", label: "Open floor / ground beds" },
+            { value: "benched", label: "Benched (canopy from benches)" },
+          ]}
+        />
+        {benched && (
+          <>
+            <SelectField
+              label="Bench type"
+              value={inputs.benchType}
+              onChange={(v) => setInputs({ benchType: v })}
+              options={[
+                { value: "rolling", label: "Rolling (shared movable aisle)" },
+                { value: "fixed", label: "Fixed (aisle per row)" },
+              ]}
+              hint="Rolling benches roll apart to open one aisle at a time — more canopy per floor ft."
+            />
+            <SelectField
+              label="Bench run"
+              value={inputs.benchOrientation}
+              onChange={(v) => setInputs({ benchOrientation: v })}
+              options={[
+                { value: "length-run", label: "Along house length" },
+                { value: "width-run", label: "Across house width" },
+              ]}
+            />
+            <NumberField
+              label="Bench width"
+              value={inputs.benchWidthFt}
+              onChange={(n) => setInputs({ benchWidthFt: n })}
+              debounceMs={500}
+              step={0.5}
+              unit="ft"
+              hint="Short side — how far you reach across. 4–6 ft typical."
+            />
+            <NumberField
+              label="Bench length"
+              value={inputs.benchLengthFt}
+              onChange={(n) => setInputs({ benchLengthFt: n })}
+              debounceMs={500}
+              unit="ft"
+              hint="Long run; benches butt end-to-end down the house."
+            />
+            <NumberField
+              label="Bench top height"
+              value={inputs.benchHeightFt}
+              onChange={(n) => setInputs({ benchHeightFt: n })}
+              debounceMs={500}
+              step={0.1}
+              unit="ft"
+              hint="Growing surface height above the floor (~2.4 ft typical)."
+            />
+            <NumberField
+              label="Aisle width"
+              value={inputs.benchAisleWidthFt}
+              onChange={(n) => setInputs({ benchAisleWidthFt: n })}
+              debounceMs={500}
+              step={0.5}
+              unit="ft"
+              hint="Walk aisle. Fixed = one between each row; rolling = one shared."
+            />
+            <NumberField
+              label="Perimeter clearance"
+              value={inputs.benchPerimeterAisleFt}
+              onChange={(n) => setInputs({ benchPerimeterAisleFt: n })}
+              debounceMs={500}
+              step={0.5}
+              unit="ft"
+              hint="Clearance kept around the whole bench block."
+            />
+            <div className="col-span-2 rounded-lg border border-ink-200 bg-ink-50 p-2 text-xs">
+              {benchSolve && benchSolve.fits ? (
+                <>
+                  <div className="text-[10px] uppercase tracking-wider text-ink-500">
+                    Derived from benches
+                  </div>
+                  <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono tabular-nums text-ink-900">
+                    <span className="text-ink-500">Benches</span>
+                    <span className="text-right">
+                      {benchSolve.benchCount} ({benchSolve.rows}×{benchSolve.cols})
+                    </span>
+                    <span className="text-ink-500">Canopy</span>
+                    <span className="text-right">
+                      {Math.round(benchSolve.canopyAreaSqFt).toLocaleString()} ft²
+                    </span>
+                    <span className="text-ink-500">Aisle / clearance</span>
+                    <span className="text-right">
+                      {Math.round(benchSolve.aisleAreaSqFt).toLocaleString()} ft²
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="text-amber-700">
+                  These benches don’t fit the {inputs.greenhouseLengthFt}′ ×{" "}
+                  {inputs.greenhouseWidthFt}′ house. Shrink the bench, aisle, or
+                  perimeter — canopy is unchanged until they fit.
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </FieldGroup>
 
       <FieldGroup

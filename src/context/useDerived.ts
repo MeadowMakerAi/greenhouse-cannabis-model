@@ -5,6 +5,7 @@ import { fixtureLibrary } from "../data/fixtureLibrary";
 import { cropTargets } from "../data/cropTargets";
 import { yieldRealismCases } from "../data/yieldRealism";
 import { computeMonthlySolar, netCanopyTransmissionPct } from "../models/solarModel";
+import { solveBenchLayout } from "../models/benchLayout";
 import { envelopeForMode } from "../models/growMode";
 import { dliToPPFD, ppfdToDLI } from "../models/dliModel";
 import { fixtureKWFromPPFD } from "../models/fixtureModel";
@@ -117,6 +118,22 @@ export function useDerived() {
         : presetTarget.targetDLI;
     const target = { ...presetTarget, targetDLI: effectiveTargetDLI };
     const outdoor = inputs.mode === "outdoor";
+    // Bench layout (benched mode only) — drives the plan view + 3D bench
+    // rendering and bench-aligned light grid. Canopy itself is already derived
+    // into inputs.canopyAreaSqFt by setInputs; this exposes the geometry.
+    const benchLayout =
+      inputs.layoutMode === "benched"
+        ? solveBenchLayout({
+            houseLengthFt: inputs.greenhouseLengthFt,
+            houseWidthFt: inputs.greenhouseWidthFt,
+            benchType: inputs.benchType,
+            benchWidthFt: inputs.benchWidthFt,
+            benchLengthFt: inputs.benchLengthFt,
+            aisleWidthFt: inputs.benchAisleWidthFt,
+            perimeterAisleFt: inputs.benchPerimeterAisleFt,
+            orientation: inputs.benchOrientation,
+          })
+        : null;
     // Outdoor mode = no glass envelope. Feed a no-loss envelope so the solar
     // model's greenhouse-transmitted DLI collapses to the true outdoor DLI, and
     // disable shade-cloth (a greenhouse structure). This is the honesty seam —
@@ -630,6 +647,7 @@ export function useDerived() {
       annualBotrytisAvg,
       annualPMAvg,
       annualDLIMolM2,
+      benchLayout,
     };
   }, [inputs, climate, allFixtures]);
 }
