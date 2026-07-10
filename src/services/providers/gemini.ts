@@ -94,6 +94,7 @@ export const geminiProvider: ChatProvider = {
     systemPrompt,
     maxRoundtrips = 6,
     signal,
+    onToolCall,
   }: ChatTurnArgs): Promise<ChatMessage> {
     const contents: GeminiContent[] = history.map<GeminiContent>((m) => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -121,7 +122,11 @@ export const geminiProvider: ChatProvider = {
     let inputTokens = 0;
     let outputTokens = 0;
 
-    for (let i = 0; i < maxRoundtrips; i++) {
+    // One extra iteration beyond the tool budget with function calling
+    // disabled to force a final text answer instead of dead-ending
+    // (see anthropic.ts).
+    for (let i = 0; i <= maxRoundtrips; i++) {
+      const outOfBudget = i === maxRoundtrips;
       const body = {
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents,
@@ -129,6 +134,9 @@ export const geminiProvider: ChatProvider = {
           functionDeclarations.length > 0
             ? [{ functionDeclarations }]
             : undefined,
+        ...(outOfBudget && functionDeclarations.length > 0
+          ? { toolConfig: { functionCallingConfig: { mode: "NONE" } } }
+          : {}),
         safetySettings: HARMLESS_SETTINGS,
         // 8192 = generous safety ceiling, not a work limiter (see anthropic.ts).
         generationConfig: { maxOutputTokens: 8192 },
@@ -173,7 +181,7 @@ export const geminiProvider: ChatProvider = {
       const parts = candidate.content.parts || [];
       const functionCalls = parts.filter(isFunctionCallPart);
 
-      if (functionCalls.length === 0) {
+      if (functionCalls.length === 0 || outOfBudget) {
         finalText = parts
           .filter(isTextPart)
           .map((p) => p.text)
@@ -185,6 +193,7 @@ export const geminiProvider: ChatProvider = {
       const responseParts: GeminiPart[] = [];
       for (const call of functionCalls) {
         const name = call.functionCall.name;
+        onToolCall?.(name);
         const input = call.functionCall.args ?? {};
         let output: unknown;
         try {

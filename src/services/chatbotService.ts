@@ -55,6 +55,8 @@ export interface ChatTurnInput {
   onDelta?: (delta: string) => void;
   /** Fired at each streamed roundtrip start — reset the live buffer (see types.ts). */
   onRoundtripStart?: () => void;
+  /** Fired as each tool call executes — drive a live activity indicator. */
+  onToolCall?: (name: string) => void;
 }
 
 export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
@@ -115,6 +117,7 @@ export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
     signal: args.signal,
     onDelta: args.onDelta,
     onRoundtripStart: args.onRoundtripStart,
+    onToolCall: args.onToolCall,
   });
   // The provider knows the token counts + model; only the dispatcher knows which
   // configured provider ran, so stamp it here for the cost meter's display.

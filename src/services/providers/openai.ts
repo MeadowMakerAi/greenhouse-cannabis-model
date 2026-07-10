@@ -122,6 +122,7 @@ export const openAICompatibleProvider: ChatProvider = {
     systemPrompt,
     maxRoundtrips = 6,
     signal,
+    onToolCall,
   }: ChatTurnArgs): Promise<ChatMessage> {
     const oaiTools = translateTools(tools);
 
@@ -158,7 +159,10 @@ export const openAICompatibleProvider: ChatProvider = {
     let inputTokens = 0;
     let outputTokens = 0;
 
-    for (let i = 0; i < maxRoundtrips; i++) {
+    // One extra iteration beyond the tool budget with tool_choice:"none" to
+    // force a final text answer instead of dead-ending (see anthropic.ts).
+    for (let i = 0; i <= maxRoundtrips; i++) {
+      const outOfBudget = i === maxRoundtrips;
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -177,7 +181,8 @@ export const openAICompatibleProvider: ChatProvider = {
             model,
             messages,
             tools: oaiTools.length > 0 ? oaiTools : undefined,
-            tool_choice: oaiTools.length > 0 ? "auto" : undefined,
+            tool_choice:
+              oaiTools.length > 0 ? (outOfBudget ? "none" : "auto") : undefined,
             ...tokenCap,
           }),
         });
@@ -211,13 +216,14 @@ export const openAICompatibleProvider: ChatProvider = {
       messages.push(assistantMsg);
 
       const hasToolCalls = !!msg.tool_calls && msg.tool_calls.length > 0;
-      if (!hasToolCalls) {
+      if (!hasToolCalls || outOfBudget) {
         finalText = (msg.content ?? "").trim();
         break;
       }
 
       for (const call of msg.tool_calls!) {
         const name = call.function.name;
+        onToolCall?.(name);
         let input: Record<string, unknown> = {};
         try {
           input = call.function.arguments

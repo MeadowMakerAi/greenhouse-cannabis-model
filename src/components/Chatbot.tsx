@@ -149,6 +149,9 @@ export default function Chatbot() {
   // Live-streamed assistant text for the in-flight turn (Anthropic streams; other
   // providers leave this null and show the "Thinking…" spinner until done).
   const [streaming, setStreaming] = useState<string | null>(null);
+  // Name of the tool currently executing — live activity during multi-tool
+  // turns so long ingests don't look frozen.
+  const [toolActivity, setToolActivity] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Hybrid confirm UX. Proposals (recommend_* tools) never mutate — the top
   // option surfaces here as an Apply chip. Direct writes apply immediately but
@@ -731,8 +734,14 @@ export default function Chatbot() {
         signal: ctrl.signal,
         onDelta: (delta) => setStreaming((s) => (s ?? "") + delta),
         // Each roundtrip starts a fresh live buffer — a tool-use turn's preamble
-        // is cleared instead of accumulating ahead of the final answer.
-        onRoundtripStart: () => setStreaming(null),
+        // is cleared instead of accumulating ahead of the final answer. Clearing
+        // toolActivity too means the indicator only shows while tools are the
+        // latest thing happening.
+        onRoundtripStart: () => {
+          setStreaming(null);
+          setToolActivity(null);
+        },
+        onToolCall: (name) => setToolActivity(name),
       });
       setHistory((h) => [...h, reply]);
       // Hybrid confirm: direct writes applied immediately — offer one-click Undo
@@ -752,6 +761,7 @@ export default function Chatbot() {
     } finally {
       chatAbortRef.current = null;
       setStreaming(null);
+      setToolActivity(null);
       setBusy(false);
     }
   };
@@ -1179,7 +1189,9 @@ export default function Chatbot() {
             )}
             {busy && (streaming == null || streaming.length === 0) && (
               <div className="mr-6 flex items-center justify-between gap-2 rounded bg-ink-300/10 p-2 text-sm text-ink-500">
-                <span className="inline-block animate-pulse">Thinking…</span>
+                <span className="inline-block animate-pulse">
+                  {toolActivity ? `⚙ ${toolActivity}…` : "Thinking…"}
+                </span>
                 <button
                   type="button"
                   onClick={stopChat}

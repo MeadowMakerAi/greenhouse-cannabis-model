@@ -104,6 +104,12 @@ export interface ChatTurnArgs {
    */
   onRoundtripStart?: () => void;
   /**
+   * Fired when the provider is about to execute a tool call — lets the UI show
+   * live activity ("running set_scenario…") during long multi-tool turns
+   * instead of an opaque spinner.
+   */
+  onToolCall?: (name: string) => void;
+  /**
    * Optional caller cancel signal. Providers combine it with a hard per-request
    * timeout (see abortTimeout.timedSignal) so a stalled model call can't hang
    * the chat UI forever.

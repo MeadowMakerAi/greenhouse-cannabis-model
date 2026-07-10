@@ -51,6 +51,8 @@ interface AnthropicRequest {
   systemPrompt: string;
   tools: unknown;
   messages: APIMessage[];
+  /** `{type:"none"}` forbids tool use — used to force a final text answer. */
+  toolChoice?: { type: "none" };
 }
 
 const ANTHROPIC_HEADERS = (apiKey: string): Record<string, string> => ({
@@ -86,6 +88,7 @@ async function requestAnthropicTurn(
       max_tokens: MAX_TOKENS,
       system: req.systemPrompt,
       tools: req.tools,
+      ...(req.toolChoice ? { tool_choice: req.toolChoice } : {}),
       messages: req.messages,
       ...(streaming ? { stream: true } : {}),
     }),
@@ -257,6 +260,7 @@ export const anthropicProvider: ChatProvider = {
     signal,
     onDelta,
     onRoundtripStart,
+    onToolCall,
   }: ChatTurnArgs): Promise<ChatMessage> {
     // Key format + host allowlist + HTTPS enforcement are validated by
     // the dispatcher in chatbotService.chatTurn before this is reached.
@@ -289,7 +293,13 @@ export const anthropicProvider: ChatProvider = {
     let inputTokens = 0;
     let outputTokens = 0;
 
-    for (let i = 0; i < maxRoundtrips; i++) {
+    // One extra iteration beyond the tool budget: if the model is still
+    // mid-tool-flow when the budget runs out, that last pass sends
+    // tool_choice:"none" to FORCE a final text answer — a big spec ingest
+    // (apply → assess → recommend → derive) can legitimately spend every
+    // roundtrip on tools, and dead-ending there wastes the whole turn.
+    for (let i = 0; i <= maxRoundtrips; i++) {
+      const outOfBudget = i === maxRoundtrips;
       // New roundtrip: let the UI clear its live buffer so a tool-use turn's
       // preamble doesn't accumulate ahead of the final answer.
       if (onDelta) onRoundtripStart?.();
@@ -299,7 +309,15 @@ export const anthropicProvider: ChatProvider = {
         // plain buffered request. Each roundtrip gets its own timeout+cancel
         // signal so a stalled call rejects instead of hanging forever.
         turn = await requestAnthropicTurn(
-          { apiKey, baseUrl, model, systemPrompt, tools, messages: apiHistory },
+          {
+            apiKey,
+            baseUrl,
+            model,
+            systemPrompt,
+            tools,
+            messages: apiHistory,
+            ...(outOfBudget ? { toolChoice: { type: "none" as const } } : {}),
+          },
           signal,
           onDelta,
         );
@@ -327,6 +345,7 @@ export const anthropicProvider: ChatProvider = {
       for (const block of turn.content) {
         if (block.type !== "tool_use") continue;
         const name = block.name!;
+        onToolCall?.(name);
         const input = (block.input ?? {}) as Record<string, unknown>;
         let output: unknown;
         try {
