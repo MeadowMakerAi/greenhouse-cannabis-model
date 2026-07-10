@@ -46,6 +46,28 @@ export const defaultGreenhouseGeometry = {
   greenhouseVolumeCuFt: 22500, // = L × W × ((eave + peak)/2)
 };
 
+/**
+ * Bench layout. `layoutMode` defaults to "open" so existing behavior and
+ * share-links stay byte-for-byte unchanged — canopy stays the typed input.
+ * When switched to "benched", canopy is DERIVED from this bench packing
+ * (see models/benchLayout.ts + ScenarioContext.setInputs).
+ *
+ * Bench dimensions mirror the `rolling-bench-4x40` entry in equipmentLibrary.ts
+ * (4 ft × 40 ft, top at 2.4 ft — the commercial-bay standard). Aisle and
+ * perimeter are pure geometry, not coefficients: 3 ft is a typical working
+ * aisle, 2 ft a typical perimeter clearance. Both are operator-editable.
+ */
+export const defaultBenchLayout = {
+  layoutMode: "open" as "open" | "benched",
+  benchType: "rolling" as "fixed" | "rolling",
+  benchWidthFt: 4,
+  benchLengthFt: 40,
+  benchHeightFt: 2.4,
+  benchAisleWidthFt: 3,
+  benchPerimeterAisleFt: 2,
+  benchOrientation: "length-run" as "length-run" | "width-run",
+};
+
 export const defaultPhotoperiod = {
   cropStage: "midFlower" as const,
   flowerPhotoperiodHours: 12,

@@ -13,6 +13,7 @@ import { fixtureLibrary, underCanopyFixtureDefault } from "../data/fixtureLibrar
 import { cropTargets } from "../data/cropTargets";
 import { yieldRealismCases, type YieldRealismCase } from "../data/yieldRealism";
 import {
+  defaultBenchLayout,
   defaultEconomics,
   defaultElectricalService,
   defaultEnvelope,
@@ -21,6 +22,7 @@ import {
   defaultSite,
   defaultSolarConversion,
 } from "../data/greenhouseDefaults";
+import { solveBenchLayout } from "../models/benchLayout";
 import { defaultClimateControl } from "../data/climateControlDefaults";
 import { defaultCO2 } from "../data/co2Defaults";
 import { defaultVPDTargets } from "../models/vpdModel";
@@ -65,8 +67,25 @@ export interface ScenarioInputs {
   greenhouseWidthFt: number;
   eaveHeightFt: number;
   peakHeightFt: number;
-  // Canopy (flowering footprint)
+  // Canopy (flowering footprint). In "open" layout this is the typed input.
+  // In "benched" layout it is DERIVED from the bench packing below (the bench
+  // tops ARE the canopy) — see setInputs + models/benchLayout.ts.
   canopyAreaSqFt: number;
+
+  // Bench layout. Not all greenhouses have benches; "open" preserves the
+  // typed-canopy behavior for floor / ground-bed grows. "benched" derives
+  // canopy from a real bench grid with aisles. Flat fields (not a nested
+  // object) so the chatbot set_scenario tool and share-URL codec treat them
+  // like every other scalar input.
+  layoutMode: "open" | "benched";
+  benchType: "fixed" | "rolling";
+  benchWidthFt: number;
+  benchLengthFt: number;
+  benchHeightFt: number;
+  benchAisleWidthFt: number;
+  benchPerimeterAisleFt: number;
+  benchOrientation: "length-run" | "width-run";
+
   // Derived defaults (re-derive from dimensions when sync'd)
   greenhouseFloorAreaSqFt: number;
   greenhouseEnvelopeAreaSqFt: number;
@@ -290,6 +309,7 @@ export const defaultScenario: ScenarioInputs = {
   ...defaultSite,
   weatherStation: defaultSite.nearestWeatherAnchor,
   ...defaultGreenhouseGeometry,
+  ...defaultBenchLayout,
   greenhouseFloorAreaSqFt: _defaultDerived.floor,
   greenhouseEnvelopeAreaSqFt: _defaultDerived.envelope,
   greenhouseVolumeCuFt: _defaultDerived.volume,
@@ -503,6 +523,35 @@ export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
   if (!VENT_MODES.includes(merged.ventilationMode)) {
     merged.ventilationMode = defaultScenario.ventilationMode;
   }
+  // Bench layout enums — same white-screen discipline as the registry ids: a
+  // stale share link or chatbot write with an unknown value must snap to the
+  // safe default rather than reach the bench solver / 3D scene as garbage.
+  if (merged.layoutMode !== "open" && merged.layoutMode !== "benched") {
+    merged.layoutMode = defaultScenario.layoutMode;
+  }
+  if (merged.benchType !== "fixed" && merged.benchType !== "rolling") {
+    merged.benchType = defaultScenario.benchType;
+  }
+  if (
+    merged.benchOrientation !== "length-run" &&
+    merged.benchOrientation !== "width-run"
+  ) {
+    merged.benchOrientation = defaultScenario.benchOrientation;
+  }
+  // Bench dimensions — NaN/negative would poison solveBenchLayout. Bounds are
+  // practical: benches you can reach across (≤12 ft wide), commercial run
+  // lengths (≤200 ft), aisle/perimeter kept sane. Zero aisle is allowed
+  // (Sage's completeness check flags implausibly tight layouts, not the clamp).
+  clampMin("benchWidthFt", 0.5);
+  clampMax("benchWidthFt", 12);
+  clampMin("benchLengthFt", 1);
+  clampMax("benchLengthFt", 200);
+  clampMin("benchHeightFt", 0);
+  clampMax("benchHeightFt", 6);
+  clampMin("benchAisleWidthFt", 0);
+  clampMax("benchAisleWidthFt", 12);
+  clampMin("benchPerimeterAisleFt", 0);
+  clampMax("benchPerimeterAisleFt", 12);
   return merged;
 }
 
@@ -576,10 +625,12 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
         // The fixture count downstream is derived from canopy area; plant
         // grid is derived from canopy dimensions — preserving the prior
         // canopy:floor ratio means the whole 3D scene rescales coherently.
-        // Skip if the user is explicitly overriding canopyAreaSqFt this call.
+        // Skip if the user is explicitly overriding canopyAreaSqFt this call,
+        // OR if we're in benched mode (canopy is re-derived from benches below).
         const lengthOrWidthChanged =
           "greenhouseLengthFt" in next || "greenhouseWidthFt" in next;
         if (
+          merged.layoutMode !== "benched" &&
           lengthOrWidthChanged &&
           !("canopyAreaSqFt" in next) &&
           prev.greenhouseFloorAreaSqFt > 0
@@ -593,6 +644,41 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
         merged.greenhouseFloorAreaSqFt = Math.round(d.floor);
         merged.greenhouseEnvelopeAreaSqFt = Math.round(d.envelope);
         merged.greenhouseVolumeCuFt = Math.round(d.volume);
+      }
+      // Benched layout: the bench tops ARE the canopy. Re-derive canopy from
+      // the bench packing whenever the house footprint, a bench parameter, or
+      // the layout mode changed — unless the caller explicitly set
+      // canopyAreaSqFt this patch (manual override wins, same rule as open
+      // mode). A spec that doesn't fit the house leaves the prior canopy
+      // intact rather than zeroing it; Sage flags the misfit downstream.
+      const benchKeys = [
+        "layoutMode",
+        "benchType",
+        "benchWidthFt",
+        "benchLengthFt",
+        "benchAisleWidthFt",
+        "benchPerimeterAisleFt",
+        "benchOrientation",
+      ];
+      const benchInputChanged = benchKeys.some((k) => k in next);
+      if (
+        merged.layoutMode === "benched" &&
+        !("canopyAreaSqFt" in next) &&
+        (dimChanged || benchInputChanged)
+      ) {
+        const solved = solveBenchLayout({
+          houseLengthFt: merged.greenhouseLengthFt,
+          houseWidthFt: merged.greenhouseWidthFt,
+          benchType: merged.benchType,
+          benchWidthFt: merged.benchWidthFt,
+          benchLengthFt: merged.benchLengthFt,
+          aisleWidthFt: merged.benchAisleWidthFt,
+          perimeterAisleFt: merged.benchPerimeterAisleFt,
+          orientation: merged.benchOrientation,
+        });
+        if (solved.fits && solved.benchCount > 0) {
+          merged.canopyAreaSqFt = Math.max(50, Math.round(solved.canopyAreaSqFt));
+        }
       }
       return merged;
     });
