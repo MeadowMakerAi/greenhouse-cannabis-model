@@ -19,6 +19,14 @@ import { DAYS_IN_MONTH } from "../utils/formatting";
 import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
+import { assessCompleteness, recommendLighting } from "../services/scenarioAdvisor";
+import {
+  defaultSite,
+  defaultGreenhouseGeometry,
+  defaultEnvelope,
+  defaultElectricalService,
+  defaultEconomics,
+} from "../data/greenhouseDefaults";
 
 const KEY_STORAGE_PREFIX = "greenhouse-model:apiKey:";
 const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
@@ -142,6 +150,24 @@ export default function Chatbot() {
   // providers leave this null and show the "Thinking…" spinner until done).
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Hybrid confirm UX. Proposals (recommend_* tools) never mutate — the top
+  // option surfaces here as an Apply chip. Direct writes apply immediately but
+  // stash a pre-turn snapshot here so one click reverses the whole turn.
+  const [pendingProposal, setPendingProposal] = useState<{
+    label: string;
+    patch: Partial<typeof inputs>;
+  } | null>(null);
+  const [undoSnapshot, setUndoSnapshot] = useState<typeof inputs | null>(null);
+  // Same-turn write overlay. React state doesn't update mid-turn, so tools that
+  // run AFTER a write in the same chatTurn (the prescribed apply→assess→recommend
+  // flow) would read stale pre-write inputs — assess would call just-applied
+  // dims "missing" and recommend would size the DEFAULT greenhouse. Write tools
+  // record their patches here; read tools see inputs+overlay. Cleared per send.
+  // ponytail: overlay skips ScenarioContext's clamp/auto-derive — good enough
+  // for field comparisons + sizing args; derived (solar) still lags one turn
+  // and get_derived_outputs says so explicitly.
+  const turnPatchRef = useRef<Partial<typeof inputs>>({});
+  const scenarioNow = () => ({ ...inputs, ...turnPatchRef.current });
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -365,9 +391,15 @@ export default function Chatbot() {
   const toolHandler = async (name: string, input: Record<string, unknown>) => {
     switch (name) {
       case "get_scenario":
-        return inputs;
+        return scenarioNow();
       case "get_derived_outputs": {
         return {
+          ...(Object.keys(turnPatchRef.current).length > 0
+            ? {
+                warning:
+                  "Scenario inputs changed earlier THIS turn; these derived outputs reflect the PRE-change state. Re-check next turn for post-change numbers.",
+              }
+            : {}),
           peakInstalledKW: derived.peakInstalledKW,
           peakFixtureCount: derived.peakFixtureCount,
           peakWattsPerSqFt: derived.peakWattsPerSqFt,
@@ -414,6 +446,7 @@ export default function Chatbot() {
           };
         }
         setInputs(merged as Partial<typeof inputs>);
+        Object.assign(turnPatchRef.current, merged as Partial<typeof inputs>);
         return { applied: merged };
       }
       case "list_fixtures":
@@ -435,7 +468,90 @@ export default function Chatbot() {
         const id = String(input.fixtureId ?? "");
         if (!allFixtures[id]) return { error: `Fixture id ${id} not found` };
         setInputs({ fixtureId: id });
+        turnPatchRef.current.fixtureId = id as typeof inputs.fixtureId;
         return { activeFixture: id };
+      }
+      case "assess_completeness": {
+        const s = scenarioNow();
+        return assessCompleteness(
+          {
+            latitude: s.latitude,
+            longitude: s.longitude,
+            greenhouseLengthFt: s.greenhouseLengthFt,
+            greenhouseWidthFt: s.greenhouseWidthFt,
+            eaveHeightFt: s.eaveHeightFt,
+            peakHeightFt: s.peakHeightFt,
+            canopyAreaSqFt: s.canopyAreaSqFt,
+            envelopeBaseTransmissionPct: s.envelope.baseTransmissionPct,
+            fixtureId: s.fixtureId,
+            fixtureType: allFixtures[s.fixtureId]?.type,
+            flowerPhotoperiodHours: s.flowerPhotoperiodHours,
+            co2Enabled: s.co2Enabled,
+            ventilationMode: s.ventilationMode,
+            radiantHeatingEnabled: s.radiantHeatingEnabled,
+            thermalScreenEnabled: s.thermalScreenEnabled,
+            mechanicalCoolingEnabled: s.mechanicalCoolingEnabled,
+            serviceVoltagePrimary: s.serviceVoltagePrimary,
+            branchCircuitAmps: s.branchCircuitAmps,
+            electricityRatePerKwh: s.electricityRatePerKwh,
+          },
+          {
+            latitude: defaultSite.latitude,
+            longitude: defaultSite.longitude,
+            greenhouseLengthFt: defaultGreenhouseGeometry.greenhouseLengthFt,
+            greenhouseWidthFt: defaultGreenhouseGeometry.greenhouseWidthFt,
+            eaveHeightFt: defaultGreenhouseGeometry.eaveHeightFt,
+            peakHeightFt: defaultGreenhouseGeometry.peakHeightFt,
+            envelopeBaseTransmissionPct: defaultEnvelope.baseTransmissionPct,
+            fixtureId: "ledHighEfficiency",
+            serviceVoltagePrimary: defaultElectricalService.serviceVoltages[1] ?? 240,
+            branchCircuitAmps: defaultElectricalService.branchCircuitAmps,
+            electricityRatePerKwh: defaultEconomics.electricityRatePerKwh,
+          },
+        );
+      }
+      case "recommend_lighting": {
+        const ids = input.fixtureIds as string[] | undefined;
+        const fixtures = ids?.length
+          ? ids.map((id) => allFixtures[id]).filter(Boolean)
+          : Object.values(allFixtures).filter((f) => f.type === "LED");
+        if (fixtures.length === 0) return { error: "No matching fixtures." };
+        const s = scenarioNow();
+        const rec = recommendLighting({
+          targetPPFD: input.targetPPFD != null ? Number(input.targetPPFD) : undefined,
+          targetDLI: input.targetDLI != null ? Number(input.targetDLI) : undefined,
+          photoperiodHours: s.flowerPhotoperiodHours,
+          canopyAreaSqFt: s.canopyAreaSqFt,
+          electricityRatePerKwh: s.electricityRatePerKwh,
+          monthlyFlowerWindowDLI: derived.months.map((m) => m.flowerWindowDLI),
+          fixtures,
+        });
+        if (!("error" in rec) && rec.options[0]) {
+          const top = rec.options[0];
+          // Surface the top option as an Apply chip — proposal only, no mutation.
+          // The patch carries the DLI target too: applying just the fixture would
+          // leave the sim sizing to its old target, breaking the label's promise.
+          setPendingProposal({
+            label: `${top.fixtureCount}× ${top.label} → ~${rec.targetPPFD} PPFD / DLI ${rec.targetDLI} (+${top.addedCoolingTons} tons heat)`,
+            patch: {
+              fixtureId: top.fixtureId as typeof inputs.fixtureId,
+              customTargetDLIOverride: rec.targetDLI,
+            },
+          });
+        }
+        // Solar (derived) can't recompute mid-turn: if this turn already moved
+        // the site or glazing, say so instead of implying the sizing saw it.
+        const overlayKeys = Object.keys(turnPatchRef.current);
+        const solarStale = ["latitude", "longitude", "envelope"].some((k) =>
+          overlayKeys.includes(k),
+        );
+        return solarStale && !("error" in rec)
+          ? {
+              ...rec,
+              warning:
+                "Site/glazing changed earlier this turn; the solar curve used for sizing reflects the PRE-change site. Re-run next turn to size against the updated site.",
+            }
+          : rec;
       }
       case "add_custom_fixture": {
         const vendor = String(input.vendor);
@@ -465,6 +581,7 @@ export default function Chatbot() {
         };
         addCustomFixture(fixture);
         setInputs({ fixtureId: id });
+        turnPatchRef.current.fixtureId = id as typeof inputs.fixtureId;
         return { added: id };
       }
       case "compare_fixtures": {
@@ -597,6 +714,9 @@ export default function Chatbot() {
     setHistory((h) => [...h, userMessage]);
     setBusy(true);
     setStreaming(null);
+    setPendingProposal(null); // a new turn supersedes any prior proposal
+    turnPatchRef.current = {}; // fresh same-turn write overlay
+    const inputsBeforeTurn = inputs; // snapshot for one-click Undo of this turn's writes
     const ctrl = new AbortController();
     chatAbortRef.current = ctrl;
     try {
@@ -615,6 +735,13 @@ export default function Chatbot() {
         onRoundtripStart: () => setStreaming(null),
       });
       setHistory((h) => [...h, reply]);
+      // Hybrid confirm: direct writes applied immediately — offer one-click Undo
+      // back to the pre-turn scenario. (set_simulation_time only moves the sim
+      // clock, not inputs, so it doesn't arm Undo.)
+      const WRITE_TOOLS = ["set_scenario", "set_active_fixture", "add_custom_fixture"];
+      if (reply.toolTrace?.some((t) => WRITE_TOOLS.includes(t.name))) {
+        setUndoSnapshot(inputsBeforeTurn);
+      }
     } catch (err) {
       const msg = (err as Error).message;
       setError(msg);
@@ -1068,6 +1195,66 @@ export default function Chatbot() {
             )}
           </div>
 
+          {(pendingProposal || undoSnapshot) && (
+            <div className="flex flex-wrap items-center gap-1 border-t border-ink-200 px-2 py-1 text-[11px]">
+              {pendingProposal && (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-ink-600" title={pendingProposal.label}>
+                    💡 {pendingProposal.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Guard: the proposed fixture may have been removed since
+                      // (custom fixtures are user-clearable).
+                      const fid = pendingProposal.patch.fixtureId;
+                      if (fid && !allFixtures[fid]) {
+                        setError(`Proposed fixture ${fid} no longer exists.`);
+                        setPendingProposal(null);
+                        return;
+                      }
+                      setUndoSnapshot(inputs); // applying is also undoable
+                      setInputs(pendingProposal.patch);
+                      setPendingProposal(null);
+                    }}
+                    className="rounded border border-leaf-500/50 bg-leaf-50 px-2 py-0.5 font-medium text-leaf-700 hover:bg-leaf-500/20"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingProposal(null)}
+                    className="rounded border border-ink-300 px-2 py-0.5 text-ink-500 hover:bg-ink-300/20"
+                  >
+                    Dismiss
+                  </button>
+                </>
+              )}
+              {undoSnapshot && !pendingProposal && (
+                <>
+                  <span className="flex-1 text-ink-500">Sage changed the scenario</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputs(undoSnapshot);
+                      setUndoSnapshot(null);
+                    }}
+                    className="rounded border border-ink-300 px-2 py-0.5 font-medium text-ink-600 hover:bg-warn-500/10 hover:text-warn-600"
+                    title="Restore all scenario inputs to before Sage's last change"
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUndoSnapshot(null)}
+                    className="rounded border border-ink-300 px-2 py-0.5 text-ink-500 hover:bg-ink-300/20"
+                  >
+                    Keep
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div
             className="border-t border-ink-200 p-2"
             onDragOver={(e) => {

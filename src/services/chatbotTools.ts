@@ -106,6 +106,38 @@ export const CHATBOT_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: "assess_completeness",
+    description:
+      "Report which scenario areas are established vs still at defaults, plus internal conflicts (e.g. CO2 with open vents, HPS on 120V, heated house with no thermal screen). Call after any spec ingest to articulate what you have and what's missing.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "recommend_lighting",
+    description:
+      "PROPOSAL ONLY — does not change the scenario. Sizes candidate fixtures to hit a target PPFD or DLI at canopy, geography-aware (sized to the worst solar month at the site). Returns per-fixture count, installed kW, grid spacing, added heat load (BTU/hr and cooling tons), and worst-month energy cost. Present the best option to the user and ask before applying; the UI shows an Apply button for your top proposal.",
+    input_schema: {
+      type: "object",
+      properties: {
+        targetPPFD: {
+          type: "number",
+          description: "Design PPFD at canopy, µmol/m²/s (e.g. 1000). Provide this or targetDLI.",
+        },
+        targetDLI: {
+          type: "number",
+          description: "Target DLI, mol/m²/day (e.g. 40). Provide this or targetPPFD.",
+        },
+        fixtureIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: restrict to these fixture ids. Default: all LED fixtures in the library.",
+        },
+      },
+    },
+  },
+  {
     name: "get_simulation_state",
     description:
       "Get the current simulation clock state: day of year, hour of day, sun position, outdoor T/RH, indoor T, canopy PPFD, lights state, vent state.",
@@ -202,7 +234,30 @@ When you see these in the scenario, raise them unprompted:
 - **Demand charge > 40% of total electric bill** — recommend staggered startup or off-peak operation.
 - **Peak amperage > 90% of service** — utility upgrade required, flag before procurement.
 
-## Spec sheet ingestion (greenhouse + fixture datasheets)
+## Spec ingestion protocol — messy input is the normal case
+
+The user will hand you greenhouse information in ANY form: a PDF spec sheet, a
+pasted email, a bullet list, prose from memory. Run this flow every time:
+
+1. **Extract** every hard fact you can (dimensions, glazing, heating, vents,
+   electrical, fixtures, location). Ignore noise; don't guess ambiguous values.
+2. **Apply the hard facts** in ONE \`set_scenario\` call so the simulator
+   visibly reflects their greenhouse immediately.
+3. **Call \`assess_completeness\`** and tell them plainly, in two short lists,
+   what the spec established and what's still missing or conflicting.
+4. **For each meaningful gap, propose — don't just note.** No fixtures listed?
+   Say so, then: "Want me to add lights? Given your location I'd size for
+   indoor-quality flower — around 1000 PPFD at canopy (DLI ~43 at a 12-hour
+   photoperiod). Sound right?" Confirm the assumption, then call
+   \`recommend_lighting\` with ONE target (PPFD or DLI, not both) and present
+   the top option with count, kW, spacing, and cost. The user applies it via
+   the Apply button (or asks you to).
+5. **Surface the second-order effect of what you just proposed.** New lights
+   add heat: quote the added BTU/hr and cooling tons from the recommendation,
+   then check \`get_derived_outputs\` after any apply — if heating is enabled
+   with no thermal screen, or cooling looks undersized, say so and name the
+   fix ("thermal screen cuts night heat loss ~50%", "AC if you want total
+   control"). One proposal at a time; don't firehose.
 
 For greenhouse spec sheets, call \`set_scenario\` with:
 - length × width → \`greenhouseLengthFt\` / \`greenhouseWidthFt\`
