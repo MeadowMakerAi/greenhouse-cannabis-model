@@ -26,6 +26,21 @@ export { PROVIDER_CONFIGS, isProviderKeyValid, isAnthropicKeyFormat };
  */
 const MAX_HISTORY_MESSAGES = 24; // ~12 turns
 
+/**
+ * Tool-use roundtrip ceiling per turn. This is a CEILING, not a floor: a simple
+ * turn finishes in 1-2 roundtrips regardless, so a higher cap costs nothing on
+ * normal turns — it only lets a deep pipeline finish. A full spec ingest is a
+ * dependency chain — set_scenario → assess_completeness → recommend_lighting →
+ * set_active_fixture → answer — where each stage needs the previous stage's
+ * result, so it can't be batched into fewer roundtrips. The old cap of 6 was
+ * documented to truncate a real ingest ("Huifa proforma burned all 6, user got
+ * nothing" — see anthropicToolBudget.test.ts). 10 gives that chain real slack;
+ * the forced-final backstop + cost meter still bound a runaway loop.
+ * ponytail: raise the ceiling; don't add per-turn dynamic caps until a real
+ * ingest needs more than 10.
+ */
+const DEFAULT_MAX_ROUNDTRIPS = 10;
+
 function windowHistory(history: ChatMessage[]): ChatMessage[] {
   if (history.length <= MAX_HISTORY_MESSAGES) return history;
   let windowed = history.slice(-MAX_HISTORY_MESSAGES);
@@ -143,7 +158,9 @@ export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
       toolHandler: args.toolHandler,
       tools: CHATBOT_TOOLS,
       systemPrompt: CHATBOT_SYSTEM_PROMPT,
-      maxRoundtrips: args.maxRoundtrips,
+      // Centralize the ceiling so anthropic + gemini + openai-compat all get the
+      // same budget (each provider's own default is only a direct-call fallback).
+      maxRoundtrips: args.maxRoundtrips ?? DEFAULT_MAX_ROUNDTRIPS,
       signal: args.signal,
       onDelta: args.onDelta,
       onRoundtripStart: args.onRoundtripStart,
