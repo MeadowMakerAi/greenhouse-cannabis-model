@@ -27,19 +27,26 @@ export { PROVIDER_CONFIGS, isProviderKeyValid, isAnthropicKeyFormat };
 const MAX_HISTORY_MESSAGES = 24; // ~12 turns
 
 /**
- * Tool-use roundtrip ceiling per turn. This is a CEILING, not a floor: a simple
- * turn finishes in 1-2 roundtrips regardless, so a higher cap costs nothing on
- * normal turns — it only lets a deep pipeline finish. A full spec ingest is a
- * dependency chain — set_scenario → assess_completeness → recommend_lighting →
- * set_active_fixture → answer — where each stage needs the previous stage's
- * result, so it can't be batched into fewer roundtrips. The old cap of 6 was
- * documented to truncate a real ingest ("Huifa proforma burned all 6, user got
- * nothing" — see anthropicToolBudget.test.ts). 10 gives that chain real slack;
- * the forced-final backstop + cost meter still bound a runaway loop.
- * ponytail: raise the ceiling; don't add per-turn dynamic caps until a real
- * ingest needs more than 10.
+ * Tool-use roundtrip ceiling per turn. Framing matters: an app that TRUNCATES a
+ * task mid-actuation is the expensive failure — worse than the few cents of
+ * extra API calls a deep task costs. So this is NOT a budget limiter (the live
+ * cost meter + user abort do that) — it's a runaway BACKSTOP set far above any
+ * real task, so it only ever fires on a genuine non-converging loop (e.g. the
+ * model bouncing set_scenario ↔ assess forever), which the human-gated meter
+ * can't catch automatically in the seconds before someone hits stop.
+ *
+ * It's a CEILING, not a floor: a simple turn finishes in 1-2 roundtrips, so a
+ * high cap costs nothing on normal turns. The deepest LEGITIMATE task — a
+ * multi-building proforma with several fixtures (orient → set → assess →
+ * recommend → set-fixtures → compare → re-assess → adjust → answer) — lands
+ * ~11, ~20 if the model re-checks. 25 clears that with margin. The old cap of 6
+ * truncated a real ingest ("Huifa proforma burned all 6, user got nothing" —
+ * anthropicToolBudget.test.ts); at the ceiling the forced-final still fires, so
+ * even a task that hits 25 gets an answer, not an error.
+ * ponytail: fixed high ceiling; add a same-tool-same-input loop detector only
+ * if a runaway actually shows up in the meter.
  */
-const DEFAULT_MAX_ROUNDTRIPS = 10;
+const DEFAULT_MAX_ROUNDTRIPS = 25;
 
 function windowHistory(history: ChatMessage[]): ChatMessage[] {
   if (history.length <= MAX_HISTORY_MESSAGES) return history;
