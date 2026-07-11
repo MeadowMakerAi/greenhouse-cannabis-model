@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   chatTurn,
   isProviderKeyValid,
@@ -125,6 +131,70 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+// ── Sage dock geometry: draggable + resizable floating panel (ported from FM
+//    Command's Amelia dock). Rect persists to localStorage so the panel stays
+//    where the user left it; in this single-page app the Chatbot never
+//    unmounts, so it also "follows" across dashboard tabs for free. ──
+const SAGE_RECT_KEY = "greenhouse-model:sageDockRect";
+const SAGE_MIN_W = 340;
+const SAGE_MIN_H = 380;
+const SAGE_DEFAULT_W = 460;
+const SAGE_DEFAULT_H = 640;
+type SageRect = { x: number; y: number; w: number; h: number };
+type SageDragMode = "move" | "e" | "w" | "s" | "n" | "se" | "sw" | "ne" | "nw";
+
+const sageClamp = (v: number, lo: number, hi: number) =>
+  Math.min(Math.max(v, lo), Math.max(lo, hi));
+
+function sageViewport() {
+  return {
+    vw: typeof window !== "undefined" ? window.innerWidth : 1280,
+    vh: typeof window !== "undefined" ? window.innerHeight : 800,
+  };
+}
+
+function sageDefaultRect(): SageRect {
+  const { vw, vh } = sageViewport();
+  const w = Math.min(SAGE_DEFAULT_W, vw - 24);
+  const h = Math.min(SAGE_DEFAULT_H, vh - 24);
+  return { x: Math.max(12, vw - w - 16), y: Math.max(12, vh - h - 16), w, h };
+}
+
+function sageFitRect(r: SageRect): SageRect {
+  const { vw, vh } = sageViewport();
+  const w = sageClamp(r.w, SAGE_MIN_W, vw - 16);
+  const h = sageClamp(r.h, SAGE_MIN_H, vh - 16);
+  return {
+    w,
+    h,
+    x: sageClamp(r.x, 8, vw - w - 8),
+    y: sageClamp(r.y, 8, vh - h - 8),
+  };
+}
+
+function sageLoadRect(): SageRect {
+  try {
+    const raw = localStorage.getItem(SAGE_RECT_KEY);
+    if (raw) {
+      const r = JSON.parse(raw) as SageRect;
+      if ([r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n))) {
+        return sageFitRect(r);
+      }
+    }
+  } catch {
+    /* corrupt/blocked storage — fall back to the default anchor */
+  }
+  return sageDefaultRect();
+}
+
+function sagePersistRect(r: SageRect) {
+  try {
+    localStorage.setItem(SAGE_RECT_KEY, JSON.stringify(r));
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function Chatbot() {
   const { inputs, setInputs, customFixtures, addCustomFixture } = useScenario();
   const derived = useDerived();
@@ -174,6 +244,58 @@ export default function Chatbot() {
   const scenarioNow = () => ({ ...inputs, ...turnPatchRef.current });
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Sage dock rect (draggable header + 8 resize handles), persisted per session.
+  const [dockRect, setDockRect] = useState<SageRect>(() => sageLoadRect());
+  const dockRectRef = useRef(dockRect);
+  dockRectRef.current = dockRect;
+  const [dockDragging, setDockDragging] = useState(false);
+  // Threshold-based start: a plain click on a header button never triggers a
+  // drag (and isn't preventDefault'd), so header controls keep working.
+  const startDockDrag =
+    (mode: SageDragMode) => (e: ReactPointerEvent) => {
+      const sx = e.clientX;
+      const sy = e.clientY;
+      const r0 = dockRectRef.current;
+      let started = false;
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - sx;
+        const dy = ev.clientY - sy;
+        if (!started) {
+          if (Math.abs(dx) + Math.abs(dy) < 4) return;
+          started = true;
+          setDockDragging(true);
+        }
+        const { vw, vh } = sageViewport();
+        let { x, y, w, h } = r0;
+        if (mode === "move") {
+          x = sageClamp(r0.x + dx, 0, vw - r0.w);
+          y = sageClamp(r0.y + dy, 0, vh - r0.h);
+        } else {
+          if (mode.includes("e")) w = sageClamp(r0.w + dx, SAGE_MIN_W, vw - r0.x);
+          if (mode.includes("s")) h = sageClamp(r0.h + dy, SAGE_MIN_H, vh - r0.y);
+          if (mode.includes("w")) {
+            w = sageClamp(r0.w - dx, SAGE_MIN_W, r0.x + r0.w);
+            x = r0.x + (r0.w - w);
+          }
+          if (mode.includes("n")) {
+            h = sageClamp(r0.h - dy, SAGE_MIN_H, r0.y + r0.h);
+            y = r0.y + (r0.h - h);
+          }
+        }
+        setDockRect({ x, y, w, h });
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        if (started) {
+          setDockDragging(false);
+          sagePersistRect(dockRectRef.current);
+        }
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    };
   const fileInputRef = useRef<HTMLInputElement>(null);
   // In-flight request controllers, so the user can Stop a hung/slow call. The
   // provider also enforces a hard per-request timeout (abortTimeout) so a
@@ -940,7 +1062,7 @@ export default function Chatbot() {
           </span>
           {obs.active > 0 && (
             <span
-              className={`ml-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white ${
+              className={`ml-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-bold text-white ${
                 obs.topSeverity === "warn" ? "bg-warn-500" : "bg-leaf-500"
               }`}
             >
@@ -950,13 +1072,37 @@ export default function Chatbot() {
         </button>
       )}
       {open && (
-        <div className="fixed bottom-4 right-4 z-50 flex h-[640px] w-[460px] flex-col rounded-xl border border-ink-300/40 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-ink-300/40 px-3 py-2">
+        <>
+          {dockDragging && (
+            <div className="fixed inset-0 z-[55]" style={{ cursor: "grabbing" }} />
+          )}
+          <div
+            className="fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-ink-300/40 bg-white shadow-2xl"
+            style={{
+              left: dockRect.x,
+              top: dockRect.y,
+              width: dockRect.w,
+              height: dockRect.h,
+            }}
+          >
+            {/* resize handles — invisible hit strips (edges) + corners */}
+            <div onPointerDown={startDockDrag("n")} className="absolute inset-x-3 top-0 z-10 h-1.5 cursor-ns-resize" />
+            <div onPointerDown={startDockDrag("s")} className="absolute inset-x-3 bottom-0 z-10 h-1.5 cursor-ns-resize" />
+            <div onPointerDown={startDockDrag("w")} className="absolute inset-y-3 left-0 z-10 w-1.5 cursor-ew-resize" />
+            <div onPointerDown={startDockDrag("e")} className="absolute inset-y-3 right-0 z-10 w-1.5 cursor-ew-resize" />
+            <div onPointerDown={startDockDrag("nw")} className="absolute left-0 top-0 z-20 h-3 w-3 cursor-nwse-resize" />
+            <div onPointerDown={startDockDrag("ne")} className="absolute right-0 top-0 z-20 h-3 w-3 cursor-nesw-resize" />
+            <div onPointerDown={startDockDrag("sw")} className="absolute bottom-0 left-0 z-20 h-3 w-3 cursor-nesw-resize" />
+            <div onPointerDown={startDockDrag("se")} className="absolute bottom-0 right-0 z-20 h-3 w-3 cursor-nwse-resize" />
+            <div
+              onPointerDown={startDockDrag("move")}
+              className="flex cursor-move select-none items-center justify-between border-b border-ink-300/40 px-3 py-2"
+            >
             <div className="flex items-center gap-2">
               <AgentAvatar state={busy || auditing ? "thinking" : "idle"} size={30} />
               <div>
               <div className="text-sm font-semibold">{AGENT_NAME} · cultivation agent</div>
-              <div className="text-[10px] text-ink-500">
+              <div className="text-xs text-ink-500">
                 {cfg.label} · {model}
                 {apiKey ? (
                   <>
@@ -985,7 +1131,7 @@ export default function Chatbot() {
               </div>
               {sessionMeter.inputTokens + sessionMeter.outputTokens > 0 && (
                 <div
-                  className="text-[10px] text-ink-400"
+                  className="text-xs text-ink-400"
                   title="Session total — estimated cost, see pricing.ts"
                 >
                   session {fmtTokens(sessionMeter.inputTokens + sessionMeter.outputTokens)} tok
@@ -1008,7 +1154,7 @@ export default function Chatbot() {
               <select
                 value={providerId}
                 onChange={(e) => switchProvider(e.target.value as ProviderId)}
-                className="rounded border border-ink-300 px-1 py-0.5 text-[10px]"
+                className="rounded border border-ink-300 px-1 py-0.5 text-xs"
                 title="Provider"
               >
                 {PROVIDER_ORDER.map((id) => (
@@ -1020,7 +1166,7 @@ export default function Chatbot() {
               <select
                 value={model}
                 onChange={(e) => saveModel(e.target.value)}
-                className="rounded border border-ink-300 px-1 py-0.5 text-[10px]"
+                className="rounded border border-ink-300 px-1 py-0.5 text-xs"
                 title="Model"
               >
                 {cfg.models.map((o) => (
@@ -1050,10 +1196,10 @@ export default function Chatbot() {
                 </span>
               </div>
               {cfg.note && (
-                <p className="mb-2 text-[11px] leading-snug text-ink-700">{cfg.note}</p>
+                <p className="mb-2 text-xs leading-snug text-ink-700">{cfg.note}</p>
               )}
               {cfg.requiresKey && (
-                <p className="text-[11px] leading-snug text-ink-700">
+                <p className="text-xs leading-snug text-ink-700">
                   The chatbot calls {cfg.label} directly from your browser using
                   a key you provide. The key is stored in this browser's{" "}
                   <span className="font-semibold">
@@ -1064,7 +1210,7 @@ export default function Chatbot() {
                 </p>
               )}
               {cfg.requiresKey && (
-                <label className="mt-2 flex items-center gap-2 text-[11px] text-ink-700">
+                <label className="mt-2 flex items-center gap-2 text-xs text-ink-700">
                   <input
                     type="checkbox"
                     checked={sessionOnly}
@@ -1077,7 +1223,7 @@ export default function Chatbot() {
                 </label>
               )}
               {onPublicHost && cfg.requiresKey && (
-                <div className="mt-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-[10.5px] leading-snug text-warn-500">
+                <div className="mt-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-xs leading-snug text-warn-500">
                   <strong>You're on a public hostname ({window.location.hostname}).</strong>{" "}
                   Pasting a key here means it lives in this browser's
                   localStorage on a publicly-visible page. Use a strict
@@ -1124,12 +1270,12 @@ export default function Chatbot() {
                 </form>
               )}
               {keyDraft.trim() && !isProviderKeyValid(providerId, keyDraft.trim()) && (
-                <p className="mt-1 text-[10.5px] text-warn-500">
+                <p className="mt-1 text-xs text-warn-500">
                   ⚠ That doesn't match the {cfg.label} key format
                   {cfg.keyHint ? ` (${cfg.keyHint})` : ""}.
                 </p>
               )}
-              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-ink-300/30 pt-2 text-[10px] text-ink-500">
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-ink-300/30 pt-2 text-xs text-ink-500">
                 {cfg.keyUrl && (
                   <a
                     href={cfg.keyUrl}
@@ -1156,14 +1302,14 @@ export default function Chatbot() {
             {history.length === 0 && (
               <div className="rounded-lg bg-ink-50 p-3 text-xs text-ink-700">
                 Ask anything about the model. I can change scenario inputs, swap fixtures, add new vendor fixtures, run side-by-side comparisons, ingest spec sheets, and reason about energy / amps / HVAC / climate dynamics.
-                <div className="mt-2 space-y-1 text-[11px] text-ink-500">
+                <div className="mt-2 space-y-1 text-xs text-ink-500">
                   <div>📎 <strong>Drop a greenhouse spec sheet (PDF/image)</strong> — I'll extract dimensions, glazing, U-value, heating capacity, electrical service, and update the model.</div>
                   <div>📎 <strong>Drop a fixture datasheet</strong> — I'll add it to the library with vendor specs.</div>
                   <div>· "What if I swap to the Gavita Pro RS 2400e? Compare to current."</div>
                   <div>· "Why are vents closed at 4pm but open at 2pm?"</div>
                   <div>· "Bump CO₂ to 1200 ppm and re-check yield projection."</div>
                 </div>
-                <div className="mt-2 rounded border border-leaf-500/30 bg-leaf-50/40 p-2 text-[10.5px] text-ink-700">
+                <div className="mt-2 rounded border border-leaf-500/30 bg-leaf-50/40 p-2 text-xs text-ink-700">
                   <strong>Hitting rate limits or no Anthropic key?</strong>{" "}
                   Switch the provider dropdown above to{" "}
                   <span className="font-mono">Google Gemini</span> — free
@@ -1183,7 +1329,7 @@ export default function Chatbot() {
               >
                 <div className="whitespace-pre-wrap">{m.content}</div>
                 {m.toolTrace && m.toolTrace.length > 0 && (
-                  <details className="mt-1 text-[10px] text-ink-500">
+                  <details className="mt-1 text-xs text-ink-500">
                     <summary className="cursor-pointer">
                       Tool calls ({m.toolTrace.length})
                     </summary>
@@ -1197,7 +1343,7 @@ export default function Chatbot() {
                   </details>
                 )}
                 {m.usage && (m.usage.inputTokens > 0 || m.usage.outputTokens > 0) && (
-                  <div className="mt-1 text-[10px] text-ink-400" title="Estimated cost — see pricing.ts">
+                  <div className="mt-1 text-xs text-ink-400" title="Estimated cost — see pricing.ts">
                     {fmtTokens(m.usage.inputTokens)} in · {fmtTokens(m.usage.outputTokens)} out
                     {(() => {
                       const c = formatCost(estimateCost(m.usage));
@@ -1247,7 +1393,7 @@ export default function Chatbot() {
           </div>
 
           {(pendingProposal || undoSnapshot) && (
-            <div className="flex flex-wrap items-center gap-1 border-t border-ink-200 px-2 py-1 text-[11px]">
+            <div className="flex flex-wrap items-center gap-1 border-t border-ink-200 px-2 py-1 text-xs">
               {pendingProposal && (
                 <>
                   <span className="min-w-0 flex-1 truncate text-ink-600" title={pendingProposal.label}>
@@ -1330,7 +1476,7 @@ export default function Chatbot() {
                 🔬 {auditing ? "Auditing…" : "Run full audit"}
               </button>
               {auditing && (
-                <span className="flex flex-wrap items-center gap-1 text-[10px] text-ink-500">
+                <span className="flex flex-wrap items-center gap-1 text-xs text-ink-500">
                   {AUDIT_PASSES.map((p) => (
                     <span
                       key={p.key}
@@ -1349,7 +1495,7 @@ export default function Chatbot() {
                 <button
                   type="button"
                   onClick={stopAudit}
-                  className="ml-auto rounded border border-ink-300 px-2 py-0.5 text-[10px] font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
+                  className="ml-auto rounded border border-ink-300 px-2 py-0.5 text-xs font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
                   title="Stop the audit"
                 >
                   Stop
@@ -1357,7 +1503,7 @@ export default function Chatbot() {
               )}
             </div>
             {unsupportedAttachmentWarning && (
-              <div className="mb-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-[10.5px] text-warn-500">
+              <div className="mb-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-xs text-warn-500">
                 ⚠ {unsupportedAttachmentWarning}
               </div>
             )}
@@ -1366,7 +1512,7 @@ export default function Chatbot() {
                 {attachments.map((a, i) => (
                   <span
                     key={i}
-                    className="inline-flex items-center gap-1 rounded-md border border-leaf-500/30 bg-leaf-50 px-2 py-0.5 text-[10px] text-leaf-700"
+                    className="inline-flex items-center gap-1 rounded-md border border-leaf-500/30 bg-leaf-50 px-2 py-0.5 text-xs text-leaf-700"
                   >
                     📎 {a.name.length > 28 ? a.name.slice(0, 26) + "…" : a.name}
                     <button
@@ -1419,6 +1565,7 @@ export default function Chatbot() {
             </div>
           </div>
         </div>
+        </>
       )}
     </>
   );
