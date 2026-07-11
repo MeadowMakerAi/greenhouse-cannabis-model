@@ -60,9 +60,29 @@ export interface CompletenessReport {
   missing: string[];
   /** Internally inconsistent combinations worth surfacing before advising. */
   conflicts: string[];
+  /** Realizable improvements — headroom the current scenario leaves on the
+   *  table. This is an optimization tool, so surfacing these is the point. */
+  optimizations: string[];
 }
 
 const SEALEDISH: VentilationMode[] = ["sealed", "semi_sealed"];
+
+/** Floor-space utilization = canopy footprint as a % of greenhouse floor.
+ *  Movable/rolling benching reaches up to ~90%, peninsular fixed >75%
+ *  (see CITATIONS.md — UW-Madison / U-Arkansas Extension). */
+export function canopyUtilizationPct(
+  canopyAreaSqFt: number,
+  floorAreaSqFt: number,
+): number {
+  if (floorAreaSqFt <= 0) return 0;
+  return (canopyAreaSqFt / floorAreaSqFt) * 100;
+}
+
+/** Below this, canopy floor-use is worth flagging as unrealized optimization. */
+export const CANOPY_UTIL_FLAG_PCT = 80;
+/** Practical ceiling rolling/movable benching achieves; headroom is measured
+ *  against it so the flag quantifies a real, cited target — not 100%. */
+export const ROLLING_BENCH_UTIL_CEILING = 0.9;
 
 export function assessCompleteness(
   s: AdvisorScenario,
@@ -71,6 +91,7 @@ export function assessCompleteness(
   const have: string[] = [];
   const missing: string[] = [];
   const conflicts: string[] = [];
+  const optimizations: string[] = [];
 
   const check = (established: boolean, label: string) =>
     (established ? have : missing).push(label);
@@ -127,7 +148,22 @@ export function assessCompleteness(
     );
   }
 
-  return { have, missing, conflicts };
+  // Floor-space utilization: how much of the greenhouse floor is actually
+  // growing canopy vs aisle/unused. Below ~80% is headroom rolling benches
+  // reclaim — the core optimization this tool exists to surface.
+  const floorAreaSqFt = s.greenhouseLengthFt * s.greenhouseWidthFt;
+  const util = canopyUtilizationPct(s.canopyAreaSqFt, floorAreaSqFt);
+  if (floorAreaSqFt > 0 && util < CANOPY_UTIL_FLAG_PCT) {
+    const headroomSqFt = Math.round(
+      floorAreaSqFt * ROLLING_BENCH_UTIL_CEILING - s.canopyAreaSqFt,
+    );
+    optimizations.push(
+      `canopy is ${util.toFixed(0)}% of floor (${Math.round(s.canopyAreaSqFt)} of ${Math.round(floorAreaSqFt)} ft²) — ` +
+        `rolling/movable benching reaches up to ~90% (peninsular fixed >75%), so about ${headroomSqFt} ft² of potential canopy is currently aisle/unused`,
+    );
+  }
+
+  return { have, missing, conflicts, optimizations };
 }
 
 export interface LightingRecommendationArgs {

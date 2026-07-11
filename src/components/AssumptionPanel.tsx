@@ -5,6 +5,7 @@ import { yieldRealismCases, type YieldRealismCase } from "../data/yieldRealism";
 import { netCanopyTransmissionPct } from "../models/solarModel";
 import { fmtPct } from "../utils/formatting";
 import { FieldGroup, NumberField, SelectField, ToggleField } from "./Field";
+import { canopyUtilizationPct } from "../services/scenarioAdvisor";
 import CustomFixtureForm from "./CustomFixtureForm";
 import { MONTH_NAMES } from "../utils/formatting";
 
@@ -154,6 +155,29 @@ export default function AssumptionPanel() {
           debounceMs={500}
           unit="ft²"
           hint="Active flowering footprint — what fixtures sit over (typically smaller than floor)."
+        />
+        <NumberField
+          label="Canopy utilization"
+          value={Math.round(
+            canopyUtilizationPct(
+              inputs.canopyAreaSqFt,
+              inputs.greenhouseFloorAreaSqFt,
+            ),
+          )}
+          onChange={(pct) => {
+            if (inputs.greenhouseFloorAreaSqFt > 0) {
+              setInputs({
+                canopyAreaSqFt: Math.round(
+                  (inputs.greenhouseFloorAreaSqFt * pct) / 100,
+                ),
+              });
+            }
+          }}
+          debounceMs={500}
+          min={1}
+          max={100}
+          unit="%"
+          hint="Canopy as a share of floor. Rolling/movable benches reach ~90% (peninsular fixed >75%); below ~80% is aisle space rolling benches reclaim. Setting this resizes canopy to match."
         />
         <div className="rounded-lg border border-ink-200 bg-ink-50 p-2 text-xs">
           <div className="text-[10px] uppercase tracking-wider text-ink-500">Auto-derived</div>

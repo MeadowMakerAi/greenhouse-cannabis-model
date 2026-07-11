@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   assessCompleteness,
   recommendLighting,
+  canopyUtilizationPct,
   type AdvisorScenario,
   type AdvisorDefaults,
 } from "../services/scenarioAdvisor";
@@ -111,6 +112,57 @@ describe("assessCompleteness", () => {
       DEFAULTS,
     );
     expect(r.conflicts).toHaveLength(0);
+  });
+});
+
+describe("canopyUtilizationPct", () => {
+  it("computes canopy as a percentage of floor", () => {
+    expect(canopyUtilizationPct(5625, 10800)).toBeCloseTo(52.08, 1);
+    expect(canopyUtilizationPct(1200, 1536)).toBeCloseTo(78.1, 1);
+  });
+  it("returns 0 for a nonpositive floor (no divide-by-zero)", () => {
+    expect(canopyUtilizationPct(1200, 0)).toBe(0);
+  });
+});
+
+describe("assessCompleteness — floor-utilization optimization", () => {
+  // 120 × 90 = 10,800 ft² floor. 5,625 canopy = 52% → below the 80% flag.
+  // This is the exact case that prompted the feature: a rolling-bench spec
+  // whose canopy was lowballed to ~half the floor.
+  const BENCHED: AdvisorScenario = {
+    ...ALL_DEFAULT,
+    greenhouseLengthFt: 120,
+    greenhouseWidthFt: 90,
+    canopyAreaSqFt: 5625,
+  };
+
+  it("flags sub-80% floor utilization as optimization + quantifies headroom", () => {
+    const r = assessCompleteness(BENCHED, DEFAULTS);
+    expect(r.optimizations).toHaveLength(1);
+    const msg = r.optimizations[0];
+    expect(msg).toMatch(/52% of floor/);
+    // headroom to the ~90% rolling ceiling: 10,800 × 0.9 − 5,625 = 4,095 ft²
+    expect(msg).toMatch(/4095 ft²/);
+    expect(msg).toMatch(/rolling/i);
+  });
+
+  it("does not flag when utilization already meets the 80% band", () => {
+    const r = assessCompleteness({ ...BENCHED, canopyAreaSqFt: 9720 }, DEFAULTS); // 90%
+    expect(r.optimizations).toHaveLength(0);
+  });
+
+  it("fires just below 80% and clears exactly at it", () => {
+    const floor = 120 * 90; // 10,800
+    const below = assessCompleteness(
+      { ...BENCHED, canopyAreaSqFt: Math.round(floor * 0.79) },
+      DEFAULTS,
+    );
+    const at = assessCompleteness(
+      { ...BENCHED, canopyAreaSqFt: Math.round(floor * 0.8) },
+      DEFAULTS,
+    );
+    expect(below.optimizations).toHaveLength(1);
+    expect(at.optimizations).toHaveLength(0);
   });
 });
 
