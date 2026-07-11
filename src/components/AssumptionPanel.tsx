@@ -155,7 +155,12 @@ export default function AssumptionPanel() {
           onChange={(n) => setInputs({ canopyAreaSqFt: n })}
           debounceMs={500}
           unit="ft²"
-          hint="Active flowering footprint — what fixtures sit over (typically smaller than floor)."
+          disabled={inputs.benchLayout.enabled}
+          hint={
+            inputs.benchLayout.enabled
+              ? "Derived from the bench layout below — disable benches to set canopy directly."
+              : "Active flowering footprint — what fixtures sit over (typically smaller than floor)."
+          }
         />
         <NumberField
           label="Canopy utilization"
@@ -178,6 +183,7 @@ export default function AssumptionPanel() {
           min={1}
           max={100}
           unit="%"
+          disabled={inputs.benchLayout.enabled}
           hint="Canopy as a share of floor. Rolling/movable benches reach ~90% (peninsular fixed >75%); below ~80% is aisle space rolling benches reclaim. Setting this resizes canopy to match."
         />
         <div className="rounded-lg border border-ink-200 bg-ink-50 p-2 text-xs">

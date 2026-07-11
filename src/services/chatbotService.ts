@@ -12,6 +12,7 @@ import type {
   FileAttachment,
   ToolHandler,
 } from "./providers/types";
+import { DEFAULT_MAX_ROUNDTRIPS } from "./providers/types";
 
 export type { ChatMessage, ChatRole, FileAttachment, ToolHandler, ProviderId };
 export { PROVIDER_CONFIGS, isProviderKeyValid, isAnthropicKeyFormat };
@@ -45,8 +46,9 @@ const MAX_HISTORY_MESSAGES = 24; // ~12 turns
  * even a task that hits 25 gets an answer, not an error.
  * ponytail: fixed high ceiling; add a same-tool-same-input loop detector only
  * if a runaway actually shows up in the meter.
+ * The value lives in providers/types (DEFAULT_MAX_ROUNDTRIPS) so the dispatcher
+ * and each provider's own default share one source instead of drifting apart.
  */
-const DEFAULT_MAX_ROUNDTRIPS = 25;
 
 function windowHistory(history: ChatMessage[]): ChatMessage[] {
   if (history.length <= MAX_HISTORY_MESSAGES) return history;
@@ -155,13 +157,24 @@ export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
       }
     }
 
+    // Filter attachments to what THIS provider accepts — per-provider, not once
+    // against the primary. Otherwise a PDF dropped for an OpenAI primary would
+    // never reach the Gemini fallback that natively handles it.
+    const providerAttachments = (args.attachments ?? []).filter((a) =>
+      a.mediaType === "application/pdf"
+        ? cfg.supportsPdf
+        : a.mediaType.startsWith("image/")
+          ? cfg.supportsImages
+          : true,
+    );
+
     const reply = await getProvider(providerId).chat({
       apiKey,
       baseUrl: resolvedBaseUrl,
       model,
       history,
       userMessage: args.userMessage,
-      attachments: args.attachments,
+      attachments: providerAttachments,
       toolHandler: args.toolHandler,
       tools: CHATBOT_TOOLS,
       systemPrompt: CHATBOT_SYSTEM_PROMPT,

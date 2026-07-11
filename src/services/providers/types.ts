@@ -1,5 +1,13 @@
 import type { ToolDefinition } from "../chatbotTools";
 
+/**
+ * Roundtrip ceiling for a single chat turn — a runaway backstop, not a budget.
+ * The dispatcher passes this to every provider; a provider's own default is
+ * only reached on a direct call (tests, agentSwarm), so all paths share one
+ * source of truth instead of each provider re-declaring its own number.
+ */
+export const DEFAULT_MAX_ROUNDTRIPS = 25;
+
 export type ChatRole = "user" | "assistant";
 
 /**

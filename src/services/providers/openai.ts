@@ -1,5 +1,7 @@
 import type { ToolDefinition } from "../chatbotTools";
+import { WRITE_TOOL_NAMES } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { DEFAULT_MAX_ROUNDTRIPS } from "./types";
 import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
 import { makeToolLoopGuard } from "./loopGuard";
 
@@ -121,7 +123,7 @@ export const openAICompatibleProvider: ChatProvider = {
     toolHandler,
     tools,
     systemPrompt,
-    maxRoundtrips = 6,
+    maxRoundtrips = DEFAULT_MAX_ROUNDTRIPS,
     signal,
     onToolCall,
   }: ChatTurnArgs): Promise<ChatMessage> {
@@ -252,8 +254,10 @@ export const openAICompatibleProvider: ChatProvider = {
           content: JSON.stringify(output),
         });
       }
-      // Repeating the same call? Force a final answer next pass.
-      if (loopGuard.record(roundtripCalls)) loopBroken = true;
+      // Repeating the same WRITE? Force a final answer next pass. Reads are
+      // excluded so a legit per-building assess {} loop doesn't false-positive.
+      if (loopGuard.record(roundtripCalls.filter((c) => WRITE_TOOL_NAMES.has(c.name))))
+        loopBroken = true;
     }
 
     return {

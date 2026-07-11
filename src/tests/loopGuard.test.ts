@@ -49,61 +49,76 @@ describe("makeToolLoopGuard", () => {
 //    tool_use every time UNTIL tool_choice:"none" arrives, then a final answer.
 afterEach(() => vi.unstubAllGlobals());
 
-const TOOLS: ToolDefinition[] = [
-  { name: "assess_completeness", description: "", input_schema: { type: "object", properties: {} } },
-];
-
 function jsonRes(obj: unknown): Response {
   return new Response(JSON.stringify(obj), { status: 200 });
 }
 
-describe("loop guard shortens a runaway turn", () => {
-  it("forces a final answer at the limit instead of burning all 25 roundtrips", async () => {
-    let fetchCount = 0;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init: RequestInit) => {
-        fetchCount++;
-        const body = JSON.parse(init.body as string) as { tool_choice?: { type: string } };
-        const forced = body.tool_choice?.type === "none";
-        if (forced) {
-          return jsonRes({
-            id: "m",
-            type: "message",
-            role: "assistant",
-            content: [{ type: "text", text: "done" }],
-            model: "claude-sonnet-5",
-            stop_reason: "end_turn",
-            usage: { input_tokens: 1, output_tokens: 1 },
-          });
-        }
+// A mock Anthropic endpoint that repeats `loopTool` forever until forced to a
+// final answer via tool_choice:"none". Returns [reply, fetchCount()].
+function stubLoopingModel(loopTool: string) {
+  let fetchCount = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init: RequestInit) => {
+      fetchCount++;
+      const body = JSON.parse(init.body as string) as { tool_choice?: { type: string } };
+      if (body.tool_choice?.type === "none") {
         return jsonRes({
-          id: "m",
-          type: "message",
-          role: "assistant",
-          content: [{ type: "tool_use", id: "tu", name: "assess_completeness", input: {} }],
-          model: "claude-sonnet-5",
-          stop_reason: "tool_use",
+          id: "m", type: "message", role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          model: "claude-sonnet-5", stop_reason: "end_turn",
           usage: { input_tokens: 1, output_tokens: 1 },
         });
-      }),
-    );
+      }
+      return jsonRes({
+        id: "m", type: "message", role: "assistant",
+        content: [{ type: "tool_use", id: "tu", name: loopTool, input: {} }],
+        model: "claude-sonnet-5", stop_reason: "tool_use",
+        usage: { input_tokens: 1, output_tokens: 1 },
+      });
+    }),
+  );
+  return () => fetchCount;
+}
 
-    const reply = await anthropicProvider.chat({
-      apiKey: "sk-ant-" + "a".repeat(48),
-      baseUrl: "https://api.anthropic.com/v1/messages",
-      model: "claude-sonnet-5",
-      history: [],
-      userMessage: "loop please",
-      toolHandler: () => ({}),
-      tools: TOOLS,
-      systemPrompt: "SYS",
-      maxRoundtrips: 25,
-    });
+function runTurn(tools: ToolDefinition[], maxRoundtrips = 25) {
+  return anthropicProvider.chat({
+    apiKey: "sk-ant-" + "a".repeat(48),
+    baseUrl: "https://api.anthropic.com/v1/messages",
+    model: "claude-sonnet-5",
+    history: [],
+    userMessage: "loop please",
+    toolHandler: () => ({}),
+    tools,
+    systemPrompt: "SYS",
+    maxRoundtrips,
+  });
+}
 
+describe("loop guard shortens a runaway turn", () => {
+  it("forces a final answer when a WRITE tool repeats, not the full ceiling", async () => {
+    const tools: ToolDefinition[] = [
+      { name: "set_scenario", description: "", input_schema: { type: "object", properties: {} } },
+    ];
+    const fetchCount = stubLoopingModel("set_scenario");
+    const reply = await runTurn(tools);
     expect(reply.content).toBe("done");
-    // 4 identical tool_use roundtrips trip the guard, the 5th is forced-final.
-    expect(fetchCount).toBe(5);
-    expect(fetchCount).toBeLessThan(25);
+    // 4 identical set_scenario roundtrips trip the guard, the 5th is forced-final.
+    expect(fetchCount()).toBe(5);
+    expect(fetchCount()).toBeLessThan(25);
+  });
+
+  it("does NOT trip on a repeated READ — reads run to the ceiling but still answer", async () => {
+    // A legit multi-building flow re-issues identical `assess_completeness {}`
+    // after each building; that must not be mistaken for a runaway. Reads are
+    // excluded from the guard, so this runs to the 25-roundtrip ceiling and the
+    // ceiling's own forced-final still returns an answer (not an error).
+    const tools: ToolDefinition[] = [
+      { name: "assess_completeness", description: "", input_schema: { type: "object", properties: {} } },
+    ];
+    const fetchCount = stubLoopingModel("assess_completeness");
+    const reply = await runTurn(tools);
+    expect(reply.content).toBe("done");
+    expect(fetchCount()).toBe(26); // 25 roundtrips + the forced-final pass
   });
 });

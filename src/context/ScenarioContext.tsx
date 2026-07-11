@@ -646,9 +646,14 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
           merged.greenhouseWidthFt,
           merged.benchLayout,
         );
-        // Only when benches actually fit — never fabricate a zero canopy.
         if (solved.canopyAreaSqFt > 0) {
           merged.canopyAreaSqFt = Math.round(solved.canopyAreaSqFt);
+        } else {
+          // Benches enabled but they don't fit the house (rows = 0). Collapse
+          // canopy to the min floor instead of leaving a stale value from a
+          // prior fitting layout — otherwise the yield/utilization numbers
+          // contradict the 0-row plan + 3D views. clampMin re-floors to 50.
+          merged.canopyAreaSqFt = 50;
         }
       }
       return merged;

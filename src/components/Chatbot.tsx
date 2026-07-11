@@ -14,6 +14,7 @@ import {
   type ProviderId,
 } from "../services/chatbotService";
 import { PROVIDER_ORDER } from "../services/providers";
+import { WRITE_TOOL_NAMES } from "../services/chatbotTools";
 import { estimateCost, formatCost } from "../services/pricing";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
@@ -317,7 +318,12 @@ export default function Chatbot() {
     let anyUnpriced = false;
     for (const m of history) {
       if (!m.usage) continue;
-      inputTokens += m.usage.inputTokens;
+      // Include cache tokens so the token display can't disagree with the USD
+      // (estimateCost bills cache write/read; inputTokens excludes them).
+      inputTokens +=
+        m.usage.inputTokens +
+        (m.usage.cacheCreationTokens ?? 0) +
+        (m.usage.cacheReadTokens ?? 0);
       outputTokens += m.usage.outputTokens;
       const est = estimateCost(m.usage);
       if (est && est.usd === null && !est.isFree) anyUnpriced = true;
@@ -564,24 +570,33 @@ export default function Chatbot() {
         // (found live: GPT-5 wrote a made-up cropTargetId) would persist into
         // inputs and crash every derived-output consumer. Reject, don't apply.
         const rejected: Record<string, string> = {};
-        if ("cropTargetId" in merged && !cropTargets[merged.cropTargetId as string]) {
+        // Object.hasOwn (not `cropTargets[id]`): a bare index lets id "__proto__"
+        // resolve to Object.prototype (truthy) and slip past the guard.
+        if ("cropTargetId" in merged && !Object.hasOwn(cropTargets, String(merged.cropTargetId))) {
           rejected.cropTargetId = `unknown id "${merged.cropTargetId}" — valid: ${Object.keys(cropTargets).join(", ")}`;
           delete merged.cropTargetId;
         }
-        if ("fixtureId" in merged && !allFixtures[merged.fixtureId as string]) {
+        if ("fixtureId" in merged && !Object.hasOwn(allFixtures, String(merged.fixtureId))) {
           rejected.fixtureId = `unknown id "${merged.fixtureId}" — use list_fixtures for valid ids`;
           delete merged.fixtureId;
         }
-        const envelopePatch = rawPatches.envelope;
-        if (
-          envelopePatch &&
-          typeof envelopePatch === "object" &&
-          !Array.isArray(envelopePatch)
-        ) {
-          merged.envelope = {
-            ...(inputs.envelope as unknown as Record<string, unknown>),
-            ...(envelopePatch as Record<string, unknown>),
-          };
+        // Deep-merge ANY nested-object patch (envelope, benchLayout, …) onto the
+        // current value. A partial patch like {benchLayout:{benchWidthFt:5}} must
+        // not drop sibling fields — the clamp would then backfill them from
+        // defaults (e.g. re-disable benches). This is the shallow-merge class
+        // that already bit `envelope` once; generalizing it fixes every nested
+        // field, not just the two we know about.
+        const cur = inputs as unknown as Record<string, unknown>;
+        for (const [key, val] of Object.entries(rawPatches)) {
+          if (
+            val && typeof val === "object" && !Array.isArray(val) &&
+            cur[key] && typeof cur[key] === "object" && !Array.isArray(cur[key])
+          ) {
+            merged[key] = {
+              ...(cur[key] as Record<string, unknown>),
+              ...(val as Record<string, unknown>),
+            };
+          }
         }
         setInputs(merged as Partial<typeof inputs>);
         Object.assign(turnPatchRef.current, merged as Partial<typeof inputs>);
@@ -719,10 +734,14 @@ export default function Chatbot() {
           source: "custom",
           notes: input.notes ? String(input.notes) : undefined,
         };
-        addCustomFixture(fixture);
+        // Idempotent by deterministic id: a re-run of this turn (e.g. the
+        // rate-limit fallback replaying it on Gemini) must not append a
+        // duplicate — select the existing fixture instead of adding twice.
+        const existed = !!allFixtures[id];
+        if (!existed) addCustomFixture(fixture);
         setInputs({ fixtureId: id });
         turnPatchRef.current.fixtureId = id as typeof inputs.fixtureId;
-        return { added: id };
+        return existed ? { selected: id, note: "fixture already existed" } : { added: id };
       }
       case "compare_fixtures": {
         const ids = (input.fixtureIds as string[]) ?? [];
@@ -879,7 +898,10 @@ export default function Chatbot() {
         model,
         history,
         userMessage: userMsg,
-        attachments: sentAttachments,
+        // Pass the full set; chatTurn re-filters per provider, so a PDF the
+        // primary can't take still reaches a fallback (Gemini) that can.
+        // sentAttachments above only drives the primary's UI drop-note + guards.
+        attachments,
         toolHandler,
         signal: ctrl.signal,
         fallback,
@@ -908,8 +930,7 @@ export default function Chatbot() {
       // Hybrid confirm: direct writes applied immediately — offer one-click Undo
       // back to the pre-turn scenario. (set_simulation_time only moves the sim
       // clock, not inputs, so it doesn't arm Undo.)
-      const WRITE_TOOLS = ["set_scenario", "set_active_fixture", "add_custom_fixture"];
-      if (reply.toolTrace?.some((t) => WRITE_TOOLS.includes(t.name))) {
+      if (reply.toolTrace?.some((t) => WRITE_TOOL_NAMES.has(t.name))) {
         setUndoSnapshot(inputsBeforeTurn);
       }
     } catch (err) {

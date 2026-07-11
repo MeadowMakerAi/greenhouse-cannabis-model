@@ -1827,24 +1827,27 @@ function CannabisPlant({
  *  aisles. Shares the plan view's bench solver so 3D and plan stay in sync
  *  (rolling packs tight with one aisle; fixed spreads by benchWidth+aisle). */
 function Benches({
-  floorLength,
-  floorWidth,
+  footprintLength,
+  footprintWidth,
   benchLayout,
 }: {
-  floorLength: number;
-  floorWidth: number;
+  footprintLength: number;
+  footprintWidth: number;
   benchLayout: BenchLayoutInputs;
 }) {
-  const layout = solveBenchLayout(floorLength, floorWidth, benchLayout);
+  // Solve on the RAW footprint (same dims plan view + ScenarioContext use), not
+  // the min-clamped 3D floor — otherwise a small house packs more/longer rows
+  // here than the plan view + the derived canopy number report.
+  const layout = solveBenchLayout(footprintLength, footprintWidth, benchLayout);
   if (layout.rows === 0) return null;
   const deckY = 2.1; // rolling-bench tops sit ~2.4 ft — deck reads at bench height
   return (
     <group>
       {layout.rowRects.map((b, i) => {
-        // Solver rects are in corner-origin feet; the scene is centered on the
-        // floor origin, so shift each rect center by half the footprint.
-        const cx = b.xFt + b.wFt / 2 - floorLength / 2;
-        const cz = b.yFt + b.hFt / 2 - floorWidth / 2;
+        // Solver rects are in corner-origin feet; the footprint is centered on
+        // the floor origin, so shift each rect center by half the footprint.
+        const cx = b.xFt + b.wFt / 2 - footprintLength / 2;
+        const cz = b.yFt + b.hFt / 2 - footprintWidth / 2;
         return (
           <group key={i} position={[cx, 0, cz]}>
             {/* metal bench deck (structure) */}
@@ -3053,8 +3056,8 @@ export default function Greenhouse3D({
 
             {benchLayout?.enabled && (
               <Benches
-                floorLength={floorLength}
-                floorWidth={floorWidth}
+                footprintLength={derivedLength}
+                footprintWidth={derivedWidth}
                 benchLayout={benchLayout}
               />
             )}

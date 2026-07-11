@@ -1,4 +1,6 @@
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { DEFAULT_MAX_ROUNDTRIPS } from "./types";
+import { WRITE_TOOL_NAMES } from "../chatbotTools";
 import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
 import { makeToolLoopGuard } from "./loopGuard";
 
@@ -102,6 +104,23 @@ const MAX_TOKENS = 8192;
  * answer's text arrives live — otherwise does a plain buffered JSON request.
  * Either way it returns the same shape so the tool-use loop is identical.
  */
+/**
+ * Drop nulls and empty text blocks from an assistant turn's content. Anthropic
+ * sometimes emits a text block at index 0 then pivots to a tool_use (leaving
+ * text:""); echoing that back as an assistant message 400s with "text content
+ * blocks must be non-empty". Applied once at the requestAnthropicTurn boundary
+ * so BOTH the streaming and buffered paths return already-clean content — no
+ * consumer has to re-filter, and there's a single predicate to keep correct.
+ */
+function stripEmptyTextBlocks(
+  blocks: (APIContentBlock | null | undefined)[],
+): APIContentBlock[] {
+  return blocks.filter(
+    (b): b is APIContentBlock =>
+      b != null && !(b.type === "text" && (b.text ?? "").length === 0),
+  );
+}
+
 async function requestAnthropicTurn(
   req: AnthropicRequest,
   signal: AbortSignal | undefined,
@@ -141,7 +160,7 @@ async function requestAnthropicTurn(
   }
   const json = (await res.json()) as APIResponse;
   return {
-    content: json.content,
+    content: stripEmptyTextBlocks(json.content),
     stop_reason: json.stop_reason,
     usage: {
       input_tokens: json.usage?.input_tokens ?? 0,
@@ -287,13 +306,7 @@ export async function readAnthropicStream(
   }
 
   return {
-    // Filter nulls AND empty text blocks. Anthropic sometimes emits a text block
-    // at index 0 then pivots to a tool_use (leaving text:""). Sending that back
-    // as part of an assistant message causes a 400 "text content blocks must be
-    // non-empty" on the next roundtrip.
-    content: blocks.filter(
-      (b): b is APIContentBlock => b != null && !(b.type === "text" && (b.text ?? "").length === 0),
-    ),
+    content: stripEmptyTextBlocks(blocks),
     stop_reason: stopReason,
     usage: {
       input_tokens: inputTokens,
@@ -315,7 +328,7 @@ export const anthropicProvider: ChatProvider = {
     toolHandler,
     tools,
     systemPrompt,
-    maxRoundtrips = 6,
+    maxRoundtrips = DEFAULT_MAX_ROUNDTRIPS,
     signal,
     onDelta,
     onRoundtripStart,
@@ -398,14 +411,10 @@ export const anthropicProvider: ChatProvider = {
       cacheCreationTokens += turn.usage.cache_creation_input_tokens;
       cacheReadTokens += turn.usage.cache_read_input_tokens;
 
-      // Anthropic rejects messages with empty text blocks ("text content blocks must
-      // be non-empty"). The streaming assembler initialises text blocks with "" and
-      // fills them via deltas; a block that receives no deltas stays empty. Filter
-      // before pushing so multi-roundtrip tool loops don't 400 on the second call.
-      const cleanContent = turn.content.filter(
-        (b) => b.type !== "text" || (b.text ?? "").length > 0,
-      );
-      apiHistory.push({ role: "assistant", content: cleanContent });
+      // turn.content is already stripped of empty text blocks at the
+      // requestAnthropicTurn boundary (stripEmptyTextBlocks), so it's safe to
+      // echo straight back without a 400 "text content blocks must be non-empty".
+      apiHistory.push({ role: "assistant", content: turn.content });
 
       if (turn.stop_reason !== "tool_use") {
         finalText = turn.content
@@ -437,8 +446,11 @@ export const anthropicProvider: ChatProvider = {
           content: JSON.stringify(output),
         });
       }
-      // Repeating the same call? Force a final answer next pass.
-      if (loopGuard.record(roundtripCalls)) loopBroken = true;
+      // Repeating the same WRITE? Force a final answer next pass. Reads are
+      // excluded — a legit flow re-issues identical reads (assess {}) per
+      // building; only a stuck mutation loop is a real runaway.
+      if (loopGuard.record(roundtripCalls.filter((c) => WRITE_TOOL_NAMES.has(c.name))))
+        loopBroken = true;
       apiHistory.push({ role: "user", content: toolResultBlocks });
     }
 

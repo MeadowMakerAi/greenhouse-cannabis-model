@@ -1,6 +1,7 @@
 import { dliToPPFD, ppfdToDLI } from "../models/dliModel";
 import { fixtureKWFromPPFD, type FixtureSpec } from "../models/fixtureModel";
 import { DAYS_IN_MONTH } from "../utils/formatting";
+import { btuhrToTons } from "../utils/unitConversions";
 import type { VentilationMode } from "../context/ScenarioContext";
 
 /**
@@ -224,6 +225,11 @@ export function recommendLighting(
   if (a.photoperiodHours <= 0 || a.canopyAreaSqFt <= 0) {
     return { error: "photoperiodHours and canopyAreaSqFt must be positive." };
   }
+  // A supplied target must be positive — a zero targetDLI both divides-by-zero
+  // in the consistency check below and sizes every fixture to 0.
+  if ((a.targetPPFD != null && a.targetPPFD <= 0) || (a.targetDLI != null && a.targetDLI <= 0)) {
+    return { error: "targetPPFD / targetDLI must be positive." };
+  }
   // Both given? They must describe the same design point — otherwise we'd size
   // to one number and report the other. Within tolerance, PPFD is canonical.
   if (a.targetPPFD != null && a.targetDLI != null) {
@@ -286,7 +292,7 @@ export function recommendLighting(
     // Heat/tons from grow-core's own lightingHeatBTUhr — no re-typed constants.
     addedHeatBTUhr: Math.round(sized.lightingHeatBTUhr),
     // 1 ton of refrigeration = 12,000 BTU/hr (definitional).
-    addedCoolingTons: +(sized.lightingHeatBTUhr / 12000).toFixed(1),
+    addedCoolingTons: +btuhrToTons(sized.lightingHeatBTUhr).toFixed(1),
     worstMonthEnergyCostUSD: Math.round(sized.monthlyCostUSD),
   }));
 

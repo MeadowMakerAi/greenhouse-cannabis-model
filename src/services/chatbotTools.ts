@@ -16,6 +16,20 @@ export interface ToolDefinition {
   };
 }
 
+/**
+ * Tools that mutate scenario state (vs. read-only reads/proposals). The
+ * non-converging loop guard counts only these: a legitimate multi-building
+ * flow re-issues byte-identical READS (`assess_completeness {}` after each
+ * building), so counting reads toward the repeat limit would false-positive
+ * and force a premature final answer. A stuck WRITE loop (same set_scenario
+ * over and over) is the real runaway the guard exists to catch.
+ */
+export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "set_scenario",
+  "set_active_fixture",
+  "add_custom_fixture",
+]);
+
 export const CHATBOT_TOOLS: ToolDefinition[] = [
   {
     name: "get_scenario",

@@ -17,9 +17,12 @@ interface NumberFieldProps {
    * (live) inputs.
    */
   debounceMs?: number;
+  /** Read-only: shows the value but blocks edits (e.g. canopy while benched,
+   *  where the bench layout owns it). */
+  disabled?: boolean;
 }
 
-export function NumberField({ label, value, onChange, step = 1, min, max, unit, hint, debounceMs }: NumberFieldProps) {
+export function NumberField({ label, value, onChange, step = 1, min, max, unit, hint, debounceMs, disabled }: NumberFieldProps) {
   // Draft holds the in-progress text only while debouncing. null = "show the
   // committed prop value" (so external changes — presets, canopy auto-scale —
   // flow straight through when the user isn't mid-edit).
@@ -81,6 +84,7 @@ export function NumberField({ label, value, onChange, step = 1, min, max, unit, 
         step={step}
         min={min}
         max={max}
+        disabled={disabled}
         onChange={(e) => handleChange(e.target.value)}
         onBlur={debounceMs ? (e) => handleBlur(e.target.value) : undefined}
       />
