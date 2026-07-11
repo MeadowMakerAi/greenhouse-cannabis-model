@@ -287,7 +287,13 @@ export async function readAnthropicStream(
   }
 
   return {
-    content: blocks.filter((b): b is APIContentBlock => b != null),
+    // Filter nulls AND empty text blocks. Anthropic sometimes emits a text block
+    // at index 0 then pivots to a tool_use (leaving text:""). Sending that back
+    // as part of an assistant message causes a 400 "text content blocks must be
+    // non-empty" on the next roundtrip.
+    content: blocks.filter(
+      (b): b is APIContentBlock => b != null && !(b.type === "text" && (b.text ?? "").length === 0),
+    ),
     stop_reason: stopReason,
     usage: {
       input_tokens: inputTokens,
@@ -392,7 +398,14 @@ export const anthropicProvider: ChatProvider = {
       cacheCreationTokens += turn.usage.cache_creation_input_tokens;
       cacheReadTokens += turn.usage.cache_read_input_tokens;
 
-      apiHistory.push({ role: "assistant", content: turn.content });
+      // Anthropic rejects messages with empty text blocks ("text content blocks must
+      // be non-empty"). The streaming assembler initialises text blocks with "" and
+      // fills them via deltas; a block that receives no deltas stays empty. Filter
+      // before pushing so multi-roundtrip tool loops don't 400 on the second call.
+      const cleanContent = turn.content.filter(
+        (b) => b.type !== "text" || (b.text ?? "").length > 0,
+      );
+      apiHistory.push({ role: "assistant", content: cleanContent });
 
       if (turn.stop_reason !== "tool_use") {
         finalText = turn.content
