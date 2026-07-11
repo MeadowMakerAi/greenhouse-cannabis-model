@@ -28,8 +28,6 @@ const PRICES: Record<string, Price> = {
   "gpt-5.6-sol": { in: 5, out: 30 },
   "gpt-5.6-terra": { in: 2.5, out: 15 },
   "gpt-5.6-luna": { in: 1, out: 6 },
-  // xAI
-  "grok-4.5": { in: 2, out: 6 },
 };
 
 // Model ids treated as free (Gemini free tier, Groq free, local Ollama,

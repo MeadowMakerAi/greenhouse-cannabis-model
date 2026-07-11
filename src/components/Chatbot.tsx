@@ -738,6 +738,19 @@ export default function Chatbot() {
     const ctrl = new AbortController();
     chatAbortRef.current = ctrl;
     try {
+      // Auto-fallback: if the primary rate-limits (esp. Anthropic's 30k-tok/min
+      // on a big spec sheet), retry once on Gemini when a Gemini key is saved —
+      // free, 1M context, native PDF. Skipped if already on Gemini or no key.
+      const geminiKey = storedKeyFor("gemini");
+      const fallback =
+        providerId !== "gemini" && isProviderKeyValid("gemini", geminiKey)
+          ? {
+              providerId: "gemini" as ProviderId,
+              apiKey: geminiKey,
+              model: PROVIDER_CONFIGS.gemini.defaultModel,
+            }
+          : undefined;
+      let fellBackTo: ProviderId | null = null;
       const reply = await chatTurn({
         providerId,
         apiKey,
@@ -747,6 +760,12 @@ export default function Chatbot() {
         attachments: sentAttachments,
         toolHandler,
         signal: ctrl.signal,
+        fallback,
+        onFallback: (_from, to) => {
+          fellBackTo = to;
+          setStreaming(null); // drop any primary preamble before the retry
+          setToolActivity(null);
+        },
         onDelta: (delta) => setStreaming((s) => (s ?? "") + delta),
         // Each roundtrip starts a fresh live buffer — a tool-use turn's preamble
         // is cleared instead of accumulating ahead of the final answer. Clearing
@@ -758,6 +777,11 @@ export default function Chatbot() {
         },
         onToolCall: (name) => setToolActivity(name),
       });
+      if (fellBackTo) {
+        reply.content =
+          `_${cfg.label} was rate-limited — answered with ${PROVIDER_CONFIGS[fellBackTo as ProviderId].label} instead._\n\n` +
+          reply.content;
+      }
       setHistory((h) => [...h, reply]);
       // Hybrid confirm: direct writes applied immediately — offer one-click Undo
       // back to the pre-turn scenario. (set_simulation_time only moves the sim

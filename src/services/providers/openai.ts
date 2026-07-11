@@ -146,7 +146,7 @@ export const openAICompatibleProvider: ChatProvider = {
     // GPT-5.x / o-series on api.openai.com REJECT `max_tokens` (HTTP 400,
     // "Unsupported parameter … use max_completion_tokens instead") and require
     // `max_completion_tokens`. The other OpenAI-compatible hosts routed through
-    // this client (xAI/Grok, OpenRouter, Groq, Ollama) still use classic
+    // this client (OpenRouter, Groq, Ollama) still use classic
     // `max_tokens`. Pick the cap key by host. 4096 = headroom for a multi-tool
     // actuation turn without truncation.
     const tokenCap =
