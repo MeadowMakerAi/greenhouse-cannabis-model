@@ -1,5 +1,13 @@
 import type { ToolDefinition } from "../chatbotTools";
 
+/**
+ * Roundtrip ceiling for a single chat turn — a runaway backstop, not a budget.
+ * The dispatcher passes this to every provider; a provider's own default is
+ * only reached on a direct call (tests, agentSwarm), so all paths share one
+ * source of truth instead of each provider re-declaring its own number.
+ */
+export const DEFAULT_MAX_ROUNDTRIPS = 25;
+
 export type ChatRole = "user" | "assistant";
 
 /**
@@ -11,6 +19,11 @@ export type ChatRole = "user" | "assistant";
 export interface ChatUsage {
   inputTokens: number;
   outputTokens: number;
+  /** Anthropic prompt-caching: tokens written to cache (bill ~1.25× input) and
+   *  read from cache (~0.10× input). `inputTokens` excludes cached tokens, so
+   *  the cost meter weights these separately. Absent for non-caching providers. */
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
   model: string;
   provider?: ProviderId;
 }
@@ -36,7 +49,7 @@ export type ToolHandler = (
   input: Record<string, unknown>,
 ) => Promise<unknown> | unknown;
 
-export type ProviderId = "anthropic" | "openai" | "xai" | "openrouter" | "groq" | "gemini" | "ollama";
+export type ProviderId = "anthropic" | "openai" | "openrouter" | "groq" | "gemini" | "ollama";
 
 export interface ProviderConfig {
   /** Stable provider identifier. */

@@ -31,9 +31,10 @@ import {
   skyParamsFromElevation,
 } from "../models/kelvinModel";
 import { solveFixtureGrid } from "../models/fixtureGrid";
+import { solveBenchLayout } from "../models/benchLayout";
 import WeatherParticles from "./WeatherParticles";
 import EquipmentObjects from "./EquipmentObjects";
-import type { PlacedEquipment } from "../context/ScenarioContext";
+import type { PlacedEquipment, BenchLayoutInputs } from "../context/ScenarioContext";
 import type { LiveWeatherState } from "../context/useLiveWeather";
 
 interface Props {
@@ -1821,6 +1822,59 @@ function CannabisPlant({
   );
 }
 
+/** Bench rows on the greenhouse floor — the top-down layout made physical.
+ *  Green trays read as planted benches; the gaps between/around them are the
+ *  aisles. Shares the plan view's bench solver so 3D and plan stay in sync
+ *  (rolling packs tight with one aisle; fixed spreads by benchWidth+aisle). */
+function Benches({
+  footprintLength,
+  footprintWidth,
+  benchLayout,
+}: {
+  footprintLength: number;
+  footprintWidth: number;
+  benchLayout: BenchLayoutInputs;
+}) {
+  // Solve on the RAW footprint (same dims plan view + ScenarioContext use), not
+  // the min-clamped 3D floor — otherwise a small house packs more/longer rows
+  // here than the plan view + the derived canopy number report.
+  const layout = solveBenchLayout(footprintLength, footprintWidth, benchLayout);
+  if (layout.rows === 0) return null;
+  const deckY = 2.1; // rolling-bench tops sit ~2.4 ft — deck reads at bench height
+  return (
+    <group>
+      {layout.rowRects.map((b, i) => {
+        // Solver rects are in corner-origin feet; the footprint is centered on
+        // the floor origin, so shift each rect center by half the footprint.
+        const cx = b.xFt + b.wFt / 2 - footprintLength / 2;
+        const cz = b.yFt + b.hFt / 2 - footprintWidth / 2;
+        return (
+          <group key={i} position={[cx, 0, cz]}>
+            {/* metal bench deck (structure) */}
+            <mesh position={[0, deckY, 0]} castShadow receiveShadow>
+              <boxGeometry args={[b.wFt, 0.14, b.hFt]} />
+              <meshStandardMaterial color="#9aa0a8" roughness={0.8} metalness={0.4} />
+            </mesh>
+            {/* support rail below so the deck doesn't read as floating */}
+            <mesh position={[0, deckY - 0.9, 0]}>
+              <boxGeometry args={[b.wFt, 0.1, b.hFt * 0.6]} />
+              <meshStandardMaterial color="#5a6270" roughness={0.9} metalness={0.3} />
+            </mesh>
+            {/* planted canopy sitting ON the deck — this is what makes the
+                bench read as growing area, aligned to the real layout. */}
+            <mesh position={[0, deckY + 0.75, 0]} castShadow>
+              <boxGeometry
+                args={[b.wFt - 0.4, 1.3, Math.max(0.4, b.hFt - 0.5)]}
+              />
+              <meshStandardMaterial color="#3f9d63" roughness={0.75} />
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
 function CanopyAndPlants({
   canopyOffsetX,
   canopyOffsetZ,
@@ -1828,6 +1882,7 @@ function CanopyAndPlants({
   canopyWidth,
   plantHeight,
   plantGrowth,
+  benched = false,
 }: {
   canopyOffsetX: number;
   canopyOffsetZ: number;
@@ -1835,7 +1890,14 @@ function CanopyAndPlants({
   canopyWidth: number;
   plantHeight: number;
   plantGrowth?: PlantGrowthGeom;
+  /** When benched, the <Benches> group renders the canopy as planted decks —
+   *  suppress the centered plant block + highlight plane to avoid a misaligned
+   *  double canopy. */
+  benched?: boolean;
 }) {
+  // Benched: benches ARE the canopy in 3D (see <Benches>). Skip the centered
+  // block so plants don't float in the aisles.
+  if (benched) return null;
   // Realistic plant layout — decoupled from the FIXTURE grid. (The bug: plants
   // were tiled one-per-fixture, so rows went sparse/unrealistic as the
   // greenhouse grew.) Flowering cannabis sits ~2 ft on-center, far denser than
@@ -2659,6 +2721,7 @@ export default function Greenhouse3D({
   lightsDimLevel = 1,
   greenhouseLengthFt,
   greenhouseWidthFt,
+  benchLayout,
   plantGrowth,
   fixtureFormFactor = "bar",
   fixtureKelvin = 3500,
@@ -2674,6 +2737,8 @@ export default function Greenhouse3D({
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
   greenhouseWidthFt?: number;
+  /** Optional bench layout — renders physical bench rows on the floor. */
+  benchLayout?: BenchLayoutInputs;
   /** When true, drop the panel border/bg and let the canvas read as the
    *  page substrate (Tesla 2026.14 / Bookmap pattern). Used on Live +
    *  Cultivation Science tabs where the scene IS the focus. */
@@ -2986,7 +3051,16 @@ export default function Greenhouse3D({
               canopyWidth={canopyWidth}
               plantHeight={plantHeight}
               plantGrowth={plantGrowth}
+              benched={!!benchLayout?.enabled}
             />
+
+            {benchLayout?.enabled && (
+              <Benches
+                footprintLength={derivedLength}
+                footprintWidth={derivedWidth}
+                benchLayout={benchLayout}
+              />
+            )}
 
             {/* Supplemental lighting only exists under a greenhouse roof. */}
             {showEnvelope && (

@@ -1,5 +1,8 @@
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { DEFAULT_MAX_ROUNDTRIPS } from "./types";
+import { WRITE_TOOL_NAMES } from "../chatbotTools";
 import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
+import { makeToolLoopGuard } from "./loopGuard";
 
 interface APIContentBlock {
   type: "text" | "tool_use" | "tool_result" | "image" | "document";
@@ -29,7 +32,14 @@ interface APIResponse {
   content: APIContentBlock[];
   model: string;
   stop_reason: "end_turn" | "max_tokens" | "tool_use" | "stop_sequence";
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    // Prompt-caching token accounting: writes bill ~1.25× input, reads ~0.10×.
+    // `input_tokens` EXCLUDES cached tokens, so these are tracked separately.
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 export const ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1/messages";
@@ -38,10 +48,31 @@ export function isAnthropicKeyFormat(key: string): boolean {
   return /^sk-ant-[a-zA-Z0-9_-]{40,}$/.test(key.trim());
 }
 
+/**
+ * Clone the tools array and tag the last tool with cache_control, so the whole
+ * (static, ~few-k-token) tool block is cached and not reprocessed every
+ * roundtrip. Non-array / empty tools pass through untouched. Below the model's
+ * minimum cacheable length the marker is a silent no-op — never an error.
+ */
+function markLastToolCached(tools: unknown): unknown {
+  if (!Array.isArray(tools) || tools.length === 0) return tools;
+  const out = tools.slice();
+  out[out.length - 1] = {
+    ...(out[out.length - 1] as Record<string, unknown>),
+    cache_control: { type: "ephemeral" },
+  };
+  return out;
+}
+
 interface AnthropicTurn {
   content: APIContentBlock[];
   stop_reason: APIResponse["stop_reason"];
-  usage: { input_tokens: number; output_tokens: number };
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens: number;
+    cache_read_input_tokens: number;
+  };
 }
 
 interface AnthropicRequest {
@@ -73,12 +104,34 @@ const MAX_TOKENS = 8192;
  * answer's text arrives live — otherwise does a plain buffered JSON request.
  * Either way it returns the same shape so the tool-use loop is identical.
  */
+/**
+ * Drop nulls and empty text blocks from an assistant turn's content. Anthropic
+ * sometimes emits a text block at index 0 then pivots to a tool_use (leaving
+ * text:""); echoing that back as an assistant message 400s with "text content
+ * blocks must be non-empty". Applied once at the requestAnthropicTurn boundary
+ * so BOTH the streaming and buffered paths return already-clean content — no
+ * consumer has to re-filter, and there's a single predicate to keep correct.
+ */
+function stripEmptyTextBlocks(
+  blocks: (APIContentBlock | null | undefined)[],
+): APIContentBlock[] {
+  return blocks.filter(
+    (b): b is APIContentBlock =>
+      b != null && !(b.type === "text" && (b.text ?? "").length === 0),
+  );
+}
+
 async function requestAnthropicTurn(
   req: AnthropicRequest,
   signal: AbortSignal | undefined,
   onDelta?: (delta: string) => void,
 ): Promise<AnthropicTurn> {
   const streaming = typeof onDelta === "function";
+  // Prompt caching: cache the static prefix (tool schemas + system prompt) that
+  // is otherwise re-sent and reprocessed on every roundtrip. Mark BOTH the last
+  // tool and the system block so the whole prefix caches regardless of
+  // section-spanning behavior. Default 5-minute ephemeral TTL spans a turn's
+  // roundtrips (seconds apart); cross-turn hits within 5 min are a bonus.
   const res = await fetch(req.baseUrl, {
     method: "POST",
     signal: timedSignal(CHAT_TIMEOUT_MS, signal),
@@ -86,8 +139,10 @@ async function requestAnthropicTurn(
     body: JSON.stringify({
       model: req.model,
       max_tokens: MAX_TOKENS,
-      system: req.systemPrompt,
-      tools: req.tools,
+      system: [
+        { type: "text", text: req.systemPrompt, cache_control: { type: "ephemeral" } },
+      ],
+      tools: markLastToolCached(req.tools),
       ...(req.toolChoice ? { tool_choice: req.toolChoice } : {}),
       messages: req.messages,
       ...(streaming ? { stream: true } : {}),
@@ -105,11 +160,13 @@ async function requestAnthropicTurn(
   }
   const json = (await res.json()) as APIResponse;
   return {
-    content: json.content,
+    content: stripEmptyTextBlocks(json.content),
     stop_reason: json.stop_reason,
     usage: {
       input_tokens: json.usage?.input_tokens ?? 0,
       output_tokens: json.usage?.output_tokens ?? 0,
+      cache_creation_input_tokens: json.usage?.cache_creation_input_tokens ?? 0,
+      cache_read_input_tokens: json.usage?.cache_read_input_tokens ?? 0,
     },
   };
 }
@@ -132,6 +189,8 @@ export async function readAnthropicStream(
   let stopReason: APIResponse["stop_reason"] = "end_turn";
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheCreation = 0;
+  let cacheRead = 0;
   let sawMessageStop = false;
 
   const processLine = (line: string): void => {
@@ -146,8 +205,16 @@ export async function readAnthropicStream(
     }
     switch (evt.type) {
       case "message_start": {
-        const u = (evt.message as { usage?: { input_tokens?: number } })?.usage;
+        const u = (evt.message as {
+          usage?: {
+            input_tokens?: number;
+            cache_creation_input_tokens?: number;
+            cache_read_input_tokens?: number;
+          };
+        })?.usage;
         inputTokens = u?.input_tokens ?? 0;
+        cacheCreation = u?.cache_creation_input_tokens ?? 0;
+        cacheRead = u?.cache_read_input_tokens ?? 0;
         break;
       }
       case "content_block_start": {
@@ -239,9 +306,14 @@ export async function readAnthropicStream(
   }
 
   return {
-    content: blocks.filter((b): b is APIContentBlock => b != null),
+    content: stripEmptyTextBlocks(blocks),
     stop_reason: stopReason,
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_creation_input_tokens: cacheCreation,
+      cache_read_input_tokens: cacheRead,
+    },
   };
 }
 
@@ -256,7 +328,7 @@ export const anthropicProvider: ChatProvider = {
     toolHandler,
     tools,
     systemPrompt,
-    maxRoundtrips = 6,
+    maxRoundtrips = DEFAULT_MAX_ROUNDTRIPS,
     signal,
     onDelta,
     onRoundtripStart,
@@ -292,14 +364,21 @@ export const anthropicProvider: ChatProvider = {
     let finalText = "";
     let inputTokens = 0;
     let outputTokens = 0;
+    let cacheCreationTokens = 0;
+    let cacheReadTokens = 0;
 
     // One extra iteration beyond the tool budget: if the model is still
     // mid-tool-flow when the budget runs out, that last pass sends
     // tool_choice:"none" to FORCE a final text answer — a big spec ingest
     // (apply → assess → recommend → derive) can legitimately spend every
     // roundtrip on tools, and dead-ending there wastes the whole turn.
+    // The loop guard forces that same final answer early if the model starts
+    // repeating an identical call (a non-converging loop), so the high ceiling
+    // is safe.
+    const loopGuard = makeToolLoopGuard();
+    let loopBroken = false;
     for (let i = 0; i <= maxRoundtrips; i++) {
-      const outOfBudget = i === maxRoundtrips;
+      const forceFinal = i === maxRoundtrips || loopBroken;
       // New roundtrip: let the UI clear its live buffer so a tool-use turn's
       // preamble doesn't accumulate ahead of the final answer.
       if (onDelta) onRoundtripStart?.();
@@ -316,7 +395,7 @@ export const anthropicProvider: ChatProvider = {
             systemPrompt,
             tools,
             messages: apiHistory,
-            ...(outOfBudget ? { toolChoice: { type: "none" as const } } : {}),
+            ...(forceFinal ? { toolChoice: { type: "none" as const } } : {}),
           },
           signal,
           onDelta,
@@ -329,7 +408,12 @@ export const anthropicProvider: ChatProvider = {
 
       inputTokens += turn.usage.input_tokens;
       outputTokens += turn.usage.output_tokens;
+      cacheCreationTokens += turn.usage.cache_creation_input_tokens;
+      cacheReadTokens += turn.usage.cache_read_input_tokens;
 
+      // turn.content is already stripped of empty text blocks at the
+      // requestAnthropicTurn boundary (stripEmptyTextBlocks), so it's safe to
+      // echo straight back without a 400 "text content blocks must be non-empty".
       apiHistory.push({ role: "assistant", content: turn.content });
 
       if (turn.stop_reason !== "tool_use") {
@@ -342,11 +426,13 @@ export const anthropicProvider: ChatProvider = {
       }
 
       const toolResultBlocks: APIContentBlock[] = [];
+      const roundtripCalls: { name: string; input: unknown }[] = [];
       for (const block of turn.content) {
         if (block.type !== "tool_use") continue;
         const name = block.name!;
         onToolCall?.(name);
         const input = (block.input ?? {}) as Record<string, unknown>;
+        roundtripCalls.push({ name, input });
         let output: unknown;
         try {
           output = await toolHandler(name, input);
@@ -360,6 +446,11 @@ export const anthropicProvider: ChatProvider = {
           content: JSON.stringify(output),
         });
       }
+      // Repeating the same WRITE? Force a final answer next pass. Reads are
+      // excluded — a legit flow re-issues identical reads (assess {}) per
+      // building; only a stuck mutation loop is a real runaway.
+      if (loopGuard.record(roundtripCalls.filter((c) => WRITE_TOOL_NAMES.has(c.name))))
+        loopBroken = true;
       apiHistory.push({ role: "user", content: toolResultBlocks });
     }
 
@@ -367,7 +458,7 @@ export const anthropicProvider: ChatProvider = {
       role: "assistant",
       content: finalText || "(No final response after tool roundtrips.)",
       toolTrace: toolTrace.length ? toolTrace : undefined,
-      usage: { inputTokens, outputTokens, model },
+      usage: { inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, model },
     };
   },
 };

@@ -1,6 +1,9 @@
 import type { ToolDefinition } from "../chatbotTools";
+import { WRITE_TOOL_NAMES } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { DEFAULT_MAX_ROUNDTRIPS } from "./types";
 import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
+import { makeToolLoopGuard } from "./loopGuard";
 
 /**
  * Google Gemini native API. Picked specifically because the free tier has
@@ -92,7 +95,7 @@ export const geminiProvider: ChatProvider = {
     toolHandler,
     tools,
     systemPrompt,
-    maxRoundtrips = 6,
+    maxRoundtrips = DEFAULT_MAX_ROUNDTRIPS,
     signal,
     onToolCall,
   }: ChatTurnArgs): Promise<ChatMessage> {
@@ -124,9 +127,11 @@ export const geminiProvider: ChatProvider = {
 
     // One extra iteration beyond the tool budget with function calling
     // disabled to force a final text answer instead of dead-ending
-    // (see anthropic.ts).
+    // (see anthropic.ts). The loop guard forces that early on a repeat loop.
+    const loopGuard = makeToolLoopGuard();
+    let loopBroken = false;
     for (let i = 0; i <= maxRoundtrips; i++) {
-      const outOfBudget = i === maxRoundtrips;
+      const forceFinal = i === maxRoundtrips || loopBroken;
       const body = {
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents,
@@ -134,7 +139,7 @@ export const geminiProvider: ChatProvider = {
           functionDeclarations.length > 0
             ? [{ functionDeclarations }]
             : undefined,
-        ...(outOfBudget && functionDeclarations.length > 0
+        ...(forceFinal && functionDeclarations.length > 0
           ? { toolConfig: { functionCallingConfig: { mode: "NONE" } } }
           : {}),
         safetySettings: HARMLESS_SETTINGS,
@@ -181,7 +186,7 @@ export const geminiProvider: ChatProvider = {
       const parts = candidate.content.parts || [];
       const functionCalls = parts.filter(isFunctionCallPart);
 
-      if (functionCalls.length === 0 || outOfBudget) {
+      if (functionCalls.length === 0 || forceFinal) {
         finalText = parts
           .filter(isTextPart)
           .map((p) => p.text)
@@ -191,10 +196,12 @@ export const geminiProvider: ChatProvider = {
       }
 
       const responseParts: GeminiPart[] = [];
+      const roundtripCalls: { name: string; input: unknown }[] = [];
       for (const call of functionCalls) {
         const name = call.functionCall.name;
         onToolCall?.(name);
         const input = call.functionCall.args ?? {};
+        roundtripCalls.push({ name, input });
         let output: unknown;
         try {
           output = await toolHandler(name, input);
@@ -209,6 +216,10 @@ export const geminiProvider: ChatProvider = {
           },
         });
       }
+      // Repeating the same WRITE? Force a final answer next pass. Reads are
+      // excluded so a legit per-building assess {} loop doesn't false-positive.
+      if (loopGuard.record(roundtripCalls.filter((c) => WRITE_TOOL_NAMES.has(c.name))))
+        loopBroken = true;
       contents.push({ role: "user", parts: responseParts });
     }
 

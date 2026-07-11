@@ -118,6 +118,14 @@ export default {
       letterSpacing: {
         tightest: "-0.04em",
       },
+      fontSize: {
+        // Readability bump over Tailwind defaults. The dashboard skews dense;
+        // the small end (xs 12→13, sm 14→15) is where legibility hurt most.
+        // Only the small sizes are nudged — base/lg+ keep defaults so headings
+        // and layouts don't reflow. Line-heights scaled to match.
+        xs: ["0.8125rem", { lineHeight: "1.125rem" }], // 13px / 18
+        sm: ["0.9375rem", { lineHeight: "1.375rem" }], // 15px / 22
+      },
       boxShadow: {
         // Legacy alias — still used by `.recharts-default-tooltip`.
         card: "0 1px 2px rgba(13,17,23,0.04), 0 1px 1px rgba(13,17,23,0.04)",

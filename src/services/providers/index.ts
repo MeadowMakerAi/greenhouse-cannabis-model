@@ -19,15 +19,15 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     keyUrl: "https://console.anthropic.com/settings/keys",
     defaultModel: "claude-sonnet-5",
     models: [
-      { value: "claude-sonnet-5", label: "Sonnet 5 (recommended — fast, agentic tool-use)" },
+      { value: "claude-sonnet-5", label: "Sonnet 5 (default — fast, agentic tool-use)" },
+      { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (cheapest — simple turns)" },
       { value: "claude-opus-4-8", label: "Opus 4.8 (deep reasoning)" },
       { value: "claude-fable-5", label: "Fable 5 (max capability — slower, pricier)" },
       { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (legacy balanced)" },
-      { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (fastest, lighter)" },
     ],
     supportsImages: true,
     supportsPdf: true,
-    note: "Best tool-use + native PDF. Sonnet 5 is the default — near-Opus quality, faster, cheaper. Hits the 30k tokens/min rate limit on big spec sheets — switch to Gemini if rate-limited.",
+    note: "Best tool-use + native PDF. Sonnet 5 is the default — near-Opus agentic quality at low latency, the right call for capability-bound spec ingestion. Big spec sheets that trip the 30k-tok/min limit auto-retry on Gemini; drop to Haiku 4.5 for cheap simple turns.",
   },
   gemini: {
     id: "gemini",
@@ -79,27 +79,6 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     supportsImages: true,
     supportsPdf: false,
     note: "PDFs are not supported here — convert spec sheets to images or use Gemini/Anthropic for PDF ingest.",
-  },
-  xai: {
-    id: "xai",
-    label: "xAI (Grok)",
-    defaultBaseUrl: "https://api.x.ai/v1",
-    allowedHosts: ["api.x.ai"],
-    requiresKey: true,
-    allowCustomBaseUrl: false,
-    keyHint: "xai-...",
-    keyFormat: /^xai-[A-Za-z0-9_-]{20,}$/,
-    keyUrl: "https://console.x.ai",
-    defaultModel: "grok-4.5",
-    models: [
-      { value: "grok-4.5", label: "Grok 4.5 (fast, agentic, cheap)" },
-    ],
-    supportsImages: false,
-    supportsPdf: false,
-    // OpenAI-compatible endpoint, so it routes through openAICompatibleProvider.
-    // Text-only here (image/PDF support unverified for Grok 4.5) — use Gemini/
-    // Anthropic for spec sheets. Grok is not yet available in the EU.
-    note: "OpenAI-compatible, fast + cheap tool-use. Text-only here — use Gemini/Anthropic for image/PDF spec sheets. Not available in the EU yet.",
   },
   openrouter: {
     id: "openrouter",
@@ -170,7 +149,6 @@ export const PROVIDER_ORDER: ProviderId[] = [
   "anthropic",
   "gemini",
   "openai",
-  "xai",
   "openrouter",
   "groq",
   "ollama",
@@ -183,7 +161,6 @@ export function getProvider(id: ProviderId): ChatProvider {
     case "gemini":
       return geminiProvider;
     case "openai":
-    case "xai":
     case "openrouter":
     case "groq":
     case "ollama":

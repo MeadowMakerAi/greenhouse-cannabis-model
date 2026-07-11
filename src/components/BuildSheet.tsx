@@ -631,6 +631,9 @@ export default function BuildSheet() {
           fixtureCount={optFixtureCount}
           gridSpacingFt={optGridSpacing}
           fixtureLabel={optimal?.fixture.label ?? d.fixture.label}
+          greenhouseLengthFt={inputs.greenhouseLengthFt}
+          greenhouseWidthFt={inputs.greenhouseWidthFt}
+          benchLayout={inputs.benchLayout}
         />
       </Section>
 
@@ -835,6 +838,7 @@ function Live3DScene(props: {
           {...props}
           greenhouseLengthFt={inputs.greenhouseLengthFt}
           greenhouseWidthFt={inputs.greenhouseWidthFt}
+          benchLayout={inputs.benchLayout}
           eaveHeightFt={inputs.eaveHeightFt}
           peakHeightFt={inputs.peakHeightFt}
           month={month}

@@ -5,6 +5,8 @@ import { yieldRealismCases, type YieldRealismCase } from "../data/yieldRealism";
 import { netCanopyTransmissionPct } from "../models/solarModel";
 import { fmtPct } from "../utils/formatting";
 import { FieldGroup, NumberField, SelectField, ToggleField } from "./Field";
+import { canopyUtilizationPct } from "../services/scenarioAdvisor";
+import { solveBenchLayout } from "../models/benchLayout";
 import CustomFixtureForm from "./CustomFixtureForm";
 import { MONTH_NAMES } from "../utils/formatting";
 
@@ -153,7 +155,36 @@ export default function AssumptionPanel() {
           onChange={(n) => setInputs({ canopyAreaSqFt: n })}
           debounceMs={500}
           unit="ft²"
-          hint="Active flowering footprint — what fixtures sit over (typically smaller than floor)."
+          disabled={inputs.benchLayout.enabled}
+          hint={
+            inputs.benchLayout.enabled
+              ? "Derived from the bench layout below — disable benches to set canopy directly."
+              : "Active flowering footprint — what fixtures sit over (typically smaller than floor)."
+          }
+        />
+        <NumberField
+          label="Canopy utilization"
+          value={Math.round(
+            canopyUtilizationPct(
+              inputs.canopyAreaSqFt,
+              inputs.greenhouseFloorAreaSqFt,
+            ),
+          )}
+          onChange={(pct) => {
+            if (inputs.greenhouseFloorAreaSqFt > 0) {
+              setInputs({
+                canopyAreaSqFt: Math.round(
+                  (inputs.greenhouseFloorAreaSqFt * pct) / 100,
+                ),
+              });
+            }
+          }}
+          debounceMs={500}
+          min={1}
+          max={100}
+          unit="%"
+          disabled={inputs.benchLayout.enabled}
+          hint="Canopy as a share of floor. Rolling/movable benches reach ~90% (peninsular fixed >75%); below ~80% is aisle space rolling benches reclaim. Setting this resizes canopy to match."
         />
         <div className="rounded-lg border border-ink-200 bg-ink-50 p-2 text-xs">
           <div className="text-[10px] uppercase tracking-wider text-ink-500">Auto-derived</div>
@@ -166,6 +197,118 @@ export default function AssumptionPanel() {
             <span className="text-right">{inputs.greenhouseVolumeCuFt.toLocaleString()} ft³</span>
           </div>
         </div>
+      </FieldGroup>
+
+      <FieldGroup
+        title="Benches · optional"
+        description={
+          "When on, canopy is DERIVED from the bench packing (not the typed canopy). " +
+          "Rolling benches share ONE movable aisle for the whole block (up to ~90% floor use); " +
+          "fixed benches need an aisle between every row (~50–67%). Shows in the top-down plan view."
+        }
+      >
+        <ToggleField
+          label="Use bench layout"
+          value={inputs.benchLayout.enabled}
+          onChange={(b) =>
+            setInputs({ benchLayout: { ...inputs.benchLayout, enabled: b } })
+          }
+          hint="Off = open floor with a typed canopy area (default behavior)."
+        />
+        {inputs.benchLayout.enabled && (
+          <>
+            <SelectField
+              label="Bench type"
+              value={inputs.benchLayout.type}
+              onChange={(v) =>
+                setInputs({ benchLayout: { ...inputs.benchLayout, type: v } })
+              }
+              options={[
+                { value: "rolling", label: "Rolling — one shared aisle" },
+                { value: "fixed", label: "Fixed — aisle per row" },
+              ]}
+            />
+            <NumberField
+              label="Bench width"
+              value={inputs.benchLayout.benchWidthFt}
+              onChange={(n) =>
+                setInputs({ benchLayout: { ...inputs.benchLayout, benchWidthFt: n } })
+              }
+              debounceMs={500}
+              step={0.5}
+              min={1}
+              max={12}
+              unit="ft"
+              hint="Narrow dimension of one bench. Commercial rolling benches run 4–6 ft."
+            />
+            <NumberField
+              label="Bench length"
+              value={inputs.benchLayout.benchLengthFt}
+              onChange={(n) =>
+                setInputs({ benchLayout: { ...inputs.benchLayout, benchLengthFt: n } })
+              }
+              debounceMs={500}
+              min={2}
+              unit="ft"
+              hint="Segment length along a row — rows run the house length."
+            />
+            <NumberField
+              label="Aisle width"
+              value={inputs.benchLayout.aisleWidthFt}
+              onChange={(n) =>
+                setInputs({ benchLayout: { ...inputs.benchLayout, aisleWidthFt: n } })
+              }
+              debounceMs={500}
+              step={0.5}
+              min={0.5}
+              max={12}
+              unit="ft"
+              hint="Rolling: the single movable aisle. Fixed: aisle between every row."
+            />
+            <NumberField
+              label="Perimeter clearance"
+              value={inputs.benchLayout.perimeterFt}
+              onChange={(n) =>
+                setInputs({ benchLayout: { ...inputs.benchLayout, perimeterFt: n } })
+              }
+              debounceMs={500}
+              step={0.5}
+              min={0}
+              max={20}
+              unit="ft"
+              hint="Clear space kept around the whole bench block (endwalls/sidewalls)."
+            />
+            {(() => {
+              const b = solveBenchLayout(
+                inputs.greenhouseLengthFt,
+                inputs.greenhouseWidthFt,
+                inputs.benchLayout,
+              );
+              return (
+                <div className="rounded-lg border border-leaf-500/25 bg-leaf-50 p-2 text-xs">
+                  <div className="text-[10px] uppercase tracking-wider text-leaf-600">
+                    Bench-derived canopy
+                  </div>
+                  <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono tabular-nums text-ink-900">
+                    <span className="text-ink-500">Rows · benches</span>
+                    <span className="text-right">
+                      {b.rows} · {b.benchCount}
+                    </span>
+                    <span className="text-ink-500">Canopy</span>
+                    <span className="text-right">{b.canopyAreaSqFt.toFixed(0)} ft²</span>
+                    <span className="text-ink-500">Floor use</span>
+                    <span className="text-right">{b.utilizationPct.toFixed(0)}%</span>
+                  </div>
+                  {b.rows === 0 && (
+                    <p className="mt-1 text-[11px] text-warn-500">
+                      Benches don't fit — reduce bench/aisle width or perimeter.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+          </>
+        )}
       </FieldGroup>
 
       <FieldGroup

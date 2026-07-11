@@ -46,6 +46,22 @@ export const defaultGreenhouseGeometry = {
   greenhouseVolumeCuFt: 22500, // = L × W × ((eave + peak)/2)
 };
 
+/**
+ * Bench layout — DISABLED by default so open-floor houses keep the typed
+ * canopy input and existing share-links deserialize unchanged. Seed dims come
+ * from the ebb-and-flow rolling benches in equipmentLibrary.ts (4 ft × 40 ft);
+ * aisle/perimeter are conventional walk clearances, editable at runtime. When
+ * enabled, canopy is derived from the packing (models/benchLayout.ts).
+ */
+export const defaultBenchLayout = {
+  enabled: false,
+  type: "rolling" as const,
+  benchWidthFt: 4,
+  benchLengthFt: 40,
+  aisleWidthFt: 3,
+  perimeterFt: 2,
+};
+
 export const defaultPhotoperiod = {
   cropStage: "midFlower" as const,
   flowerPhotoperiodHours: 12,

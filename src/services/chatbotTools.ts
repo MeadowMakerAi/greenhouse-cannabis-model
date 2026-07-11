@@ -16,6 +16,20 @@ export interface ToolDefinition {
   };
 }
 
+/**
+ * Tools that mutate scenario state (vs. read-only reads/proposals). The
+ * non-converging loop guard counts only these: a legitimate multi-building
+ * flow re-issues byte-identical READS (`assess_completeness {}` after each
+ * building), so counting reads toward the repeat limit would false-positive
+ * and force a premature final answer. A stuck WRITE loop (same set_scenario
+ * over and over) is the real runaway the guard exists to catch.
+ */
+export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "set_scenario",
+  "set_active_fixture",
+  "add_custom_fixture",
+]);
+
 export const CHATBOT_TOOLS: ToolDefinition[] = [
   {
     name: "get_scenario",
@@ -233,6 +247,7 @@ When you see these in the scenario, raise them unprompted:
 - **Yield projection in Aspirational/Elite tier without harvest evidence** — the model flags this; back it up.
 - **Demand charge > 40% of total electric bill** — recommend staggered startup or off-peak operation.
 - **Peak amperage > 90% of service** — utility upgrade required, flag before procurement.
+- **Floor utilization < 80%** — canopy is a small fraction of the floor; rolling/movable benches reclaim aisle space (up to ~90% vs ~50–67% fixed). Quote the wasted ft² and the extra canopy on the table.
 
 ## Spec ingestion protocol — messy input is the normal case
 
@@ -243,8 +258,10 @@ pasted email, a bullet list, prose from memory. Run this flow every time:
    electrical, fixtures, location). Ignore noise; don't guess ambiguous values.
 2. **Apply the hard facts** in ONE \`set_scenario\` call so the simulator
    visibly reflects their greenhouse immediately.
-3. **Call \`assess_completeness\`** and tell them plainly, in two short lists,
-   what the spec established and what's still missing or conflicting.
+3. **Call \`assess_completeness\`** and tell them plainly what the spec
+   established, what's still missing or conflicting, and — this is an
+   optimization tool — any \`optimizations\` it surfaces (e.g. low floor
+   utilization). Don't bury the headroom; lead with it if it's material.
 4. **For each meaningful gap, propose — don't just note.** No fixtures listed?
    Say so, then: "Want me to add lights? Given your location I'd size for
    indoor-quality flower — around 1000 PPFD at canopy (DLI ~43 at a 12-hour
@@ -268,7 +285,15 @@ For greenhouse spec sheets, call \`set_scenario\` with:
 - vent area / motors → \`ventilationCFM\`
 - electrical service → \`serviceVoltagePrimary\` / \`serviceVoltageSecondary\` / \`branchCircuitAmps\`
 - frame / truss spacing → infer \`envelope.structureShadeLossPct\` (5–10%)
+- **benches (count + dimensions)** → derive the flowering canopy from them:
+  \`canopyAreaSqFt\` = benchCount × benchWidthFt × benchLengthFt. Then floor
+  utilization = canopy ÷ (length × width). Rolling/movable benches reach up to
+  ~90% of floor (peninsular fixed >75%); if the listed benches leave you below
+  ~80%, that's unrealized growing area — flag it and quantify the headroom
+  (ft² and roughly how many more benches would close it). \`assess_completeness\`
+  reports this under \`optimizations\`.
 Floor area, envelope area, volume auto-derive from dims — don't set directly.
+If the spec has NO benches, \`canopyAreaSqFt\` stays the typed canopy input.
 
 For fixture datasheets, call \`add_custom_fixture\` with vendor + model + type + wattsPerFixture (datasheet "input power") + ppf_umol_s + voltage range + notes. PPE auto-derives.
 

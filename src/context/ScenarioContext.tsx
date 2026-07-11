@@ -17,6 +17,7 @@ import {
   defaultElectricalService,
   defaultEnvelope,
   defaultGreenhouseGeometry,
+  defaultBenchLayout,
   defaultPhotoperiod,
   defaultSite,
   defaultSolarConversion,
@@ -24,6 +25,7 @@ import {
 import { defaultClimateControl } from "../data/climateControlDefaults";
 import { defaultCO2 } from "../data/co2Defaults";
 import { defaultVPDTargets } from "../models/vpdModel";
+import { solveBenchLayout } from "../models/benchLayout";
 import type { MonthlyClimate, GreenhouseEnvelope } from "../models/solarModel";
 import type { FixtureSpec } from "../models/fixtureModel";
 import { fetchNasaPowerMonthly } from "../services/nasaPowerClient";
@@ -42,6 +44,19 @@ export type VentilationMode =
   | "low"
   | "semi_sealed"
   | "sealed";
+
+/** Optional bench layout. When enabled, canopy is DERIVED from the bench
+ *  packing (models/benchLayout.ts) rather than the typed canopy input.
+ *  Field shape is a superset of benchLayout.ts BenchSpec (+ enabled), so it
+ *  passes straight to solveBenchLayout. */
+export interface BenchLayoutInputs {
+  enabled: boolean;
+  type: "rolling" | "fixed";
+  benchWidthFt: number;
+  benchLengthFt: number;
+  aisleWidthFt: number;
+  perimeterFt: number;
+}
 
 export interface ScenarioInputs {
   // Cultivation environment — greenhouse (controlled) vs outdoor (open-air).
@@ -71,6 +86,9 @@ export interface ScenarioInputs {
   greenhouseFloorAreaSqFt: number;
   greenhouseEnvelopeAreaSqFt: number;
   greenhouseVolumeCuFt: number;
+  // Bench layout (optional). Disabled by default → open-floor houses keep
+  // today's typed-canopy behavior and share-links stay byte-for-byte.
+  benchLayout: BenchLayoutInputs;
 
   // Envelope
   envelope: GreenhouseEnvelope;
@@ -293,6 +311,7 @@ export const defaultScenario: ScenarioInputs = {
   greenhouseFloorAreaSqFt: _defaultDerived.floor,
   greenhouseEnvelopeAreaSqFt: _defaultDerived.envelope,
   greenhouseVolumeCuFt: _defaultDerived.volume,
+  benchLayout: defaultBenchLayout,
   envelope: defaultEnvelope,
   ...defaultPhotoperiod,
   cropTargetId: "commercialPremium",
@@ -503,6 +522,21 @@ export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
   if (!VENT_MODES.includes(merged.ventilationMode)) {
     merged.ventilationMode = defaultScenario.ventilationMode;
   }
+  // Bench layout — nested object. An old share link lacks it; a bad one could
+  // carry NaN dims that make solveBenchLayout divide oddly. Backfill from the
+  // default and snap enum + numeric bounds (same defensive posture as the
+  // registry-id guards above).
+  const bl = merged.benchLayout as Partial<BenchLayoutInputs> | undefined;
+  const clampBench = (v: unknown, lo: number, hi: number, fb: number) =>
+    Number.isFinite(v as number) ? Math.min(hi, Math.max(lo, v as number)) : fb;
+  merged.benchLayout = {
+    enabled: bl?.enabled === true,
+    type: bl?.type === "fixed" ? "fixed" : "rolling",
+    benchWidthFt: clampBench(bl?.benchWidthFt, 1, 12, defaultBenchLayout.benchWidthFt),
+    benchLengthFt: clampBench(bl?.benchLengthFt, 2, 300, defaultBenchLayout.benchLengthFt),
+    aisleWidthFt: clampBench(bl?.aisleWidthFt, 0.5, 12, defaultBenchLayout.aisleWidthFt),
+    perimeterFt: clampBench(bl?.perimeterFt, 0, 20, defaultBenchLayout.perimeterFt),
+  };
   return merged;
 }
 
@@ -593,6 +627,34 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
         merged.greenhouseFloorAreaSqFt = Math.round(d.floor);
         merged.greenhouseEnvelopeAreaSqFt = Math.round(d.envelope);
         merged.greenhouseVolumeCuFt = Math.round(d.volume);
+      }
+      // Benched mode: canopy is DERIVED from the bench packing, overriding the
+      // ratio auto-scale above. Recompute when the bench spec or footprint
+      // changes (or benches were just enabled). Explicit canopy override still
+      // wins — the advanced escape hatch, mirroring the open-mode rule.
+      const benchRelevant =
+        "benchLayout" in next ||
+        "greenhouseLengthFt" in next ||
+        "greenhouseWidthFt" in next;
+      if (
+        merged.benchLayout.enabled &&
+        benchRelevant &&
+        !("canopyAreaSqFt" in next)
+      ) {
+        const solved = solveBenchLayout(
+          merged.greenhouseLengthFt,
+          merged.greenhouseWidthFt,
+          merged.benchLayout,
+        );
+        if (solved.canopyAreaSqFt > 0) {
+          merged.canopyAreaSqFt = Math.round(solved.canopyAreaSqFt);
+        } else {
+          // Benches enabled but they don't fit the house (rows = 0). Collapse
+          // canopy to the min floor instead of leaving a stale value from a
+          // prior fitting layout — otherwise the yield/utilization numbers
+          // contradict the 0-row plan + 3D views. clampMin re-floors to 50.
+          merged.canopyAreaSqFt = 50;
+        }
       }
       return merged;
     });

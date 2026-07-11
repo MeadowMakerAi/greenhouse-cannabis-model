@@ -1,6 +1,9 @@
 import type { ToolDefinition } from "../chatbotTools";
+import { WRITE_TOOL_NAMES } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { DEFAULT_MAX_ROUNDTRIPS } from "./types";
 import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
+import { makeToolLoopGuard } from "./loopGuard";
 
 /**
  * OpenAI-compatible Chat Completions provider. Works for:
@@ -120,7 +123,7 @@ export const openAICompatibleProvider: ChatProvider = {
     toolHandler,
     tools,
     systemPrompt,
-    maxRoundtrips = 6,
+    maxRoundtrips = DEFAULT_MAX_ROUNDTRIPS,
     signal,
     onToolCall,
   }: ChatTurnArgs): Promise<ChatMessage> {
@@ -146,7 +149,7 @@ export const openAICompatibleProvider: ChatProvider = {
     // GPT-5.x / o-series on api.openai.com REJECT `max_tokens` (HTTP 400,
     // "Unsupported parameter … use max_completion_tokens instead") and require
     // `max_completion_tokens`. The other OpenAI-compatible hosts routed through
-    // this client (xAI/Grok, OpenRouter, Groq, Ollama) still use classic
+    // this client (OpenRouter, Groq, Ollama) still use classic
     // `max_tokens`. Pick the cap key by host. 4096 = headroom for a multi-tool
     // actuation turn without truncation.
     const tokenCap =
@@ -160,9 +163,12 @@ export const openAICompatibleProvider: ChatProvider = {
     let outputTokens = 0;
 
     // One extra iteration beyond the tool budget with tool_choice:"none" to
-    // force a final text answer instead of dead-ending (see anthropic.ts).
+    // force a final text answer instead of dead-ending (see anthropic.ts). The
+    // loop guard forces that early if the model repeats an identical call.
+    const loopGuard = makeToolLoopGuard();
+    let loopBroken = false;
     for (let i = 0; i <= maxRoundtrips; i++) {
-      const outOfBudget = i === maxRoundtrips;
+      const forceFinal = i === maxRoundtrips || loopBroken;
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -182,7 +188,7 @@ export const openAICompatibleProvider: ChatProvider = {
             messages,
             tools: oaiTools.length > 0 ? oaiTools : undefined,
             tool_choice:
-              oaiTools.length > 0 ? (outOfBudget ? "none" : "auto") : undefined,
+              oaiTools.length > 0 ? (forceFinal ? "none" : "auto") : undefined,
             ...tokenCap,
           }),
         });
@@ -216,11 +222,12 @@ export const openAICompatibleProvider: ChatProvider = {
       messages.push(assistantMsg);
 
       const hasToolCalls = !!msg.tool_calls && msg.tool_calls.length > 0;
-      if (!hasToolCalls || outOfBudget) {
+      if (!hasToolCalls || forceFinal) {
         finalText = (msg.content ?? "").trim();
         break;
       }
 
+      const roundtripCalls: { name: string; input: unknown }[] = [];
       for (const call of msg.tool_calls!) {
         const name = call.function.name;
         onToolCall?.(name);
@@ -232,6 +239,7 @@ export const openAICompatibleProvider: ChatProvider = {
         } catch {
           input = { _raw: call.function.arguments };
         }
+        roundtripCalls.push({ name, input });
         let output: unknown;
         try {
           output = await toolHandler(name, input);
@@ -246,6 +254,10 @@ export const openAICompatibleProvider: ChatProvider = {
           content: JSON.stringify(output),
         });
       }
+      // Repeating the same WRITE? Force a final answer next pass. Reads are
+      // excluded so a legit per-building assess {} loop doesn't false-positive.
+      if (loopGuard.record(roundtripCalls.filter((c) => WRITE_TOOL_NAMES.has(c.name))))
+        loopBroken = true;
     }
 
     return {
