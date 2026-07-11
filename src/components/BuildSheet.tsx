@@ -838,6 +838,7 @@ function Live3DScene(props: {
           {...props}
           greenhouseLengthFt={inputs.greenhouseLengthFt}
           greenhouseWidthFt={inputs.greenhouseWidthFt}
+          benchLayout={inputs.benchLayout}
           eaveHeightFt={inputs.eaveHeightFt}
           peakHeightFt={inputs.peakHeightFt}
           month={month}
