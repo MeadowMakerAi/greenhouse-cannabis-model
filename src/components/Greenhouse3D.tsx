@@ -8,6 +8,7 @@ import {
   Stars,
   Environment,
   Lightformer,
+  Html,
 } from "@react-three/drei";
 import {
   EffectComposer,
@@ -1830,10 +1831,14 @@ function Benches({
   footprintLength,
   footprintWidth,
   benchLayout,
+  plantHeight,
+  plantGrowth,
 }: {
   footprintLength: number;
   footprintWidth: number;
   benchLayout: BenchLayoutInputs;
+  plantHeight: number;
+  plantGrowth?: PlantGrowthGeom;
 }) {
   // Solve on the RAW footprint (same dims plan view + ScenarioContext use), not
   // the min-clamped 3D floor — otherwise a small house packs more/longer rows
@@ -1841,6 +1846,40 @@ function Benches({
   const layout = solveBenchLayout(footprintLength, footprintWidth, benchLayout);
   if (layout.rows === 0) return null;
   const deckY = 2.1; // rolling-bench tops sit ~2.4 ft — deck reads at bench height
+  const DECK_TOP = deckY + 0.07; // deck box is 0.14 tall, centered at deckY
+  const INSET = 0.4; // keep plants off the deck edge
+  const PLANT_SPACING_FT = 2.2; // ~2 ft on-center flowering cannabis (matches floor)
+  const MAX_BENCH_PLANTS = 160; // total across all benches — same budget as floor mode
+
+  // Global cap: widen spacing uniformly so the TOTAL plant count across every
+  // bench stays bounded on a many-bench house (mirrors CanopyAndPlants).
+  let totalPlants = 0;
+  for (const b of layout.rowRects) {
+    const pw = Math.max(0, b.wFt - INSET * 2);
+    const pd = Math.max(0, b.hFt - INSET * 2);
+    if (pw < 0.5 || pd < 0.5) continue;
+    totalPlants +=
+      Math.max(1, Math.round(pw / PLANT_SPACING_FT)) *
+      Math.max(1, Math.round(pd / PLANT_SPACING_FT));
+  }
+  const spacing =
+    totalPlants > MAX_BENCH_PLANTS
+      ? PLANT_SPACING_FT * Math.sqrt(totalPlants / MAX_BENCH_PLANTS)
+      : PLANT_SPACING_FT;
+
+  // Reuse the floor-mode fallback growth so benched + open crops read identically.
+  const growth: PlantGrowthGeom = plantGrowth ?? {
+    phase: "flower-mid",
+    heightFt: plantHeight,
+    foliageRadiusFt: Math.min(1.6, plantHeight * 0.55),
+    colaCount: 5,
+    colaSizeFt: 0.25,
+    colaDevelopment: 0.6,
+    foliageHueDeg: 122,
+    foliageSat: 48,
+    foliageLight: 32,
+  };
+
   return (
     <group>
       {layout.rowRects.map((b, i) => {
@@ -1848,30 +1887,158 @@ function Benches({
         // the floor origin, so shift each rect center by half the footprint.
         const cx = b.xFt + b.wFt / 2 - footprintLength / 2;
         const cz = b.yFt + b.hFt / 2 - footprintWidth / 2;
+        // Plant sub-grid for THIS bench (local coords, centered on the group).
+        const pw = Math.max(0, b.wFt - INSET * 2);
+        const pd = Math.max(0, b.hFt - INSET * 2);
+        const cols = pw < 0.5 ? 0 : Math.max(1, Math.round(pw / spacing));
+        const rows = pd < 0.5 ? 0 : Math.max(1, Math.round(pd / spacing));
+        const cellW = cols ? pw / cols : 0;
+        const cellD = rows ? pd / rows : 0;
         return (
           <group key={i} position={[cx, 0, cz]}>
-            {/* metal bench deck (structure) */}
+            {/* white powder-coat / plastic bench deck (ebb-flow tray) */}
             <mesh position={[0, deckY, 0]} castShadow receiveShadow>
               <boxGeometry args={[b.wFt, 0.14, b.hFt]} />
-              <meshStandardMaterial color="#9aa0a8" roughness={0.8} metalness={0.4} />
+              <meshStandardMaterial color="#eef1f4" roughness={0.65} metalness={0.08} />
             </mesh>
             {/* support rail below so the deck doesn't read as floating */}
             <mesh position={[0, deckY - 0.9, 0]}>
               <boxGeometry args={[b.wFt, 0.1, b.hFt * 0.6]} />
-              <meshStandardMaterial color="#5a6270" roughness={0.9} metalness={0.3} />
+              <meshStandardMaterial color="#b9bec4" roughness={0.9} metalness={0.3} />
             </mesh>
-            {/* planted canopy sitting ON the deck — this is what makes the
-                bench read as growing area, aligned to the real layout. */}
-            <mesh position={[0, deckY + 0.75, 0]} castShadow>
-              <boxGeometry
-                args={[b.wFt - 0.4, 1.3, Math.max(0.4, b.hFt - 0.5)]}
-              />
-              <meshStandardMaterial color="#3f9d63" roughness={0.75} />
-            </mesh>
+            {/* real plants sitting ON the deck (replaces the old green box) —
+                tiled across the bench footprint, base on the deck surface. */}
+            {Array.from({ length: rows }).flatMap((_, rr) =>
+              Array.from({ length: cols }).map((__, cc) => (
+                <CannabisPlant
+                  key={`p-${rr}-${cc}`}
+                  position={[
+                    -pw / 2 + cellW * (cc + 0.5),
+                    DECK_TOP,
+                    -pd / 2 + cellD * (rr + 0.5),
+                  ]}
+                  growth={growth}
+                  seed={i * 1000 + rr * 40 + cc}
+                />
+              )),
+            )}
           </group>
         );
       })}
     </group>
+  );
+}
+
+/** A single floating callout chip — DOM text billboarded to the camera via drei
+ *  <Html>. pointerEvents:none so it never blocks OrbitControls. Identity/location
+ *  only (what/where); sensor readouts live in the DOM HUD. */
+function CalloutChip({
+  position,
+  text,
+  tone = "slate",
+}: {
+  position: [number, number, number];
+  text: string;
+  tone?: "slate" | "leaf";
+}) {
+  return (
+    <Html
+      position={position}
+      center
+      distanceFactor={26}
+      occlude={false}
+      zIndexRange={[20, 0]}
+      style={{ pointerEvents: "none" }}
+    >
+      <div
+        className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur-md ${
+          tone === "leaf"
+            ? "border-leaf-500/40 bg-white/75 text-leaf-600"
+            : "border-white/45 bg-white/70 text-ink-900"
+        }`}
+      >
+        {text}
+      </div>
+    </Html>
+  );
+}
+
+/** Data-driven scene callouts: ONE chip per category (never per-bench/fixture,
+ *  to avoid clutter). Fixture name+wattage always (under a greenhouse roof);
+ *  bench type + aisle only when benched. */
+function SceneCallouts({
+  benchLayout,
+  derivedLength,
+  derivedWidth,
+  fixtures,
+  fixtureZ,
+  fixtureLabel,
+  fixtureWatts,
+  fixtureType,
+  showEnvelope,
+}: {
+  benchLayout?: BenchLayoutInputs;
+  derivedLength: number;
+  derivedWidth: number;
+  fixtures: { x: number; z: number }[];
+  fixtureZ: number;
+  fixtureLabel?: string;
+  fixtureWatts?: number;
+  fixtureType?: "LED" | "HPS";
+  showEnvelope: boolean;
+}) {
+  const chips: {
+    key: string;
+    position: [number, number, number];
+    text: string;
+    tone?: "slate" | "leaf";
+  }[] = [];
+
+  // Fixture identity — the real selected fixture name + wattage.
+  if (showEnvelope && fixtures.length > 0) {
+    const f = fixtures[Math.floor(fixtures.length / 2)];
+    const name = fixtureLabel ?? `${fixtureType ?? "LED"} fixture`;
+    chips.push({
+      key: "fixture",
+      position: [f.x, fixtureZ + 1.4, f.z],
+      text: `${name} — ${Math.round(fixtureWatts ?? 720)} W`,
+      tone: "slate",
+    });
+  }
+
+  // Bench + aisle identity — geometry from the same solver the meshes use.
+  if (benchLayout?.enabled) {
+    const layout = solveBenchLayout(derivedLength, derivedWidth, benchLayout);
+    if (layout.rows > 0) {
+      const b0 = layout.rowRects[0];
+      const bcx0 = b0.xFt + b0.wFt / 2 - derivedLength / 2;
+      const bcz0 = b0.yFt + b0.hFt / 2 - derivedWidth / 2;
+      chips.push({
+        key: "bench",
+        position: [bcx0, 4.6, bcz0],
+        text: benchLayout.type === "fixed" ? "Fixed benches" : "Rolling benches",
+        tone: "leaf",
+      });
+      if (layout.rowRects.length > 1) {
+        const b1 = layout.rowRects[1];
+        const bcx1 = b1.xFt + b1.wFt / 2 - derivedLength / 2;
+        const bcz1 = b1.yFt + b1.hFt / 2 - derivedWidth / 2;
+        chips.push({
+          key: "aisle",
+          position: [(bcx0 + bcx1) / 2, 1.0, (bcz0 + bcz1) / 2],
+          text: benchLayout.type === "rolling" ? "Movable aisle" : "Walkway",
+          tone: "slate",
+        });
+      }
+    }
+  }
+
+  return (
+    <>
+      {chips.map((c) => (
+        <CalloutChip key={c.key} position={c.position} text={c.text} tone={c.tone} />
+      ))}
+    </>
   );
 }
 
@@ -2727,12 +2894,14 @@ export default function Greenhouse3D({
   fixtureKelvin = 3500,
   fixtureWatts = 720,
   fixtureType = "LED",
+  fixtureLabel,
   bleed = false,
   fill = false,
   heightOverride,
   weather,
   equipment,
   showEnvelope = true,
+  showLabels = true,
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
@@ -2757,6 +2926,9 @@ export default function Greenhouse3D({
    *  footprints, and placed equipment — the scene becomes an open-air field of
    *  plants under sky. Plants + ground + sun stay. Defaults true (greenhouse). */
   showEnvelope?: boolean;
+  /** Show/hide the in-scene identity callout chips (bench type, aisle,
+   *  fixture name+wattage). Defaults true. */
+  showLabels?: boolean;
 }) {
   // God-rays source: a ref to the sun-disk mesh + a ready flag so the
   // volumetric light shafts only mount when the sun is actually up.
@@ -2843,7 +3015,6 @@ export default function Greenhouse3D({
   const footprintWidth = rowSpacing * 0.95;
 
   void glazingPct;
-  void fixtureType;
 
   // Plant height grows with canopy spacing — more headroom = taller training
   const plantHeight = Math.min(5, Math.max(3, Math.min(rowSpacing, colSpacing) * 0.45));
@@ -3059,6 +3230,22 @@ export default function Greenhouse3D({
                 footprintLength={derivedLength}
                 footprintWidth={derivedWidth}
                 benchLayout={benchLayout}
+                plantHeight={plantHeight}
+                plantGrowth={plantGrowth}
+              />
+            )}
+
+            {showLabels && (
+              <SceneCallouts
+                benchLayout={benchLayout}
+                derivedLength={derivedLength}
+                derivedWidth={derivedWidth}
+                fixtures={fixtures}
+                fixtureZ={fixtureZ}
+                fixtureLabel={fixtureLabel}
+                fixtureWatts={fixtureWatts}
+                fixtureType={fixtureType}
+                showEnvelope={showEnvelope}
               />
             )}
 
