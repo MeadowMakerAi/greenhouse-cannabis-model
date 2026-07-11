@@ -1,6 +1,7 @@
 import type { ToolDefinition } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
 import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
+import { makeToolLoopGuard } from "./loopGuard";
 
 /**
  * OpenAI-compatible Chat Completions provider. Works for:
@@ -160,9 +161,12 @@ export const openAICompatibleProvider: ChatProvider = {
     let outputTokens = 0;
 
     // One extra iteration beyond the tool budget with tool_choice:"none" to
-    // force a final text answer instead of dead-ending (see anthropic.ts).
+    // force a final text answer instead of dead-ending (see anthropic.ts). The
+    // loop guard forces that early if the model repeats an identical call.
+    const loopGuard = makeToolLoopGuard();
+    let loopBroken = false;
     for (let i = 0; i <= maxRoundtrips; i++) {
-      const outOfBudget = i === maxRoundtrips;
+      const forceFinal = i === maxRoundtrips || loopBroken;
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -182,7 +186,7 @@ export const openAICompatibleProvider: ChatProvider = {
             messages,
             tools: oaiTools.length > 0 ? oaiTools : undefined,
             tool_choice:
-              oaiTools.length > 0 ? (outOfBudget ? "none" : "auto") : undefined,
+              oaiTools.length > 0 ? (forceFinal ? "none" : "auto") : undefined,
             ...tokenCap,
           }),
         });
@@ -216,11 +220,12 @@ export const openAICompatibleProvider: ChatProvider = {
       messages.push(assistantMsg);
 
       const hasToolCalls = !!msg.tool_calls && msg.tool_calls.length > 0;
-      if (!hasToolCalls || outOfBudget) {
+      if (!hasToolCalls || forceFinal) {
         finalText = (msg.content ?? "").trim();
         break;
       }
 
+      const roundtripCalls: { name: string; input: unknown }[] = [];
       for (const call of msg.tool_calls!) {
         const name = call.function.name;
         onToolCall?.(name);
@@ -232,6 +237,7 @@ export const openAICompatibleProvider: ChatProvider = {
         } catch {
           input = { _raw: call.function.arguments };
         }
+        roundtripCalls.push({ name, input });
         let output: unknown;
         try {
           output = await toolHandler(name, input);
@@ -246,6 +252,8 @@ export const openAICompatibleProvider: ChatProvider = {
           content: JSON.stringify(output),
         });
       }
+      // Repeating the same call? Force a final answer next pass.
+      if (loopGuard.record(roundtripCalls)) loopBroken = true;
     }
 
     return {

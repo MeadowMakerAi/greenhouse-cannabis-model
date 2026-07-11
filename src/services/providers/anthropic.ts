@@ -1,5 +1,6 @@
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
 import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
+import { makeToolLoopGuard } from "./loopGuard";
 
 interface APIContentBlock {
   type: "text" | "tool_use" | "tool_result" | "image" | "document";
@@ -352,8 +353,13 @@ export const anthropicProvider: ChatProvider = {
     // tool_choice:"none" to FORCE a final text answer — a big spec ingest
     // (apply → assess → recommend → derive) can legitimately spend every
     // roundtrip on tools, and dead-ending there wastes the whole turn.
+    // The loop guard forces that same final answer early if the model starts
+    // repeating an identical call (a non-converging loop), so the high ceiling
+    // is safe.
+    const loopGuard = makeToolLoopGuard();
+    let loopBroken = false;
     for (let i = 0; i <= maxRoundtrips; i++) {
-      const outOfBudget = i === maxRoundtrips;
+      const forceFinal = i === maxRoundtrips || loopBroken;
       // New roundtrip: let the UI clear its live buffer so a tool-use turn's
       // preamble doesn't accumulate ahead of the final answer.
       if (onDelta) onRoundtripStart?.();
@@ -370,7 +376,7 @@ export const anthropicProvider: ChatProvider = {
             systemPrompt,
             tools,
             messages: apiHistory,
-            ...(outOfBudget ? { toolChoice: { type: "none" as const } } : {}),
+            ...(forceFinal ? { toolChoice: { type: "none" as const } } : {}),
           },
           signal,
           onDelta,
@@ -398,11 +404,13 @@ export const anthropicProvider: ChatProvider = {
       }
 
       const toolResultBlocks: APIContentBlock[] = [];
+      const roundtripCalls: { name: string; input: unknown }[] = [];
       for (const block of turn.content) {
         if (block.type !== "tool_use") continue;
         const name = block.name!;
         onToolCall?.(name);
         const input = (block.input ?? {}) as Record<string, unknown>;
+        roundtripCalls.push({ name, input });
         let output: unknown;
         try {
           output = await toolHandler(name, input);
@@ -416,6 +424,8 @@ export const anthropicProvider: ChatProvider = {
           content: JSON.stringify(output),
         });
       }
+      // Repeating the same call? Force a final answer next pass.
+      if (loopGuard.record(roundtripCalls)) loopBroken = true;
       apiHistory.push({ role: "user", content: toolResultBlocks });
     }
 
