@@ -11,6 +11,11 @@ export type ChatRole = "user" | "assistant";
 export interface ChatUsage {
   inputTokens: number;
   outputTokens: number;
+  /** Anthropic prompt-caching: tokens written to cache (bill ~1.25× input) and
+   *  read from cache (~0.10× input). `inputTokens` excludes cached tokens, so
+   *  the cost meter weights these separately. Absent for non-caching providers. */
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
   model: string;
   provider?: ProviderId;
 }

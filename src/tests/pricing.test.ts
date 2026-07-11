@@ -39,6 +39,32 @@ describe("estimateCost", () => {
   it("returns null when usage is missing", () => {
     expect(estimateCost(undefined)).toBeNull();
   });
+
+  it("weights prompt-cache tokens: writes 1.25×, reads 0.10× the input rate", () => {
+    // Sonnet 5: $2/M in. 1M uncached input + 1M cache-write + 1M cache-read,
+    // no output → 2 + 2×1.25 + 2×0.10 = $4.70.
+    const est = estimateCost({
+      model: "claude-sonnet-5",
+      inputTokens: 1_000_000,
+      outputTokens: 0,
+      cacheCreationTokens: 1_000_000,
+      cacheReadTokens: 1_000_000,
+    });
+    expect(est?.usd).toBeCloseTo(2 + 2 * 1.25 + 2 * 0.1, 6);
+  });
+
+  it("a cache-heavy turn costs far less than the same tokens uncached", () => {
+    // Same 1M tool+system prefix: paid full once (uncached) vs cached (read).
+    const uncached = estimateCost(u("claude-sonnet-5", 1_000_000, 0))!.usd!;
+    const cached = estimateCost({
+      model: "claude-sonnet-5",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 1_000_000,
+    })!.usd!;
+    expect(cached).toBeLessThan(uncached);
+    expect(cached).toBeCloseTo(uncached * 0.1, 6); // read is 10% of full input
+  });
 });
 
 describe("formatCost", () => {

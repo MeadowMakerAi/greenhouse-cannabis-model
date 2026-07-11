@@ -39,7 +39,13 @@ describe("readAnthropicStream", () => {
     expect(turn.content).toEqual([{ type: "text", text: "Hello world" }]);
     expect(turn.stop_reason).toBe("end_turn");
     // input from message_start, output is the FINAL message_delta value (not summed).
-    expect(turn.usage).toEqual({ input_tokens: 50, output_tokens: 8 });
+    // Cache counts default to 0 when the stream reports no prompt-cache usage.
+    expect(turn.usage).toEqual({
+      input_tokens: 50,
+      output_tokens: 8,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    });
   });
 
   it("assembles a tool_use block from streamed partial_json", async () => {
