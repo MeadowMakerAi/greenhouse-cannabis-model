@@ -318,7 +318,7 @@ export const defaultScenario: ScenarioInputs = {
   customTargetDLIOverride: null,
   yieldRealismCase: "base",
   solarToPARFactor: defaultSolarConversion.solarToPARFactor,
-  fixtureId: "ledHighEfficiency",
+  fixtureId: "gavitaPro1700eLED",
   underCanopyEnabled: true,
   underCanopyPPFD: 150,
   underCanopyPhotoperiodHours: 12,

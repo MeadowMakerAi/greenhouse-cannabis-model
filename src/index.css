@@ -39,6 +39,12 @@ body,
     #faf5e8;
   color: #0d1117;
   letter-spacing: -0.005em;
+  /* Base UI weight lifted 400 → 500: Inter 400 rendered with grayscale
+     smoothing reads too thin on retina, hurting information conveyance,
+     especially at the many 11–13px sizes. 500 is loaded (no faux-bold);
+     headings/labels keep their explicit 600/700 so only default body
+     text thickens. Dial to 450/600 if this reads heavy/light. */
+  font-weight: 500;
 }
 
 /* Mobile scroll-through for the R3F scene. The <canvas> defaults to

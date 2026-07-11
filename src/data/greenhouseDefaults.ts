@@ -31,32 +31,40 @@ export const defaultElectricalService = {
 };
 
 export const defaultGreenhouseGeometry = {
-  // Explicit exterior dimensions (architectural primary inputs)
-  greenhouseLengthFt: 48,
-  greenhouseWidthFt: 32,
-  eaveHeightFt: 8,
-  peakHeightFt: 14,
-  // Active flowering canopy (typically smaller than floor).
-  // 1200/1536 ≈ 78% — typical commercial layout with 2–3 ft aisles.
+  // Explicit exterior dimensions (architectural primary inputs). Default is a
+  // 120 × 90 ft gutter-connect house (12 ft gutters / 16 ft peak) — a real
+  // commercial rolling-bench layout so the app boots into a representative
+  // benched scene rather than a bare toy box.
+  greenhouseLengthFt: 120,
+  greenhouseWidthFt: 90,
+  eaveHeightFt: 12,
+  peakHeightFt: 16,
+  // Active flowering canopy (typically smaller than floor). With benches
+  // enabled by default, canopy is DERIVED from the bench packing and this
+  // literal is only the open-floor fallback. ~78% of a 120×90 floor.
   // Auto-scales with length × width changes (ScenarioContext.setInputs).
-  canopyAreaSqFt: 1200,
+  canopyAreaSqFt: 8400,
   // Override-able derived values (auto-computed from dimensions if not set)
-  greenhouseFloorAreaSqFt: 1500, // = length × width when in sync
-  greenhouseEnvelopeAreaSqFt: 3500, // = floor + 2(L×eave) + 2(W×eave) + 2 gable triangles + 2 roof slopes
-  greenhouseVolumeCuFt: 22500, // = L × W × ((eave + peak)/2)
+  greenhouseFloorAreaSqFt: 10800, // = length × width when in sync
+  greenhouseEnvelopeAreaSqFt: 3500, // recomputed from dims via geometryFromDims
+  greenhouseVolumeCuFt: 22500, // recomputed from dims via geometryFromDims
 };
 
 /**
- * Bench layout — DISABLED by default so open-floor houses keep the typed
- * canopy input and existing share-links deserialize unchanged. Seed dims come
- * from the ebb-and-flow rolling benches in equipmentLibrary.ts (4 ft × 40 ft);
- * aisle/perimeter are conventional walk clearances, editable at runtime. When
- * enabled, canopy is derived from the packing (models/benchLayout.ts).
+ * Bench layout — ENABLED by default so the 3D scene shows real benches +
+ * planted decks + identity callouts out of the box (most commercial houses
+ * grow on benches). When enabled, canopy is DERIVED from the bench packing
+ * (models/benchLayout.ts); toggle off for an open-floor house that sets the
+ * typed canopy directly. A share-link that explicitly carries enabled:false
+ * still deserializes to open-floor (clampScenarioInputs keys off === true).
+ * Seed dims come from the ebb-and-flow rolling benches in equipmentLibrary.ts
+ * (4 ft × 40 ft); aisle/perimeter are conventional walk clearances, editable
+ * at runtime.
  */
 export const defaultBenchLayout = {
-  enabled: false,
-  type: "rolling" as const,
-  benchWidthFt: 4,
+  enabled: true,
+  type: "rolling" as const, // single shared movable aisle for the whole block
+  benchWidthFt: 5,
   benchLengthFt: 40,
   aisleWidthFt: 3,
   perimeterFt: 2,
