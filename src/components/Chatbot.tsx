@@ -196,6 +196,90 @@ function sagePersistRect(r: SageRect) {
   }
 }
 
+// ── Sage trace panel ──────────────────────────────────────────────────────
+// Graph-of-Trace for a linear agent: Sage's roundtrips run in sequence, so the
+// honest render is an ordered step list (NOT a fabricated DAG with invented
+// parent/sibling edges). Each step = tool name + a read/write badge + the
+// input AND the output artifact, both behind progressive disclosure. This is
+// the transparency half of "approval-with-context": you can see exactly what
+// Sage did, with what params, and what came back — turning the black box into
+// an inspectable work log.
+
+function safeJson(v: unknown): string {
+  if (v === undefined) return "";
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+/** One input/output row: short values inline, long ones behind a disclosure. */
+function TraceKV({ label, value }: { label: string; value: unknown }) {
+  const json = safeJson(value);
+  if (json === "" || json === "{}" || json === "null") return null;
+  const long = json.length > 120;
+  return (
+    <div className="mt-1 flex gap-1.5">
+      <span className="shrink-0 pt-px text-[10px] uppercase tracking-wide text-ink-400">{label}</span>
+      {long ? (
+        <details className="min-w-0">
+          <summary className="cursor-pointer truncate font-mono text-ink-600">
+            {json.slice(0, 120)}…
+          </summary>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border border-ink-200 bg-ink-100 p-1.5 font-mono text-[11px] text-ink-800">
+            {json}
+          </pre>
+        </details>
+      ) : (
+        <span className="min-w-0 break-all font-mono text-ink-600">{json}</span>
+      )}
+    </div>
+  );
+}
+
+function ToolTracePanel({ trace }: { trace: NonNullable<ChatMessage["toolTrace"]> }) {
+  const writes = trace.filter((t) => WRITE_TOOL_NAMES.has(t.name)).length;
+  return (
+    <details className="mt-1.5 text-xs">
+      <summary className="cursor-pointer select-none text-ink-500 hover:text-ink-700">
+        Trace · {trace.length} step{trace.length === 1 ? "" : "s"}
+        {writes > 0 && (
+          <span className="ml-1 text-leaf-600">
+            · {writes} write{writes === 1 ? "" : "s"}
+          </span>
+        )}
+      </summary>
+      <ol className="mt-1 space-y-1">
+        {trace.map((t, j) => {
+          const isWrite = WRITE_TOOL_NAMES.has(t.name);
+          return (
+            <li key={j} className="rounded border border-ink-200 bg-white/60 p-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="tabular-nums text-ink-400">{j + 1}</span>
+                <span
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${isWrite ? "bg-leaf-500" : "bg-ink-400"}`}
+                  aria-hidden
+                />
+                <span className="font-mono font-semibold text-ink-800">{t.name}</span>
+                <span
+                  className={`ml-auto rounded px-1 text-[10px] font-semibold uppercase tracking-wide ${
+                    isWrite ? "bg-leaf-500/15 text-leaf-700" : "bg-ink-200 text-ink-500"
+                  }`}
+                >
+                  {isWrite ? "write" : "read"}
+                </span>
+              </div>
+              <TraceKV label="in" value={t.input} />
+              <TraceKV label="out" value={t.output} />
+            </li>
+          );
+        })}
+      </ol>
+    </details>
+  );
+}
+
 export default function Chatbot() {
   const { inputs, setInputs, customFixtures, addCustomFixture } = useScenario();
   const derived = useDerived();
@@ -1350,18 +1434,7 @@ export default function Chatbot() {
               >
                 <div className="whitespace-pre-wrap">{m.content}</div>
                 {m.toolTrace && m.toolTrace.length > 0 && (
-                  <details className="mt-1 text-xs text-ink-500">
-                    <summary className="cursor-pointer">
-                      Tool calls ({m.toolTrace.length})
-                    </summary>
-                    {m.toolTrace.map((t, j) => (
-                      <div key={j} className="ml-2 my-1 font-mono">
-                        <span className="text-leaf-600">{t.name}</span>(
-                        {JSON.stringify(t.input).slice(0, 80)}
-                        {JSON.stringify(t.input).length > 80 ? "…" : ""})
-                      </div>
-                    ))}
-                  </details>
+                  <ToolTracePanel trace={m.toolTrace} />
                 )}
                 {m.usage && (m.usage.inputTokens > 0 || m.usage.outputTokens > 0) && (
                   <div className="mt-1 text-xs text-ink-400" title="Estimated cost — see pricing.ts">
