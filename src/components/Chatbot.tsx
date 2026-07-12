@@ -280,6 +280,67 @@ function ToolTracePanel({ trace }: { trace: NonNullable<ChatMessage["toolTrace"]
   );
 }
 
+// ── Explain-back on writes ────────────────────────────────────────────────
+// The doc's "approval gate = explain-back": don't offer a bare Undo, show
+// exactly WHAT changed. Scenario edits are reversible, so we keep the
+// optimistic-apply + Undo model (a blocking gate would be friction here) —
+// but the summary is derived straight from the write tools' own inputs, so
+// it's honest ("what Sage set"), never invented.
+
+const FIELD_LABELS: Record<string, string> = {
+  greenhouseLengthFt: "length",
+  greenhouseWidthFt: "width",
+  eaveHeightFt: "eave",
+  peakHeightFt: "peak",
+  canopyAreaSqFt: "canopy",
+  fixtureId: "fixture",
+  fixtureCount: "fixture count",
+  gridSpacingFt: "grid spacing",
+  baseTransmissionPct: "glazing transmission",
+  envelopeUValueBTUhrFtF: "glazing U-value",
+  radiantHeatingCapacityBTUhr: "heating capacity",
+  ventilationCFM: "ventilation",
+  siteAddress: "location",
+};
+
+function humanizeKey(k: string): string {
+  if (FIELD_LABELS[k]) return FIELD_LABELS[k];
+  // Fallback: de-camelCase, drop unit suffixes, lowercase.
+  return k
+    .replace(/([A-Z])/g, " $1")
+    .replace(/\b(Ft|Sq Ft|Pct|BTUhr|CFM)\b/gi, "")
+    .trim()
+    .toLowerCase();
+}
+
+function flattenChanges(obj: Record<string, unknown>, out: string[]) {
+  for (const [k, v] of Object.entries(obj)) {
+    if (v != null && typeof v === "object" && !Array.isArray(v)) {
+      flattenChanges(v as Record<string, unknown>, out);
+    } else if (v != null) {
+      out.push(`${humanizeKey(k)} → ${Array.isArray(v) ? v.join("/") : v}`);
+    }
+  }
+}
+
+/** Human-readable summary of a turn's writes, built from the tool inputs. */
+function describeWrites(trace: NonNullable<ChatMessage["toolTrace"]>): string {
+  const changes: string[] = [];
+  for (const t of trace) {
+    if (!WRITE_TOOL_NAMES.has(t.name)) continue;
+    if (t.name === "add_custom_fixture") {
+      changes.push("added a fixture");
+      continue;
+    }
+    if (t.input && typeof t.input === "object") {
+      flattenChanges(t.input as Record<string, unknown>, changes);
+    }
+  }
+  if (changes.length === 0) return "Sage updated the scenario";
+  const shown = changes.slice(0, 3).join(", ");
+  return `Set ${shown}${changes.length > 3 ? ` +${changes.length - 3} more` : ""}`;
+}
+
 export default function Chatbot() {
   const { inputs, setInputs, customFixtures, addCustomFixture } = useScenario();
   const derived = useDerived();
@@ -317,6 +378,8 @@ export default function Chatbot() {
     patch: Partial<typeof inputs>;
   } | null>(null);
   const [undoSnapshot, setUndoSnapshot] = useState<typeof inputs | null>(null);
+  // Human-readable "what changed" for the Undo affordance (explain-back).
+  const [undoSummary, setUndoSummary] = useState<string | null>(null);
   // Same-turn write overlay. React state doesn't update mid-turn, so tools that
   // run AFTER a write in the same chatTurn (the prescribed apply→assess→recommend
   // flow) would read stale pre-write inputs — assess would call just-applied
@@ -1014,8 +1077,10 @@ export default function Chatbot() {
       // Hybrid confirm: direct writes applied immediately — offer one-click Undo
       // back to the pre-turn scenario. (set_simulation_time only moves the sim
       // clock, not inputs, so it doesn't arm Undo.)
-      if (reply.toolTrace?.some((t) => WRITE_TOOL_NAMES.has(t.name))) {
+      const turnTrace = reply.toolTrace ?? [];
+      if (turnTrace.some((t) => WRITE_TOOL_NAMES.has(t.name))) {
         setUndoSnapshot(inputsBeforeTurn);
+        setUndoSummary(describeWrites(turnTrace));
       }
     } catch (err) {
       const msg = (err as Error).message;
@@ -1505,6 +1570,7 @@ export default function Chatbot() {
                         return;
                       }
                       setUndoSnapshot(inputs); // applying is also undoable
+                      setUndoSummary(pendingProposal.label);
                       setInputs(pendingProposal.patch);
                       setPendingProposal(null);
                     }}
@@ -1523,12 +1589,18 @@ export default function Chatbot() {
               )}
               {undoSnapshot && !pendingProposal && (
                 <>
-                  <span className="flex-1 text-ink-500">Sage changed the scenario</span>
+                  <span
+                    className="min-w-0 flex-1 truncate text-ink-600"
+                    title={undoSummary ?? "Sage changed the scenario"}
+                  >
+                    ✓ {undoSummary ?? "Sage changed the scenario"}
+                  </span>
                   <button
                     type="button"
                     onClick={() => {
                       setInputs(undoSnapshot);
                       setUndoSnapshot(null);
+                      setUndoSummary(null);
                     }}
                     className="rounded border border-ink-300 px-2 py-0.5 font-medium text-ink-600 hover:bg-warn-500/10 hover:text-warn-600"
                     title="Restore all scenario inputs to before Sage's last change"
@@ -1537,7 +1609,10 @@ export default function Chatbot() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setUndoSnapshot(null)}
+                    onClick={() => {
+                      setUndoSnapshot(null);
+                      setUndoSummary(null);
+                    }}
                     className="rounded border border-ink-300 px-2 py-0.5 text-ink-500 hover:bg-ink-300/20"
                   >
                     Keep
