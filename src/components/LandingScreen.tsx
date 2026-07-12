@@ -112,7 +112,7 @@ export default function LandingScreen({
                 Greenhouse cannabis model
               </div>
               <div className="text-[11px] text-ink-500 proportional-nums">
-                v0.1.0 · MIT · open source
+                v0.1.0 · © 2026 Alex Claiborne
               </div>
             </div>
           </div>
@@ -355,8 +355,7 @@ export default function LandingScreen({
               Open the model. Start sizing.
             </h2>
             <p className="mt-2 max-w-lg text-base leading-relaxed text-leaf-50/90 proportional-nums">
-              Free, open-source, MIT-licensed. Runs entirely in the browser.
-              The chatbot is BYO Anthropic key.
+              Free to use — no signup. Runs in your browser.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
