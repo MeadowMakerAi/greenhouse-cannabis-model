@@ -1,15 +1,29 @@
 # Greenhouse Cannabis Model — project context
 
-Open-source decision-support model for cannabis greenhouse design. React 19 +
+Proprietary decision-support model for cannabis greenhouse design. React 19 +
 TypeScript + Vite + R3F. Default profile: Montgomery NY (lat 41.475384,
 lon −74.244553). Live demo runs at http://127.0.0.1:5180/ via `npm run dev`.
 
 ## Identity
 
-This project will be open-sourced (MIT license). The dashboard, README, and
-chatbot are written for any cultivator, not for a specific farm. Site-specific
-identifiers stay out of user-facing surfaces; default values live in
-`src/data/greenhouseDefaults.ts` and are configurable at runtime.
+**Proprietary, closed-source, hosted product** (decision 2026-07-12 — reversed
+the earlier open-source/MIT plan; the model is now too valuable to give away).
+It *will* be released — free or low-cost to **use** via the hosted app — but
+the source code is not distributed. LICENSE is all-rights-reserved; `package.json`
+is `UNLICENSED`.
+
+**Architecture consequence:** the client-only / BYO-key constraint was a
+*consequence* of the open-source plan, NOT a hard requirement. Closed + hosted
+means a server is now allowed — auth, usage tiers, a key-proxying backend, and
+paid third-party APIs behind serverless functions are all on the table. Prefer
+the client-only path when it's simpler, but do not treat "no server" as a rule.
+This unblocks the property-diligence feature via a server proxy (Path B).
+
+The dashboard and chatbot are still written for **any cultivator**, not a
+specific farm — keep site-specific identifiers out of user-facing surfaces
+(default `siteAddress` = `Montgomery, NY`); defaults live in
+`src/data/greenhouseDefaults.ts`, configurable at runtime. (This is a
+product-generality choice, no longer an open-source one.)
 
 The model is **screening-level decision support** — every output should
 disclose this and refer the user to a sealed CFD / engineering-stamped
@@ -87,8 +101,8 @@ drift, peak<eave geometry guard). All five are now settled:
 - `set_scenario` shallow-merge: chatbot tool handler now deep-merges nested
   envelope patches before calling `setInputs`, so a single-field envelope
   patch no longer wipes sibling fields.
-- API key in localStorage: this is the production decision for the
-  open-source BYO-key model. Containment stack:
+- API key in localStorage: this was the production decision for the *earlier*
+  open-source BYO-key model. Current containment stack (still in force):
   · CSP `connect-src` allowlists only `api.anthropic.com` (+ NASA POWER /
     Open-Meteo / NWS for climate data) — XSS can't exfiltrate the key
     elsewhere.
@@ -97,7 +111,11 @@ drift, peak<eave geometry guard). All five are now settled:
     on a non-localhost origin.
   · Session-only toggle in the chatbot lets paranoid users opt for
     `sessionStorage` (cleared on tab close) instead of `localStorage`.
-  Server-side proxy is out of scope for an open-source client-only tool.
+  **Superseded by the 2026-07-12 closed-source/hosted pivot:** a server-side
+  key proxy (own key, or per-account keys behind auth) is now the preferred
+  end state — client-side BYO-key can remain a fallback/self-host mode. The
+  containment stack above stays until the proxy ships. Server-side proxy is
+  NO LONGER out of scope.
 
 ## Bibliography is the source of truth
 

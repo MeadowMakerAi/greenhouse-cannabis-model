@@ -1,6 +1,6 @@
 # Greenhouse Cannabis Model
 
-Open-source, screening-level decision-support model for cannabis greenhouse
+Screening-level decision-support model for cannabis greenhouse
 design. Live 3D simulation, yield projection, HVAC sizing, ventilation
 physics, and plant growth on a 24-hour clock — every coefficient traced to
 a peer-reviewed source. Built solo with Claude Opus 4.7 as a paired-coding
@@ -165,9 +165,11 @@ VPD is clamped to [0, 6] kPa with `isFinite` fall-through; indoor temp to
 
 ## License
 
-MIT. Use it. Fork it. Calibrate it for your facility. The science citations
-in [`CITATIONS.md`](./CITATIONS.md) are public; the implementation is yours
-to copy.
+Proprietary — © 2026 Alex Claiborne, all rights reserved. See [`LICENSE`](./LICENSE).
+The hosted tool is free (or low-cost) to *use*; the source code is not
+open-sourced and may not be copied, modified, or redistributed. The science
+citations in [`CITATIONS.md`](./CITATIONS.md) are public references, not a
+grant to the implementation.
 
 ## What this model is **not**
 
