@@ -1848,10 +1848,11 @@ function Benches({
   const deckY = 2.1; // rolling-bench tops sit ~2.4 ft — deck reads at bench height
   const DECK_TOP = deckY + 0.07; // deck box is 0.14 tall, centered at deckY
   const INSET = 0.4; // keep plants off the deck edge
-  const PLANT_SPACING_FT = 1.4; // denser, toward the ~1 sqft/plant sea-of-green real crops run
+  const PLANT_SPACING_FT = 1.12; // 1.25 sqft/plant on-center — OBSERVED across 5 Terp Mansion
+  // grows in 1-gal pots ("800 plants per 1,000 sqft" = 0.8/sqft canopy; range 0.72–0.81).
   // ponytail: each detailed plant is ~60 meshes, so ~240 is the visual ceiling before jank.
-  // True 1-plant/sqft on a commercial house (thousands of plants) needs an InstancedMesh
-  // low-poly canopy — deferred until the cultivation reference material lands.
+  // Full-canopy density on a commercial house (thousands of plants) needs an InstancedMesh
+  // low-poly canopy — deferred. Target for that pass: 0.8 plants/sqft of canopy.
   const MAX_BENCH_PLANTS = 240; // total across all benches — same budget as floor mode
 
   // Global cap: widen spacing uniformly so the TOTAL plant count across every
@@ -2074,7 +2075,7 @@ function CanopyAndPlants({
   // fixtures. We derive the plant grid from canopy size + plant spacing, cap
   // the rendered count for performance, and scale spacing up on very large
   // canopies so rows stay uniform instead of exploding into thousands of meshes.
-  const PLANT_SPACING_FT = 1.4; // keep floor + benched crops reading identically (see Benches)
+  const PLANT_SPACING_FT = 1.12; // match benched: 1.25 sqft/plant (see Benches, OBSERVED)
   const MAX_PLANTS = 240;
   let cols = Math.max(2, Math.round(canopyLength / PLANT_SPACING_FT));
   let rows = Math.max(2, Math.round(canopyWidth / PLANT_SPACING_FT));
