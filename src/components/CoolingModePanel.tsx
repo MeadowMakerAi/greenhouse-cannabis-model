@@ -27,9 +27,19 @@ export default function CoolingModePanel() {
 
   return (
     <div className="space-y-3">
+      <p className="text-sm text-ink-600">
+        How much cooling you'd need <em>if</em> you install mechanical air
+        conditioning — most greenhouses don't. They hold temperature by opening
+        vents and running evaporative ("swamp") coolers, and only add
+        refrigerated AC in high-value, tight-control flower rooms. A "ton" here is
+        just a size: <strong>1 ton = 12,000 BTU/hr of heat removed</strong> (the
+        name comes from the cooling you'd get melting a ton of ice a day). These
+        tons are <strong>not</strong> in the "$/gram" power number — that's
+        electricity for lighting, dehumidifiers, and the peak-demand charge.
+      </p>
       <div className="card">
         <div className="card-header">
-          <span>HVAC screening · target indoor {inputs.indoorTargetDryBulbF}°F</span>
+          <span>Cooling you'd need if you add AC · target indoor {inputs.indoorTargetDryBulbF}°F</span>
         </div>
         <div className="card-body" style={{ height: 360 }}>
           <ResponsiveContainer>
@@ -51,7 +61,7 @@ export default function CoolingModePanel() {
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="card">
-          <div className="card-header">Annual dehumidification</div>
+          <div className="card-header">Water pulled from the air (dehumidifiers)</div>
           <div className="card-body">
             <div className="kv">
               <span className="kv-label">Avg pints/day</span>
@@ -65,10 +75,13 @@ export default function CoolingModePanel() {
                 {fmtInt(d.months.reduce((a, m) => a + m.dehumidKwhPerDay * 30, 0))}
               </span>
             </div>
+            <p className="mt-1 text-[11px] text-ink-500">
+              This electricity <em>is</em> in the "$/gram" power number. Dehumidifiers run whether or not you have AC.
+            </p>
           </div>
         </div>
         <div className="card">
-          <div className="card-header">Peak cooling</div>
+          <div className="card-header">Biggest cooling hour (sizing only)</div>
           <div className="card-body">
             <div className="kv">
               <span className="kv-label">Tons</span>
@@ -80,10 +93,13 @@ export default function CoolingModePanel() {
                 {fmtInt(Math.max(...d.months.map((m) => m.totalCoolingBTUhr)))}
               </span>
             </div>
+            <p className="mt-1 text-[11px] text-ink-500">
+              What an AC unit would have to be rated for. Not a cost — no AC electricity is billed in this model.
+            </p>
           </div>
         </div>
         <div className="card">
-          <div className="card-header">Evap reach failures</div>
+          <div className="card-header">Months evap cooling can't hold target</div>
           <div className="card-body flex flex-wrap gap-2">
             {d.months
               .filter((m) => !m.evapReachesTarget)
@@ -93,14 +109,16 @@ export default function CoolingModePanel() {
                 </span>
               ))}
             {d.months.every((m) => m.evapReachesTarget) && (
-              <span className="text-xs text-ink-500">Evap meets target every month under current inputs.</span>
+              <span className="text-xs text-ink-500">Evaporative cooling holds the target every month under current inputs — no mechanical AC implied.</span>
             )}
           </div>
         </div>
       </div>
 
       <p className="text-xs text-ink-500">
-        Screening-level estimate only. Final HVAC sizing requires engineering design using actual envelope, airflow, crop density, equipment, and design-day weather.
+        Rough screening numbers only — a starting point, not a design. Real HVAC
+        sizing needs an engineer working from your actual building, airflow, plant
+        density, equipment, and worst-case local weather.
       </p>
     </div>
   );
