@@ -46,7 +46,9 @@ export const defaultClimateControl = {
   },
   dehumid: {
     dehumidificationEnabled: true,
-    plantDensity: 0.4, // plants per ft²
+    plantDensity: 0.8, // plants per ft² of canopy — SOG mixed-light/indoor default (OBSERVED
+    // ~0.8 across 5 Terp Mansion 1-gal grows). Adjustable; drives the 3D canopy spacing.
+    // NOT a moisture driver — transpiration is canopy-area/LAI based (see dehumidificationModel).
     plantTranspirationGalPerDayPer1000SqFt: 35,
     irrigationRateGalDay: 800,
     runoffPct: 20,

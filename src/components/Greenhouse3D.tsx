@@ -93,6 +93,9 @@ interface Props {
   fixtureType?: "LED" | "HPS";
   /** Human-readable fixture name — currently informational only. */
   fixtureLabel?: string;
+  /** Plants per ft² of canopy — drives the 3D on-center plant spacing (visual only;
+   *  whole-canopy transpiration is LAI/area-based, not plant-count). Default 0.8 (SOG). */
+  plantDensity?: number;
 }
 
 // 1 ft = 1 unit in scene; canvas camera distance scales accordingly.
@@ -1832,12 +1835,14 @@ function Benches({
   footprintWidth,
   benchLayout,
   plantHeight,
+  plantDensity,
   plantGrowth,
 }: {
   footprintLength: number;
   footprintWidth: number;
   benchLayout: BenchLayoutInputs;
   plantHeight: number;
+  plantDensity: number;
   plantGrowth?: PlantGrowthGeom;
 }) {
   // Solve on the RAW footprint (same dims plan view + ScenarioContext use), not
@@ -1848,8 +1853,9 @@ function Benches({
   const deckY = 2.1; // rolling-bench tops sit ~2.4 ft — deck reads at bench height
   const DECK_TOP = deckY + 0.07; // deck box is 0.14 tall, centered at deckY
   const INSET = 0.4; // keep plants off the deck edge
-  const PLANT_SPACING_FT = 1.12; // 1.25 sqft/plant on-center — OBSERVED across 5 Terp Mansion
-  // grows in 1-gal pots ("800 plants per 1,000 sqft" = 0.8/sqft canopy; range 0.72–0.81).
+  const PLANT_SPACING_FT = 1 / Math.sqrt(Math.max(0.05, plantDensity)); // on-center from the
+  // plants/ft² input (default 0.8 = 1.25 sqft/plant — OBSERVED across 5 Terp Mansion 1-gal
+  // SOG grows, "800 plants per 1,000 sqft"). Adjustable; visual only (transpiration is LAI-based).
   // ponytail: each detailed plant is ~60 meshes, so ~240 is the visual ceiling before jank.
   // Full-canopy density on a commercial house (thousands of plants) needs an InstancedMesh
   // low-poly canopy — deferred. Target for that pass: 0.8 plants/sqft of canopy.
@@ -2052,6 +2058,7 @@ function CanopyAndPlants({
   canopyLength,
   canopyWidth,
   plantHeight,
+  plantDensity,
   plantGrowth,
   benched = false,
 }: {
@@ -2060,6 +2067,7 @@ function CanopyAndPlants({
   canopyLength: number;
   canopyWidth: number;
   plantHeight: number;
+  plantDensity: number;
   plantGrowth?: PlantGrowthGeom;
   /** When benched, the <Benches> group renders the canopy as planted decks —
    *  suppress the centered plant block + highlight plane to avoid a misaligned
@@ -2075,7 +2083,7 @@ function CanopyAndPlants({
   // fixtures. We derive the plant grid from canopy size + plant spacing, cap
   // the rendered count for performance, and scale spacing up on very large
   // canopies so rows stay uniform instead of exploding into thousands of meshes.
-  const PLANT_SPACING_FT = 1.12; // match benched: 1.25 sqft/plant (see Benches, OBSERVED)
+  const PLANT_SPACING_FT = 1 / Math.sqrt(Math.max(0.05, plantDensity)); // from plants/ft² input; matches Benches
   const MAX_PLANTS = 240;
   let cols = Math.max(2, Math.round(canopyLength / PLANT_SPACING_FT));
   let rows = Math.max(2, Math.round(canopyWidth / PLANT_SPACING_FT));
@@ -2906,6 +2914,7 @@ export default function Greenhouse3D({
   equipment,
   showEnvelope = true,
   showLabels = true,
+  plantDensity = 0.8,
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
@@ -3226,6 +3235,7 @@ export default function Greenhouse3D({
               canopyWidth={canopyWidth}
               plantHeight={plantHeight}
               plantGrowth={plantGrowth}
+              plantDensity={plantDensity}
               benched={!!benchLayout?.enabled}
             />
 
@@ -3236,6 +3246,7 @@ export default function Greenhouse3D({
                 benchLayout={benchLayout}
                 plantHeight={plantHeight}
                 plantGrowth={plantGrowth}
+                plantDensity={plantDensity}
               />
             )}
 
