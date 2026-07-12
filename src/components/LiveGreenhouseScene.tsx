@@ -153,6 +153,7 @@ export default function LiveGreenhouseScene({
       fixtureType={activeFixture.type}
       fixtureLabel={activeFixture.label}
       plantGrowth={syncToSim ? live.snapshot.plant : undefined}
+      plantDensity={inputs.plantDensity}
       bleed={fill ? true : bleed}
       fill={fill}
       weather={weather}

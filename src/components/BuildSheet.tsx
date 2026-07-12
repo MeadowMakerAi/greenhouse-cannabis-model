@@ -863,6 +863,7 @@ function Live3DScene(props: {
           fixtureWatts={activeFixture.wattsPerFixture}
           fixtureType={activeFixture.type}
           fixtureLabel={activeFixture.label}
+          plantDensity={inputs.plantDensity}
         />
         {props.syncToSim && <Greenhouse3DHud ridgeAzimuthDeg={ridgeAzimuth} />}
       </div>
