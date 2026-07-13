@@ -9,6 +9,9 @@ export default {
           100: "#f4f6f8",
           200: "#e6e9ee",
           300: "#a8b0bb",
+          // 400 was referenced 11x but never defined → Tailwind emitted no rule
+          // and text fell back to an inherited color. #7b8593 = ~4.6:1 on white.
+          400: "#7b8593",
           500: "#5b6573",
           700: "#2c3744",
           800: "#1a2230",
@@ -117,6 +120,14 @@ export default {
       },
       letterSpacing: {
         tightest: "-0.04em",
+      },
+      fontSize: {
+        // Readability bump over Tailwind defaults. The dashboard skews dense;
+        // the small end (xs 12→13, sm 14→15) is where legibility hurt most.
+        // Only the small sizes are nudged — base/lg+ keep defaults so headings
+        // and layouts don't reflow. Line-heights scaled to match.
+        xs: ["0.8125rem", { lineHeight: "1.125rem" }], // 13px / 18
+        sm: ["0.9375rem", { lineHeight: "1.375rem" }], // 15px / 22
       },
       boxShadow: {
         // Legacy alias — still used by `.recharts-default-tooltip`.

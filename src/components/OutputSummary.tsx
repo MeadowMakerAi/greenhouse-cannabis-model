@@ -11,7 +11,8 @@ import type { ReactNode } from "react";
  *
  * Information architecture (per /somersault round-2, 2026-05-22):
  *   • Crown: power cost per gram — annual electricity cost (lighting,
- *     climate, dehumidification) ÷ annual harvest. Electricity ONLY —
+ *     dehumidification, peak-demand charge) ÷ annual harvest. Heating fuel
+ *     (gas/propane) and AC are NOT in it. Electricity ONLY —
  *     it excludes labor, nutrients, growing media, packaging, and
  *     capex. It is one slice of true cost per gram, not the whole
  *     thing. The model is an energy/climate model; it is honest about
@@ -131,7 +132,7 @@ export default function OutputSummary() {
           <div className="mt-1 flex flex-wrap items-end gap-x-4 gap-y-1">
             <div
               className="kpi-hero"
-              title="Annual electricity cost — lighting, climate, and dehumidification — divided by annual dry-flower harvest. This is the POWER slice only. It excludes labor, nutrients, growing media, packaging, testing, and build-out (capex). Your true all-in cost per gram is meaningfully higher; this is the one slice an energy/climate model can size precisely."
+              title="Annual electricity cost ÷ annual dry-flower harvest. The electricity here is lighting + dehumidifiers + the utility peak-demand charge. It does NOT include heating (usually gas or propane — shown on the Build sheet) or air conditioning (most greenhouses vent or evap-cool instead of running AC). It also excludes labor, nutrients, growing media, packaging, testing, and build-out (capex). So your true all-in cost per gram is meaningfully higher — this is the one slice an energy/climate model can size precisely."
             >
               ${costPerGram.toFixed(2)}
               <span className="kpi-hero-unit">/gram</span>
@@ -146,8 +147,12 @@ export default function OutputSummary() {
             </div>
           </div>
           <div className="kpi-context mt-1 proportional-nums">
-            Electricity only — lighting, climate, and dehumidification ÷
-            annual harvest. <span className="font-medium text-ink-700">Not</span> labor,
+            Electricity only — lighting, dehumidifiers, and the utility
+            peak-demand charge ÷ annual harvest.{" "}
+            <span className="font-medium text-ink-700">Not</span> heating
+            (usually gas/propane, shown on the Build sheet) or AC — most
+            greenhouses vent or evap-cool rather than run air conditioning.{" "}
+            <span className="font-medium text-ink-700">Not</span> labor,
             nutrients, growing media, packaging, or build-out (capex). True
             cost per gram is higher — this is the power slice the model sizes
             precisely.
@@ -212,11 +217,14 @@ export default function OutputSummary() {
               value={fmtCurrency(d.annualEnergyPlusDemand)}
               unit="/yr"
               warn={d.demandFractionOfBill > 0.4}
+              tooltip="Total yearly electricity: the energy you use (lighting + dehumidifiers) plus the peak-demand charge — a surcharge the utility adds each month for your single highest 15-minute power draw, on top of the energy itself. For lights-heavy grows that surcharge is often 20–40% of the bill. Heating fuel and AC are not in this number."
             />
             <Line>
-              Electricity only — lighting, climate, and dehumidification.{" "}
-              {fmtPct(d.demandFractionOfBill)} of it is peak-demand charges.
-              Labor, nutrients, and media are not in this figure.
+              Electricity only: lighting + dehumidifiers + peak-demand charges
+              ({fmtPct(d.demandFractionOfBill)} of the bill). Heating fuel and
+              AC aren't here — heating is usually gas/propane (see the Build
+              sheet), and most greenhouses cool by venting, not AC. Labor,
+              nutrients, and media aren't included either.
             </Line>
             <div className="space-y-1.5 pt-1">
               <SensitivitySlider

@@ -1,6 +1,6 @@
 # Greenhouse Cannabis Model
 
-Open-source, screening-level decision-support model for cannabis greenhouse
+Screening-level decision-support model for cannabis greenhouse
 design. Live 3D simulation, yield projection, HVAC sizing, ventilation
 physics, and plant growth on a 24-hour clock — every coefficient traced to
 a peer-reviewed source. Built solo with Claude Opus 4.7 as a paired-coding
@@ -104,16 +104,13 @@ You provide your own API key, stored only in your browser's localStorage.
 - **One-click "Forget everything"** — clears the API key, the chat
   history, and the model preference from localStorage in a single click.
 
-### Recommended posture for forks / public deploys
+### Recommended posture for BYO-key use
 
 1. Create a dedicated Anthropic key for this dashboard at
    [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys).
 2. Set a daily spend cap (e.g. $5/day) at
    [console.anthropic.com/settings/limits](https://console.anthropic.com/settings/limits).
 3. Don't reuse a production key. Don't paste any key on a screen-share.
-4. If you fork this repo to a public Vercel/Netlify/etc deploy, treat
-   the key entry surface as untrusted by default and configure your
-   Anthropic key with the lowest reasonable rate limits.
 
 ## Architecture
 
@@ -165,9 +162,11 @@ VPD is clamped to [0, 6] kPa with `isFinite` fall-through; indoor temp to
 
 ## License
 
-MIT. Use it. Fork it. Calibrate it for your facility. The science citations
-in [`CITATIONS.md`](./CITATIONS.md) are public; the implementation is yours
-to copy.
+Proprietary — © 2026 Alex Claiborne, all rights reserved. See [`LICENSE`](./LICENSE).
+The hosted tool is free (or low-cost) to *use*; the source code is not
+open-sourced and may not be copied, modified, or redistributed. The science
+citations in [`CITATIONS.md`](./CITATIONS.md) are public references, not a
+grant to the implementation.
 
 ## What this model is **not**
 

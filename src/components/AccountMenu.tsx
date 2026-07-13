@@ -23,7 +23,7 @@ export default function AccountMenu() {
 
   useEffect(() => {
     if (!open || !auth.user) return;
-    listScenarios()
+    listScenarios(auth.user.id)
       .then(setSaved)
       .catch((e: unknown) =>
         setStatus(e instanceof Error ? e.message : "Could not load scenarios"),
@@ -54,7 +54,7 @@ export default function AccountMenu() {
     try {
       await saveScenario(name.trim(), inputs, auth.user.id);
       setName("");
-      setSaved(await listScenarios());
+      setSaved(await listScenarios(auth.user.id));
       setStatus("Saved.");
     } catch (err: unknown) {
       setStatus(err instanceof Error ? err.message : "Save failed");
@@ -67,8 +67,9 @@ export default function AccountMenu() {
   }
 
   async function handleDelete(id: string) {
+    if (!auth.user) return;
     try {
-      await deleteScenario(id);
+      await deleteScenario(id, auth.user.id);
       setSaved((prev) => prev.filter((s) => s.id !== id));
     } catch (err: unknown) {
       setStatus(err instanceof Error ? err.message : "Delete failed");

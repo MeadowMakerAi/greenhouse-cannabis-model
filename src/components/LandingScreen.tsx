@@ -15,8 +15,6 @@ import { useEffect, useRef, useState } from "react";
  * the dashboard header's GH monogram so users can return to the intro.
  */
 
-const REPO_URL = "https://github.com/MeadowMakerAi/greenhouse-cannabis-model";
-
 /**
  * useReveal — adds `is-visible` class when the element enters the viewport.
  * Mirrors the GitHub landing's "fade-up on scroll" pattern. Each element
@@ -112,16 +110,12 @@ export default function LandingScreen({
                 Greenhouse cannabis model
               </div>
               <div className="text-[11px] text-ink-500 proportional-nums">
-                v0.1.0 · MIT · open source
+                v0.1.0 · © 2026 Alex Claiborne
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3 text-[11px] text-ink-500">
-            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="underline-offset-2 hover:text-ink-900 hover:underline">GitHub</a>
-            <span className="text-ink-300">·</span>
-            <a href={`${REPO_URL}/blob/main/README.md`} target="_blank" rel="noopener noreferrer" className="underline-offset-2 hover:text-ink-900 hover:underline">README</a>
-            <span className="text-ink-300">·</span>
-            <a href={`${REPO_URL}/blob/main/CITATIONS.md`} target="_blank" rel="noopener noreferrer" className="underline-offset-2 hover:text-ink-900 hover:underline">Citations</a>
+            <span>Screening-level decision support</span>
           </div>
         </header>
 
@@ -155,9 +149,6 @@ export default function LandingScreen({
               <button type="button" onClick={onLaunch} className="btn-primary !px-5 !py-3 !text-sm">
                 Launch the model →
               </button>
-              <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="btn !px-5 !py-3 !text-sm">
-                View the code on GitHub
-              </a>
             </div>
           </div>
 
@@ -282,14 +273,9 @@ export default function LandingScreen({
                 clock, the sun moves and the plants grow. Switch climate
                 providers, the heating load recomputes. No mock data — every
                 value traces to a sourced coefficient in{" "}
-                <a
-                  href={`${REPO_URL}/blob/main/CITATIONS.md`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline-offset-2 hover:text-white hover:underline"
-                >
-                  CITATIONS.md
-                </a>
+                <span className="font-medium text-white/90">
+                  the bibliography
+                </span>
                 .
               </p>
             </div>
@@ -355,8 +341,7 @@ export default function LandingScreen({
               Open the model. Start sizing.
             </h2>
             <p className="mt-2 max-w-lg text-base leading-relaxed text-leaf-50/90 proportional-nums">
-              Free, open-source, MIT-licensed. Runs entirely in the browser.
-              The chatbot is BYO Anthropic key.
+              Free to use — no signup. Runs in your browser.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -367,14 +352,6 @@ export default function LandingScreen({
             >
               Launch the model →
             </button>
-            <a
-              href={REPO_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-white/30 px-6 py-3 text-sm font-medium text-white transition hover:bg-white/10"
-            >
-              GitHub →
-            </a>
           </div>
         </div>
       </section>
@@ -384,8 +361,8 @@ export default function LandingScreen({
         <div className="mx-auto flex max-w-6xl flex-wrap items-baseline justify-between gap-3 border-t border-ink-200/80 px-6 pt-4 text-[11px] text-ink-500 proportional-nums lg:px-10">
           <div>
             Built with React 19 + TypeScript + React Three Fiber + Tailwind.
-            Climate data via NASA POWER + Open-Meteo. Citations in{" "}
-            <a href={`${REPO_URL}/blob/main/CITATIONS.md`} target="_blank" rel="noopener noreferrer" className="underline-offset-2 hover:text-ink-900 hover:underline">CITATIONS.md</a>.
+            Climate data via NASA POWER + Open-Meteo. Every coefficient is
+            traced to a peer-reviewed source.
           </div>
           <button
             type="button"

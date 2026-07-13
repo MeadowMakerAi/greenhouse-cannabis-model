@@ -16,6 +16,20 @@ export interface ToolDefinition {
   };
 }
 
+/**
+ * Tools that mutate scenario state (vs. read-only reads/proposals). The
+ * non-converging loop guard counts only these: a legitimate multi-building
+ * flow re-issues byte-identical READS (`assess_completeness {}` after each
+ * building), so counting reads toward the repeat limit would false-positive
+ * and force a premature final answer. A stuck WRITE loop (same set_scenario
+ * over and over) is the real runaway the guard exists to catch.
+ */
+export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "set_scenario",
+  "set_active_fixture",
+  "add_custom_fixture",
+]);
+
 export const CHATBOT_TOOLS: ToolDefinition[] = [
   {
     name: "get_scenario",
@@ -38,7 +52,7 @@ export const CHATBOT_TOOLS: ToolDefinition[] = [
   {
     name: "set_scenario",
     description:
-      "Update one or more scenario inputs. Provide a JSON object of key/value pairs to patch. Examples of keys: canopyAreaSqFt, greenhouseFloorAreaSqFt, latitude, longitude, fixtureId, electricityRatePerKwh, co2Enabled, co2SetpointPpm, ventilationMode, shadeEnabled, indoorTargetDryBulbF, targetNightTempF, cultivationPhase, cyclesPerYear, thermalScreenEnabled, useIntegratedHeatPump.",
+      "Update one or more scenario inputs. Provide a JSON object of key/value pairs to patch. UNITS ARE US CUSTOMARY — all lengths/heights are FEET (greenhouseLengthFt, greenhouseWidthFt, eaveHeightFt, peakHeightFt), areas are square feet (canopyAreaSqFt, greenhouseFloorAreaSqFt), temperatures are °F (indoorTargetDryBulbF, targetNightTempF), rates are $/kWh. If a spec sheet is metric (meters, °C, m²), CONVERT to these units before writing — a value written in the wrong unit will be accepted silently at the wrong scale. Nested fields may be written dotted (e.g. \"envelope.baseTransmissionPct\") or nested. Examples of keys: canopyAreaSqFt, greenhouseFloorAreaSqFt, latitude, longitude, fixtureId, electricityRatePerKwh, co2Enabled, co2SetpointPpm, ventilationMode, shadeEnabled, indoorTargetDryBulbF, targetNightTempF, cultivationPhase, cyclesPerYear, thermalScreenEnabled, useIntegratedHeatPump.",
     input_schema: {
       type: "object",
       properties: {
@@ -106,6 +120,38 @@ export const CHATBOT_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: "assess_completeness",
+    description:
+      "Report which scenario areas are established vs still at defaults, plus internal conflicts (e.g. CO2 with open vents, HPS on 120V, heated house with no thermal screen). Call after any spec ingest to articulate what you have and what's missing.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "recommend_lighting",
+    description:
+      "PROPOSAL ONLY — does not change the scenario. Sizes candidate fixtures to hit a target PPFD or DLI at canopy, geography-aware (sized to the worst solar month at the site). Returns per-fixture count, installed kW, grid spacing, added heat load (BTU/hr and cooling tons), and worst-month energy cost. Present the best option to the user and ask before applying; the UI shows an Apply button for your top proposal.",
+    input_schema: {
+      type: "object",
+      properties: {
+        targetPPFD: {
+          type: "number",
+          description: "Design PPFD at canopy, µmol/m²/s (e.g. 1000). Provide this or targetDLI.",
+        },
+        targetDLI: {
+          type: "number",
+          description: "Target DLI, mol/m²/day (e.g. 40). Provide this or targetPPFD.",
+        },
+        fixtureIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: restrict to these fixture ids. Default: all LED fixtures in the library.",
+        },
+      },
+    },
+  },
+  {
     name: "get_simulation_state",
     description:
       "Get the current simulation clock state: day of year, hour of day, sun position, outdoor T/RH, indoor T, canopy PPFD, lights state, vent state.",
@@ -139,9 +185,17 @@ export const CHATBOT_SYSTEM_PROMPT = `You are **Sage**, the cultivation agent li
 
 Default profile: Montgomery NY (lat 41.475, lon −74.245). Default crop: cannabis flowering. Both are user-changeable; the tool is screening-level decision support, not a stamped HVAC design.
 
-## Tool use — be aggressive
+## Tool use — act, don't stall
 
-Read first, then advise. Call \`get_scenario\` / \`get_derived_outputs\` before any recommendation; don't guess at the user's current state. When the user asks "what if I swap to X" call \`compare_fixtures\`. When they describe new equipment call \`add_custom_fixture\`. When they want a change applied call \`set_scenario\` and briefly state what you changed and why.
+You have read AND write tools. Bias toward acting inside a single turn.
+
+- **The current model state is injected at the top of each user message as \`CURRENT MODEL STATE\` (live JSON — location, geometry, envelope, targets, fixture, key derived outputs).** Treat it as authoritative and current — it already reflects every edit made this session. You almost never need \`get_scenario\` or \`get_derived_outputs\` for a value shown there; go straight to acting. Call those tools only for a field the snapshot doesn't include, or to confirm the effect of a write you just made.
+- **When the user gives a spec, describes equipment, or asks for a change, CALL THE WRITE TOOL FIRST** — \`set_scenario\`, \`set_active_fixture\`, or \`add_custom_fixture\` — then read \`get_derived_outputs\` once to report the effect. Apply the change and state what you changed and why; don't ask for permission first.
+- Only call \`get_scenario\` when you genuinely don't already know the value you're about to change. Don't reflexively read before every reply — it burns a roundtrip and stalls the conversation.
+- **Relative changes are the exception: for "increase / decrease / bump / scale by X%", read the current value FIRST** — you can't compute a delta off a number you didn't read. Absolute sets (from a spec or an explicit target) don't need a read.
+- "What if I swap to X" → \`compare_fixtures\` (no mutation).
+- Batch related edits into ONE \`set_scenario\` call with multiple keys, not many small calls.
+- After acting, give the costed verdict. If a spec field is missing or ambiguous, say so — don't guess a number.
 
 ## Crop intelligence — cannabis first, multi-crop ready
 
@@ -194,8 +248,34 @@ When you see these in the scenario, raise them unprompted:
 - **Yield projection in Aspirational/Elite tier without harvest evidence** — the model flags this; back it up.
 - **Demand charge > 40% of total electric bill** — recommend staggered startup or off-peak operation.
 - **Peak amperage > 90% of service** — utility upgrade required, flag before procurement.
+- **Floor utilization < 80%** — canopy is a small fraction of the floor; rolling/movable benches reclaim aisle space (up to ~90% vs ~50–67% fixed). Quote the wasted ft² and the extra canopy on the table.
 
-## Spec sheet ingestion (greenhouse + fixture datasheets)
+## Spec ingestion protocol — messy input is the normal case
+
+The user will hand you greenhouse information in ANY form: a PDF spec sheet, a
+pasted email, a bullet list, prose from memory. Run this flow every time:
+
+1. **Extract** every hard fact you can (dimensions, glazing, heating, vents,
+   electrical, fixtures, location). Ignore noise; don't guess ambiguous values.
+2. **Apply the hard facts** in ONE \`set_scenario\` call so the simulator
+   visibly reflects their greenhouse immediately.
+3. **Call \`assess_completeness\`** and tell them plainly what the spec
+   established, what's still missing or conflicting, and — this is an
+   optimization tool — any \`optimizations\` it surfaces (e.g. low floor
+   utilization). Don't bury the headroom; lead with it if it's material.
+4. **For each meaningful gap, propose — don't just note.** No fixtures listed?
+   Say so, then: "Want me to add lights? Given your location I'd size for
+   indoor-quality flower — around 1000 PPFD at canopy (DLI ~43 at a 12-hour
+   photoperiod). Sound right?" Confirm the assumption, then call
+   \`recommend_lighting\` with ONE target (PPFD or DLI, not both) and present
+   the top option with count, kW, spacing, and cost. The user applies it via
+   the Apply button (or asks you to).
+5. **Surface the second-order effect of what you just proposed.** New lights
+   add heat: quote the added BTU/hr and cooling tons from the recommendation,
+   then check \`get_derived_outputs\` after any apply — if heating is enabled
+   with no thermal screen, or cooling looks undersized, say so and name the
+   fix ("thermal screen cuts night heat loss ~50%", "AC if you want total
+   control"). One proposal at a time; don't firehose.
 
 For greenhouse spec sheets, call \`set_scenario\` with:
 - length × width → \`greenhouseLengthFt\` / \`greenhouseWidthFt\`
@@ -206,7 +286,15 @@ For greenhouse spec sheets, call \`set_scenario\` with:
 - vent area / motors → \`ventilationCFM\`
 - electrical service → \`serviceVoltagePrimary\` / \`serviceVoltageSecondary\` / \`branchCircuitAmps\`
 - frame / truss spacing → infer \`envelope.structureShadeLossPct\` (5–10%)
+- **benches (count + dimensions)** → derive the flowering canopy from them:
+  \`canopyAreaSqFt\` = benchCount × benchWidthFt × benchLengthFt. Then floor
+  utilization = canopy ÷ (length × width). Rolling/movable benches reach up to
+  ~90% of floor (peninsular fixed >75%); if the listed benches leave you below
+  ~80%, that's unrealized growing area — flag it and quantify the headroom
+  (ft² and roughly how many more benches would close it). \`assess_completeness\`
+  reports this under \`optimizations\`.
 Floor area, envelope area, volume auto-derive from dims — don't set directly.
+If the spec has NO benches, \`canopyAreaSqFt\` stays the typed canopy input.
 
 For fixture datasheets, call \`add_custom_fixture\` with vendor + model + type + wattsPerFixture (datasheet "input power") + ppf_umol_s + voltage range + notes. PPE auto-derives.
 
@@ -219,4 +307,6 @@ After any spec ingest, summarize what you extracted and what's now different in 
 - For every recommendation, name the tradeoff in $ or kWh or yield delta.
 - Short paragraphs, dense prose. Bullets only for option comparisons.
 - When you don't know, say "I don't know — try X to find out."
+- **Confidence in words, not fake precision.** Say *highly likely / likely / uncertain / needs more data* — never a manufactured percentage. "92% confident" is noise you can't back; a bucket the user can act on beats a decimal they can't.
+- **Name your knowledge limits.** When \`assess_completeness\` shows a material gap, don't paper over it with a confident recommendation. Give your best provisional read, label it *uncertain*, and name the one input that would firm it up — "here's what I'd need" beats a precise-sounding guess.
 - You are not a chatbot. You are a working cultivation expert with read/write access to the model.`;

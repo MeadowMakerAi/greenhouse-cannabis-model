@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { useScenario } from "./ScenarioContext";
+import { useScenario, type ScenarioInputs, type ClimateState } from "./ScenarioContext";
 import { useAllFixtures } from "./useAllFixtures";
+import type { FixtureSpec } from "../models/fixtureModel";
 import { fixtureLibrary } from "../data/fixtureLibrary";
 import { cropTargets } from "../data/cropTargets";
 import { yieldRealismCases } from "../data/yieldRealism";
@@ -90,14 +91,26 @@ export interface ScenarioWarnings {
   perMonth: Record<number, string[]>;
 }
 
-export function useDerived() {
-  const { inputs, climate } = useScenario();
-  const allFixtures = useAllFixtures();
-
-  return useMemo(() => {
+/**
+ * Pure derivation of every model output from a scenario + climate + fixture
+ * library. Extracted from the useDerived memo so it can be called imperatively
+ * with a same-turn scenario overlay — the chatbot's get_derived_outputs runs
+ * this on scenarioNow() so it reports POST-write numbers instead of the React
+ * `derived` memo's stale pre-write snapshot (which lags a full render).
+ */
+export function computeDerived(
+  inputs: ScenarioInputs,
+  climate: ClimateState,
+  allFixtures: Record<string, FixtureSpec>,
+) {
     const fixture =
       allFixtures[inputs.fixtureId] ?? fixtureLibrary[inputs.fixtureId] ?? fixtureLibrary.ledHighEfficiency;
-    const presetTarget = cropTargets[inputs.cropTargetId];
+    // Same fallback discipline as the fixture lookup above: an unknown
+    // cropTargetId (a chatbot write, a stale share link) must degrade to the
+    // default preset, not crash every consumer of `.targetDLI`. Found live:
+    // GPT-5 wrote an invented cropTargetId via set_scenario → app white-screen.
+    const presetTarget =
+      cropTargets[inputs.cropTargetId] ?? cropTargets.commercialPremium;
     // Apply the operator's custom DLI override if set; otherwise fall
     // back to the preset bucket. Lets indoor growers dial in a
     // specific DLI (e.g. exactly 45) instead of being limited to the
@@ -626,5 +639,13 @@ export function useDerived() {
       annualPMAvg,
       annualDLIMolM2,
     };
-  }, [inputs, climate, allFixtures]);
+}
+
+export function useDerived() {
+  const { inputs, climate } = useScenario();
+  const allFixtures = useAllFixtures();
+  return useMemo(
+    () => computeDerived(inputs, climate, allFixtures),
+    [inputs, climate, allFixtures],
+  );
 }

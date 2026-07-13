@@ -1,4 +1,6 @@
 import { solveFixtureGrid } from "../models/fixtureGrid";
+import { solveBenchLayout } from "../models/benchLayout";
+import type { BenchLayoutInputs } from "../context/ScenarioContext";
 
 interface Props {
   floorAreaSqFt: number;
@@ -6,6 +8,11 @@ interface Props {
   fixtureCount: number;
   gridSpacingFt: number;
   fixtureLabel: string;
+  /** Real footprint — used to draw benched houses true-to-plan. */
+  greenhouseLengthFt?: number;
+  greenhouseWidthFt?: number;
+  /** When enabled, benches + aisles replace the single canopy rect. */
+  benchLayout?: BenchLayoutInputs;
 }
 
 /**
@@ -20,11 +27,22 @@ export default function GreenhousePlanView({
   fixtureCount,
   gridSpacingFt,
   fixtureLabel,
+  greenhouseLengthFt,
+  greenhouseWidthFt,
+  benchLayout,
 }: Props) {
-  // Assume 1.5:1 length:width
+  // Benched houses draw at their real footprint so benches + aisles are true
+  // to plan; open houses keep the 1.5:1 area-derived schematic (unchanged).
+  const benched =
+    !!benchLayout?.enabled && !!greenhouseLengthFt && !!greenhouseWidthFt;
   const ASPECT = 1.5;
-  const floorWidth = Math.sqrt(floorAreaSqFt / ASPECT);
-  const floorLength = floorWidth * ASPECT;
+  const floorWidth = benched
+    ? greenhouseWidthFt!
+    : Math.sqrt(floorAreaSqFt / ASPECT);
+  const floorLength = benched ? greenhouseLengthFt! : floorWidth * ASPECT;
+  const benchResult = benched
+    ? solveBenchLayout(floorLength, floorWidth, benchLayout!)
+    : null;
   const canopyWidth = Math.sqrt(canopyAreaSqFt / ASPECT);
   const canopyLength = canopyWidth * ASPECT;
 
@@ -110,39 +128,94 @@ export default function GreenhousePlanView({
           Floor: {floorLength.toFixed(1)}′ × {floorWidth.toFixed(1)}′ ({floorAreaSqFt.toFixed(0)} ft²)
         </text>
 
-        {/* Canopy footprint */}
-        <rect
-          x={canopyX}
-          y={canopyY}
-          width={drawnCanopyLengthPx}
-          height={drawnCanopyWidthPx}
-          fill="#2f8f6c22"
-          stroke="#1f6c50"
-          strokeWidth="1.5"
-          strokeDasharray="6 4"
-        />
-        <text
-          x={canopyX + drawnCanopyLengthPx / 2}
-          y={canopyY + drawnCanopyWidthPx + 14}
-          textAnchor="middle"
-          fontSize="10"
-          className="fill-leaf-600"
-        >
-          Canopy: {canopyLength.toFixed(1)}′ × {canopyWidth.toFixed(1)}′ ({canopyAreaSqFt.toFixed(0)} ft²)
-        </text>
-
-        {/* Aisle indicators (optional) */}
-        {(floorWidth - canopyWidth) > 0.1 && (
+        {benched && benchResult ? (
+          /* Benches (rows) — aisles are the negative space between/around them.
+             One continuous rect per row, ticked into individual bench segments. */
           <>
+            {benchResult.rowRects.map((b, i) => {
+              const bx = floorX + b.xFt * scale;
+              const by = floorY + b.yFt * scale;
+              const bw = b.wFt * scale;
+              const bh = b.hFt * scale;
+              const segs = Math.max(
+                1,
+                Math.round(b.wFt / benchResult.benchLengthFt),
+              );
+              return (
+                <g key={`bench-${i}`}>
+                  <rect
+                    x={bx}
+                    y={by}
+                    width={bw}
+                    height={bh}
+                    fill="#2f8f6c40"
+                    stroke="#1f6c50"
+                    strokeWidth="1"
+                    rx="1.5"
+                  />
+                  {Array.from({ length: segs - 1 }, (_, s) => (
+                    <line
+                      key={s}
+                      x1={bx + (bw / segs) * (s + 1)}
+                      y1={by}
+                      x2={bx + (bw / segs) * (s + 1)}
+                      y2={by + bh}
+                      stroke="#1f6c50"
+                      strokeWidth="0.5"
+                      opacity="0.5"
+                    />
+                  ))}
+                </g>
+              );
+            })}
+            <text
+              x={floorX + drawnFloorLengthPx / 2}
+              y={floorY - 6}
+              textAnchor="middle"
+              fontSize="10"
+              className="fill-leaf-600"
+            >
+              {benchResult.rows} rows · {benchResult.benchCount}{" "}
+              {benchResult.type} benches ({benchResult.benchWidthFt}′ wide) ·
+              canopy {benchResult.canopyAreaSqFt.toFixed(0)} ft² (
+              {benchResult.utilizationPct.toFixed(0)}% of floor)
+            </text>
+          </>
+        ) : (
+          <>
+            {/* Canopy footprint */}
+            <rect
+              x={canopyX}
+              y={canopyY}
+              width={drawnCanopyLengthPx}
+              height={drawnCanopyWidthPx}
+              fill="#2f8f6c22"
+              stroke="#1f6c50"
+              strokeWidth="1.5"
+              strokeDasharray="6 4"
+            />
             <text
               x={canopyX + drawnCanopyLengthPx / 2}
-              y={canopyY - 6}
+              y={canopyY + drawnCanopyWidthPx + 14}
               textAnchor="middle"
-              fontSize="9"
-              className="fill-ink-500"
+              fontSize="10"
+              className="fill-leaf-600"
             >
-              ←{" "}{((floorWidth - canopyWidth) / 2).toFixed(1)}′ aisle{" "}→
+              Canopy: {canopyLength.toFixed(1)}′ × {canopyWidth.toFixed(1)}′ ({canopyAreaSqFt.toFixed(0)} ft²)
             </text>
+
+            {/* Aisle indicators (optional) */}
+            {(floorWidth - canopyWidth) > 0.1 && (
+              <text
+                x={canopyX + drawnCanopyLengthPx / 2}
+                y={canopyY - 6}
+                textAnchor="middle"
+                fontSize="9"
+                className="fill-ink-500"
+              >
+                ←{" "}{((floorWidth - canopyWidth) / 2).toFixed(1)}′ aisle{" "}→
+              </text>
+            )}
           </>
         )}
 

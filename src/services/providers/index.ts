@@ -17,15 +17,17 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     keyHint: "sk-ant-...",
     keyFormat: /^sk-ant-[a-zA-Z0-9_-]{40,}$/,
     keyUrl: "https://console.anthropic.com/settings/keys",
-    defaultModel: "claude-sonnet-4-6",
+    defaultModel: "claude-sonnet-5",
     models: [
-      { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (balanced — recommended)" },
-      { value: "claude-opus-4-7", label: "Opus 4.7 (deep reasoning, slower)" },
-      { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (fast, lighter)" },
+      { value: "claude-sonnet-5", label: "Sonnet 5 (default — fast, agentic tool-use)" },
+      { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (cheapest — simple turns)" },
+      { value: "claude-opus-4-8", label: "Opus 4.8 (deep reasoning)" },
+      { value: "claude-fable-5", label: "Fable 5 (max capability — slower, pricier)" },
+      { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (legacy balanced)" },
     ],
     supportsImages: true,
     supportsPdf: true,
-    note: "Best tool-use + native PDF. Hits the 30k tokens/min rate limit on big spec sheets — switch to Gemini if rate-limited.",
+    note: "Best tool-use + native PDF. Sonnet 5 is the default — near-Opus agentic quality at low latency, the right call for capability-bound spec ingestion. Big spec sheets that trip the 30k-tok/min limit auto-retry on Gemini; drop to Haiku 4.5 for cheap simple turns.",
   },
   gemini: {
     id: "gemini",
@@ -37,12 +39,16 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     keyHint: "AIza...",
     keyFormat: /^AIza[0-9A-Za-z_-]{30,}$/,
     keyUrl: "https://aistudio.google.com/app/apikey",
-    defaultModel: "gemini-2.0-flash",
+    // Verified live against the v1beta models endpoint 2026-07-12. gemini-1.5-*
+    // is retired (no longer served) and was removed. gemini-3.x is the current
+    // generation; 2.x remains for cheap/free-tier PDF ingest.
+    defaultModel: "gemini-2.5-flash",
     models: [
+      { value: "gemini-3-flash-preview", label: "Gemini 3 Flash — newest, fast, 1M ctx, PDFs" },
+      { value: "gemini-3-pro-preview", label: "Gemini 3 Pro — deepest reasoning, 1M ctx" },
+      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — free, balanced, PDFs" },
+      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — free tier limited, strong reasoning" },
       { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash — free, 1M ctx, PDFs" },
-      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — free, smarter" },
-      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — free tier limited, deepest reasoning" },
-      { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash — legacy" },
     ],
     supportsImages: true,
     supportsPdf: true,
@@ -61,17 +67,43 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     // key to api.openai.com.
     keyFormat: /^sk-(?!ant-)(?!or-)[A-Za-z0-9_-]{20,}$/,
     keyUrl: "https://platform.openai.com/api-keys",
-    defaultModel: "gpt-4o-mini",
+    defaultModel: "gpt-5.6-terra",
     models: [
-      { value: "gpt-4o-mini", label: "GPT-4o mini (cheap, fast)" },
-      { value: "gpt-4o", label: "GPT-4o (balanced)" },
-      { value: "gpt-4.1", label: "GPT-4.1" },
-      { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
+      { value: "gpt-5.6-sol", label: "GPT-5.6 Sol (flagship reasoning)" },
+      { value: "gpt-5.6-terra", label: "GPT-5.6 Terra (balanced — recommended)" },
+      { value: "gpt-5.6-luna", label: "GPT-5.6 Luna (fast, cheap)" },
+      // GPT-5.6 access is gated by OpenAI org verification/tier — keys without
+      // it 404 with model_not_found. Keep the prior generation available.
+      { value: "gpt-5", label: "GPT-5 (if 5.6 unavailable on your key)" },
+      { value: "gpt-5-mini", label: "GPT-5 mini (cheap)" },
+      { value: "gpt-4o-mini", label: "GPT-4o mini (legacy, cheap)" },
+      { value: "gpt-4o", label: "GPT-4o (legacy)" },
       { value: "o4-mini", label: "o4-mini (reasoning)" },
     ],
     supportsImages: true,
     supportsPdf: false,
     note: "PDFs are not supported here — convert spec sheets to images or use Gemini/Anthropic for PDF ingest.",
+  },
+  xai: {
+    id: "xai",
+    label: "xAI (Grok)",
+    // OpenAI-compatible surface at api.x.ai/v1 (docs.x.ai — uses the OpenAI SDK
+    // pointed at this base URL), so it routes through the openAICompatibleProvider.
+    defaultBaseUrl: "https://api.x.ai/v1",
+    allowedHosts: ["api.x.ai"],
+    requiresKey: true,
+    allowCustomBaseUrl: false,
+    keyHint: "xai-...",
+    keyFormat: /^xai-[A-Za-z0-9_-]{20,}$/,
+    keyUrl: "https://console.x.ai",
+    defaultModel: "grok-4.5",
+    models: [
+      { value: "grok-4.5", label: "Grok 4.5 (flagship — 500k ctx, fast agentic tool-use)" },
+      { value: "grok-4.3", label: "Grok 4.3 (1M context)" },
+    ],
+    supportsImages: true,
+    supportsPdf: false,
+    note: "Grok 4.5 is xAI's flagship — 500k context, strong agentic tool-use, low latency. OpenAI-compatible API; key from console.x.ai. Not available in the EU. PDFs unsupported here — use Anthropic or Gemini to ingest spec sheets.",
   },
   openrouter: {
     id: "openrouter",
@@ -106,12 +138,14 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     keyHint: "gsk_...",
     keyFormat: /^gsk_[A-Za-z0-9_-]{20,}$/,
     keyUrl: "https://console.groq.com/keys",
+    // Verified against console.groq.com/docs/models 2026-07-12: the two llama
+    // models + gpt-oss are current production; qwen3-32b is preview (eval-only).
     defaultModel: "llama-3.3-70b-versatile",
     models: [
-      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B versatile — free" },
+      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B versatile — free, production" },
       { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B instant — free, fastest" },
-      { value: "qwen/qwen3-32b", label: "Qwen3 32B — free" },
-      { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 distill 70B — reasoning" },
+      { value: "openai/gpt-oss-120b", label: "GPT-OSS 120B — free, production" },
+      { value: "qwen/qwen3-32b", label: "Qwen3 32B — preview (eval only)" },
     ],
     supportsImages: false,
     supportsPdf: false,
@@ -142,6 +176,7 @@ export const PROVIDER_ORDER: ProviderId[] = [
   "anthropic",
   "gemini",
   "openai",
+  "xai",
   "openrouter",
   "groq",
   "ollama",
@@ -154,6 +189,7 @@ export function getProvider(id: ProviderId): ChatProvider {
     case "gemini":
       return geminiProvider;
     case "openai":
+    case "xai":
     case "openrouter":
     case "groq":
     case "ollama":

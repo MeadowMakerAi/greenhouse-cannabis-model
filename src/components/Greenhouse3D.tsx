@@ -8,6 +8,7 @@ import {
   Stars,
   Environment,
   Lightformer,
+  Html,
 } from "@react-three/drei";
 import {
   EffectComposer,
@@ -31,9 +32,10 @@ import {
   skyParamsFromElevation,
 } from "../models/kelvinModel";
 import { solveFixtureGrid } from "../models/fixtureGrid";
+import { solveBenchLayout } from "../models/benchLayout";
 import WeatherParticles from "./WeatherParticles";
 import EquipmentObjects from "./EquipmentObjects";
-import type { PlacedEquipment } from "../context/ScenarioContext";
+import type { PlacedEquipment, BenchLayoutInputs } from "../context/ScenarioContext";
 import type { LiveWeatherState } from "../context/useLiveWeather";
 
 interface Props {
@@ -91,6 +93,9 @@ interface Props {
   fixtureType?: "LED" | "HPS";
   /** Human-readable fixture name — currently informational only. */
   fixtureLabel?: string;
+  /** Plants per ft² of canopy — drives the 3D on-center plant spacing (visual only;
+   *  whole-canopy transpiration is LAI/area-based, not plant-count). Default 0.8 (SOG). */
+  plantDensity?: number;
 }
 
 // 1 ft = 1 unit in scene; canvas camera distance scales accordingly.
@@ -1546,6 +1551,7 @@ function FanLeafCluster({
   size,
   color,
   rng,
+  lod = "high",
 }: {
   position: [number, number, number];
   rotationY: number;
@@ -1553,11 +1559,15 @@ function FanLeafCluster({
   size: number;
   color: string;
   rng: (n: number) => number;
+  /** "low" halves the leaflet count for dense canopies where each plant is
+   *  a few px tall and the palmate detail is invisible. */
+  lod?: "high" | "low";
 }) {
   // Cannabis fan leaf: 5–7 elongated palmate leaflets. Each leaflet ≈ thin
   // cone (length ≈ size × 1.0, base ≈ size × 0.18). Center leaflet longest,
-  // outer leaflets shorter — classic palmate gradient.
-  const leaflets = 5 + Math.round(rng(70) * 2); // 5–7
+  // outer leaflets shorter — classic palmate gradient. Each leaflet is its own
+  // draw call, so this count is the dominant per-plant mesh multiplier.
+  const leaflets = lod === "low" ? 3 : 5 + Math.round(rng(70) * 2); // 3 | 5–7
   const tilt = -Math.PI / 6; // leaflets pitch slightly upward from horizontal
   const leafLen = size;
   const leafThick = size * 0.16;
@@ -1610,10 +1620,15 @@ function CannabisPlant({
   position,
   growth,
   seed,
+  lod = "high",
 }: {
   position: [number, number, number];
   growth: PlantGrowthGeom;
   seed: number;
+  /** "low" (dense canopies): fewer tiers, 3-leaflet clusters, and skip the
+   *  translucent trichome-shimmer inner cones — invisible at that scale but
+   *  ~2× material cost. Cuts per-plant draw calls roughly in half. */
+  lod?: "high" | "low";
 }) {
   // Deterministic per-plant variation from seed
   const r = (n: number) => {
@@ -1665,13 +1680,17 @@ function CannabisPlant({
           size={Math.max(0.18, foliageR * 0.7)}
           color={fanLeafColorLight}
           rng={r}
+          lod={lod}
         />
       </group>
     );
   }
 
   // Determine node count based on plant size — taller plants have more tiers.
-  const tierCount = Math.max(3, Math.min(6, Math.round(2 + height * 0.6)));
+  // Cap tiers lower in low-LOD (dense canopy) — each tier is 2 branches ×
+  // (cylinder + leaf cluster), so this compounds with the leaflet reduction.
+  const tierCap = lod === "low" ? 4 : 6;
+  const tierCount = Math.max(3, Math.min(tierCap, Math.round(2 + height * 0.6)));
   const tiers: { y: number; branchLen: number; tierFrac: number }[] = [];
   for (let i = 0; i < tierCount; i++) {
     // Skip the bottom 20% (bare stalk near base), distribute the rest evenly
@@ -1743,6 +1762,7 @@ function CannabisPlant({
                   size={leafSize}
                   color={tier.tierFrac > 0.7 ? fanLeafColorLight : fanLeafColor}
                   rng={r}
+                  lod={lod}
                 />
               </group>
               {/* Lateral cola at upper branches in flower */}
@@ -1754,20 +1774,22 @@ function CannabisPlant({
                     />
                     <meshStandardMaterial color={colaColor} roughness={0.85} />
                   </mesh>
-                  <mesh scale={[0.92, 0.92, 0.92]} position={[0, 0.04, 0]}>
-                    <coneGeometry
-                      args={[Math.max(0.05, colaSize * 0.85), Math.max(0.12, colaSize * 1.7), 7]}
-                    />
-                    <meshStandardMaterial
-                      color={`hsl(${growth.foliageHueDeg - 10}, ${
-                        Math.max(20, growth.foliageSat - 12)
-                      }%, ${Math.min(72, growth.foliageLight + 24)}%)`}
-                      roughness={0.55}
-                      metalness={0.05}
-                      transparent
-                      opacity={trichomeAlpha}
-                    />
-                  </mesh>
+                  {lod === "high" && (
+                    <mesh scale={[0.92, 0.92, 0.92]} position={[0, 0.04, 0]}>
+                      <coneGeometry
+                        args={[Math.max(0.05, colaSize * 0.85), Math.max(0.12, colaSize * 1.7), 7]}
+                      />
+                      <meshStandardMaterial
+                        color={`hsl(${growth.foliageHueDeg - 10}, ${
+                          Math.max(20, growth.foliageSat - 12)
+                        }%, ${Math.min(72, growth.foliageLight + 24)}%)`}
+                        roughness={0.55}
+                        metalness={0.05}
+                        transparent
+                        opacity={trichomeAlpha}
+                      />
+                    </mesh>
+                  )}
                 </group>
               )}
             </group>
@@ -1789,24 +1811,26 @@ function CannabisPlant({
             <meshStandardMaterial color={colaColor} roughness={0.85} />
           </mesh>
           {/* Main-cola trichome shimmer */}
-          <mesh scale={[0.94, 0.94, 0.94]} position={[0, 0.06, 0]}>
-            <coneGeometry
-              args={[
-                Math.max(0.08, growth.colaSizeFt * 1.18),
-                Math.max(0.22, growth.colaSizeFt * 2.4),
-                8,
-              ]}
-            />
-            <meshStandardMaterial
-              color={`hsl(${growth.foliageHueDeg - 12}, ${
-                Math.max(22, growth.foliageSat - 12)
-              }%, ${Math.min(72, growth.foliageLight + 26)}%)`}
-              roughness={0.5}
-              metalness={0.05}
-              transparent
-              opacity={trichomeAlpha}
-            />
-          </mesh>
+          {lod === "high" && (
+            <mesh scale={[0.94, 0.94, 0.94]} position={[0, 0.06, 0]}>
+              <coneGeometry
+                args={[
+                  Math.max(0.08, growth.colaSizeFt * 1.18),
+                  Math.max(0.22, growth.colaSizeFt * 2.4),
+                  8,
+                ]}
+              />
+              <meshStandardMaterial
+                color={`hsl(${growth.foliageHueDeg - 12}, ${
+                  Math.max(22, growth.foliageSat - 12)
+                }%, ${Math.min(72, growth.foliageLight + 26)}%)`}
+                roughness={0.5}
+                metalness={0.05}
+                transparent
+                opacity={trichomeAlpha}
+              />
+            </mesh>
+          )}
         </group>
       ) : (
         <FanLeafCluster
@@ -1815,9 +1839,236 @@ function CannabisPlant({
           size={Math.max(0.25, foliageR * 0.55)}
           color={fanLeafColorLight}
           rng={r}
+          lod={lod}
         />
       )}
     </group>
+  );
+}
+
+/** Bench rows on the greenhouse floor — the top-down layout made physical.
+ *  Green trays read as planted benches; the gaps between/around them are the
+ *  aisles. Shares the plan view's bench solver so 3D and plan stay in sync
+ *  (rolling packs tight with one aisle; fixed spreads by benchWidth+aisle). */
+function Benches({
+  footprintLength,
+  footprintWidth,
+  benchLayout,
+  plantHeight,
+  plantDensity,
+  plantGrowth,
+}: {
+  footprintLength: number;
+  footprintWidth: number;
+  benchLayout: BenchLayoutInputs;
+  plantHeight: number;
+  plantDensity: number;
+  plantGrowth?: PlantGrowthGeom;
+}) {
+  // Solve on the RAW footprint (same dims plan view + ScenarioContext use), not
+  // the min-clamped 3D floor — otherwise a small house packs more/longer rows
+  // here than the plan view + the derived canopy number report.
+  const layout = solveBenchLayout(footprintLength, footprintWidth, benchLayout);
+  if (layout.rows === 0) return null;
+  const deckY = 2.1; // rolling-bench tops sit ~2.4 ft — deck reads at bench height
+  const DECK_TOP = deckY + 0.07; // deck box is 0.14 tall, centered at deckY
+  const INSET = 0.4; // keep plants off the deck edge
+  const PLANT_SPACING_FT = 1 / Math.sqrt(Math.max(0.05, plantDensity)); // on-center from the
+  // plants/ft² input (default 0.8 = 1.25 sqft/plant — OBSERVED across 5 Terp Mansion 1-gal
+  // SOG grows, "800 plants per 1,000 sqft"). Adjustable; visual only (transpiration is LAI-based).
+  // ponytail: each detailed plant is ~60 meshes, so ~240 is the visual ceiling before jank.
+  // Full-canopy density on a commercial house (thousands of plants) needs an InstancedMesh
+  // low-poly canopy — deferred. Target for that pass: 0.8 plants/sqft of canopy.
+  const MAX_BENCH_PLANTS = 240; // total across all benches — same budget as floor mode
+
+  // Global cap: widen spacing uniformly so the TOTAL plant count across every
+  // bench stays bounded on a many-bench house (mirrors CanopyAndPlants).
+  let totalPlants = 0;
+  for (const b of layout.rowRects) {
+    const pw = Math.max(0, b.wFt - INSET * 2);
+    const pd = Math.max(0, b.hFt - INSET * 2);
+    if (pw < 0.5 || pd < 0.5) continue;
+    totalPlants +=
+      Math.max(1, Math.round(pw / PLANT_SPACING_FT)) *
+      Math.max(1, Math.round(pd / PLANT_SPACING_FT));
+  }
+  const spacing =
+    totalPlants > MAX_BENCH_PLANTS
+      ? PLANT_SPACING_FT * Math.sqrt(totalPlants / MAX_BENCH_PLANTS)
+      : PLANT_SPACING_FT;
+
+  // Reuse the floor-mode fallback growth so benched + open crops read identically.
+  const growth: PlantGrowthGeom = plantGrowth ?? {
+    phase: "flower-mid",
+    heightFt: plantHeight,
+    foliageRadiusFt: Math.min(1.6, plantHeight * 0.55),
+    colaCount: 5,
+    colaSizeFt: 0.25,
+    colaDevelopment: 0.6,
+    foliageHueDeg: 122,
+    foliageSat: 48,
+    foliageLight: 32,
+  };
+
+  return (
+    <group>
+      {layout.rowRects.map((b, i) => {
+        // Solver rects are in corner-origin feet; the footprint is centered on
+        // the floor origin, so shift each rect center by half the footprint.
+        const cx = b.xFt + b.wFt / 2 - footprintLength / 2;
+        const cz = b.yFt + b.hFt / 2 - footprintWidth / 2;
+        // Plant sub-grid for THIS bench (local coords, centered on the group).
+        const pw = Math.max(0, b.wFt - INSET * 2);
+        const pd = Math.max(0, b.hFt - INSET * 2);
+        const cols = pw < 0.5 ? 0 : Math.max(1, Math.round(pw / spacing));
+        const rows = pd < 0.5 ? 0 : Math.max(1, Math.round(pd / spacing));
+        const cellW = cols ? pw / cols : 0;
+        const cellD = rows ? pd / rows : 0;
+        return (
+          <group key={i} position={[cx, 0, cz]}>
+            {/* white powder-coat / plastic bench deck (ebb-flow tray) */}
+            <mesh position={[0, deckY, 0]} castShadow receiveShadow>
+              <boxGeometry args={[b.wFt, 0.14, b.hFt]} />
+              <meshStandardMaterial color="#eef1f4" roughness={0.65} metalness={0.08} />
+            </mesh>
+            {/* support rail below so the deck doesn't read as floating */}
+            <mesh position={[0, deckY - 0.9, 0]}>
+              <boxGeometry args={[b.wFt, 0.1, b.hFt * 0.6]} />
+              <meshStandardMaterial color="#b9bec4" roughness={0.9} metalness={0.3} />
+            </mesh>
+            {/* real plants sitting ON the deck (replaces the old green box) —
+                tiled across the bench footprint, base on the deck surface. */}
+            {Array.from({ length: rows }).flatMap((_, rr) =>
+              Array.from({ length: cols }).map((__, cc) => (
+                <CannabisPlant
+                  key={`p-${rr}-${cc}`}
+                  position={[
+                    -pw / 2 + cellW * (cc + 0.5),
+                    DECK_TOP,
+                    -pd / 2 + cellD * (rr + 0.5),
+                  ]}
+                  growth={growth}
+                  seed={i * 1000 + rr * 40 + cc}
+                />
+              )),
+            )}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+/** A single floating callout chip — DOM text billboarded to the camera via drei
+ *  <Html>. pointerEvents:none so it never blocks OrbitControls. Identity/location
+ *  only (what/where); sensor readouts live in the DOM HUD. */
+function CalloutChip({
+  position,
+  text,
+  tone = "slate",
+}: {
+  position: [number, number, number];
+  text: string;
+  tone?: "slate" | "leaf";
+}) {
+  return (
+    <Html
+      position={position}
+      center
+      distanceFactor={26}
+      occlude={false}
+      zIndexRange={[20, 0]}
+      style={{ pointerEvents: "none" }}
+    >
+      <div
+        className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur-md ${
+          tone === "leaf"
+            ? "border-leaf-500/40 bg-white/75 text-leaf-600"
+            : "border-white/45 bg-white/70 text-ink-900"
+        }`}
+      >
+        {text}
+      </div>
+    </Html>
+  );
+}
+
+/** Data-driven scene callouts: ONE chip per category (never per-bench/fixture,
+ *  to avoid clutter). Fixture name+wattage always (under a greenhouse roof);
+ *  bench type + aisle only when benched. */
+function SceneCallouts({
+  benchLayout,
+  derivedLength,
+  derivedWidth,
+  fixtures,
+  fixtureZ,
+  fixtureLabel,
+  fixtureWatts,
+  fixtureType,
+  showEnvelope,
+}: {
+  benchLayout?: BenchLayoutInputs;
+  derivedLength: number;
+  derivedWidth: number;
+  fixtures: { x: number; z: number }[];
+  fixtureZ: number;
+  fixtureLabel?: string;
+  fixtureWatts?: number;
+  fixtureType?: "LED" | "HPS";
+  showEnvelope: boolean;
+}) {
+  const chips: {
+    key: string;
+    position: [number, number, number];
+    text: string;
+    tone?: "slate" | "leaf";
+  }[] = [];
+
+  // Fixture identity — the real selected fixture name + wattage.
+  if (showEnvelope && fixtures.length > 0) {
+    const f = fixtures[Math.floor(fixtures.length / 2)];
+    const name = fixtureLabel ?? `${fixtureType ?? "LED"} fixture`;
+    chips.push({
+      key: "fixture",
+      position: [f.x, fixtureZ + 1.4, f.z],
+      text: `${name} — ${Math.round(fixtureWatts ?? 720)} W`,
+      tone: "slate",
+    });
+  }
+
+  // Bench + aisle identity — geometry from the same solver the meshes use.
+  if (benchLayout?.enabled) {
+    const layout = solveBenchLayout(derivedLength, derivedWidth, benchLayout);
+    if (layout.rows > 0) {
+      const b0 = layout.rowRects[0];
+      const bcx0 = b0.xFt + b0.wFt / 2 - derivedLength / 2;
+      const bcz0 = b0.yFt + b0.hFt / 2 - derivedWidth / 2;
+      chips.push({
+        key: "bench",
+        position: [bcx0, 4.6, bcz0],
+        text: benchLayout.type === "fixed" ? "Fixed benches" : "Rolling benches",
+        tone: "leaf",
+      });
+      if (layout.rowRects.length > 1) {
+        const b1 = layout.rowRects[1];
+        const bcx1 = b1.xFt + b1.wFt / 2 - derivedLength / 2;
+        const bcz1 = b1.yFt + b1.hFt / 2 - derivedWidth / 2;
+        chips.push({
+          key: "aisle",
+          position: [(bcx0 + bcx1) / 2, 1.0, (bcz0 + bcz1) / 2],
+          text: benchLayout.type === "rolling" ? "Movable aisle" : "Walkway",
+          tone: "slate",
+        });
+      }
+    }
+  }
+
+  return (
+    <>
+      {chips.map((c) => (
+        <CalloutChip key={c.key} position={c.position} text={c.text} tone={c.tone} />
+      ))}
+    </>
   );
 }
 
@@ -1827,23 +2078,33 @@ function CanopyAndPlants({
   canopyLength,
   canopyWidth,
   plantHeight,
+  plantDensity,
   plantGrowth,
+  benched = false,
 }: {
   canopyOffsetX: number;
   canopyOffsetZ: number;
   canopyLength: number;
   canopyWidth: number;
   plantHeight: number;
+  plantDensity: number;
   plantGrowth?: PlantGrowthGeom;
+  /** When benched, the <Benches> group renders the canopy as planted decks —
+   *  suppress the centered plant block + highlight plane to avoid a misaligned
+   *  double canopy. */
+  benched?: boolean;
 }) {
+  // Benched: benches ARE the canopy in 3D (see <Benches>). Skip the centered
+  // block so plants don't float in the aisles.
+  if (benched) return null;
   // Realistic plant layout — decoupled from the FIXTURE grid. (The bug: plants
   // were tiled one-per-fixture, so rows went sparse/unrealistic as the
   // greenhouse grew.) Flowering cannabis sits ~2 ft on-center, far denser than
   // fixtures. We derive the plant grid from canopy size + plant spacing, cap
   // the rendered count for performance, and scale spacing up on very large
   // canopies so rows stay uniform instead of exploding into thousands of meshes.
-  const PLANT_SPACING_FT = 2.2;
-  const MAX_PLANTS = 160;
+  const PLANT_SPACING_FT = 1 / Math.sqrt(Math.max(0.05, plantDensity)); // from plants/ft² input; matches Benches
+  const MAX_PLANTS = 240;
   let cols = Math.max(2, Math.round(canopyLength / PLANT_SPACING_FT));
   let rows = Math.max(2, Math.round(canopyWidth / PLANT_SPACING_FT));
   if (rows * cols > MAX_PLANTS) {
@@ -1896,8 +2157,15 @@ function CanopyAndPlants({
           </mesh>
         );
       })}
-      {/* Plants — phase-aware geometry from sim clock if provided, else static. */}
-      {plants.map((p, i) => {
+      {/* Plants — phase-aware geometry from sim clock if provided, else static.
+          LOD by count: below ~60 plants (hero view / small house) each plant is
+          large on screen → full detail. Denser than that, each plant is a few
+          px and the palmate/trichome detail is invisible → "low" roughly halves
+          per-plant draw calls. ponytail: fixed 60 threshold; make it a distance
+          test if the camera ever pushes in on a dense house. */}
+      {(() => {
+        const lod: "high" | "low" = plants.length > 60 ? "low" : "high";
+        return plants.map((p, i) => {
         const fallbackGrowth: PlantGrowthGeom = {
           phase: "flower-mid",
           heightFt: plantHeight,
@@ -1915,9 +2183,11 @@ function CanopyAndPlants({
             position={[p.x, 0.5, p.z]}
             growth={plantGrowth ?? fallbackGrowth}
             seed={p.seed}
+            lod={lod}
           />
         );
-      })}
+        });
+      })()}
     </group>
   );
 }
@@ -2659,21 +2929,27 @@ export default function Greenhouse3D({
   lightsDimLevel = 1,
   greenhouseLengthFt,
   greenhouseWidthFt,
+  benchLayout,
   plantGrowth,
   fixtureFormFactor = "bar",
   fixtureKelvin = 3500,
   fixtureWatts = 720,
   fixtureType = "LED",
+  fixtureLabel,
   bleed = false,
   fill = false,
   heightOverride,
   weather,
   equipment,
   showEnvelope = true,
+  showLabels = true,
+  plantDensity = 0.8,
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
   greenhouseWidthFt?: number;
+  /** Optional bench layout — renders physical bench rows on the floor. */
+  benchLayout?: BenchLayoutInputs;
   /** When true, drop the panel border/bg and let the canvas read as the
    *  page substrate (Tesla 2026.14 / Bookmap pattern). Used on Live +
    *  Cultivation Science tabs where the scene IS the focus. */
@@ -2692,6 +2968,9 @@ export default function Greenhouse3D({
    *  footprints, and placed equipment — the scene becomes an open-air field of
    *  plants under sky. Plants + ground + sun stay. Defaults true (greenhouse). */
   showEnvelope?: boolean;
+  /** Show/hide the in-scene identity callout chips (bench type, aisle,
+   *  fixture name+wattage). Defaults true. */
+  showLabels?: boolean;
 }) {
   // God-rays source: a ref to the sun-disk mesh + a ready flag so the
   // volumetric light shafts only mount when the sun is actually up.
@@ -2778,7 +3057,6 @@ export default function Greenhouse3D({
   const footprintWidth = rowSpacing * 0.95;
 
   void glazingPct;
-  void fixtureType;
 
   // Plant height grows with canopy spacing — more headroom = taller training
   const plantHeight = Math.min(5, Math.max(3, Math.min(rowSpacing, colSpacing) * 0.45));
@@ -2839,6 +3117,14 @@ export default function Greenhouse3D({
     >
       <Canvas
         shadows
+        // Clamp DPR: on a 3× retina panel, rendering at native 3× is ~2.8× the
+        // fragment work of 1.75× for detail the eye barely resolves on a busy
+        // scene. 1.75 keeps edges crisp while capping the pixel budget.
+        // powerPreference nudges the browser onto the discrete GPU on laptops.
+        // (frameloop stays "always" — 4 useFrame animations need per-frame
+        // paints; "demand" would freeze them. Deferred with the mesh rewrite.)
+        dpr={[1, 1.75]}
+        gl={{ powerPreference: "high-performance" }}
         camera={{ fov: 35, near: 1, far: 1500 }}
       >
         <Suspense fallback={null}>
@@ -2986,7 +3272,34 @@ export default function Greenhouse3D({
               canopyWidth={canopyWidth}
               plantHeight={plantHeight}
               plantGrowth={plantGrowth}
+              plantDensity={plantDensity}
+              benched={!!benchLayout?.enabled}
             />
+
+            {benchLayout?.enabled && (
+              <Benches
+                footprintLength={derivedLength}
+                footprintWidth={derivedWidth}
+                benchLayout={benchLayout}
+                plantHeight={plantHeight}
+                plantGrowth={plantGrowth}
+                plantDensity={plantDensity}
+              />
+            )}
+
+            {showLabels && (
+              <SceneCallouts
+                benchLayout={benchLayout}
+                derivedLength={derivedLength}
+                derivedWidth={derivedWidth}
+                fixtures={fixtures}
+                fixtureZ={fixtureZ}
+                fixtureLabel={fixtureLabel}
+                fixtureWatts={fixtureWatts}
+                fixtureType={fixtureType}
+                showEnvelope={showEnvelope}
+              />
+            )}
 
             {/* Supplemental lighting only exists under a greenhouse roof. */}
             {showEnvelope && (

@@ -122,6 +122,7 @@ export default function LiveGreenhouseScene({
       latitudeDeg={inputs.latitude}
       greenhouseLengthFt={inputs.greenhouseLengthFt}
       greenhouseWidthFt={inputs.greenhouseWidthFt}
+      benchLayout={inputs.benchLayout}
       eaveHeightFt={inputs.eaveHeightFt}
       peakHeightFt={inputs.peakHeightFt}
       month={month}
@@ -152,6 +153,7 @@ export default function LiveGreenhouseScene({
       fixtureType={activeFixture.type}
       fixtureLabel={activeFixture.label}
       plantGrowth={syncToSim ? live.snapshot.plant : undefined}
+      plantDensity={inputs.plantDensity}
       bleed={fill ? true : bleed}
       fill={fill}
       weather={weather}

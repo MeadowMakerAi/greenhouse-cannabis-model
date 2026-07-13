@@ -1,6 +1,9 @@
 import type { ToolDefinition } from "../chatbotTools";
+import { WRITE_TOOL_NAMES } from "../chatbotTools";
 import type { ChatMessage, ChatProvider, ChatTurnArgs } from "./types";
+import { DEFAULT_MAX_ROUNDTRIPS } from "./types";
 import { timedSignal, describeAbort, CHAT_TIMEOUT_MS } from "../abortTimeout";
+import { makeToolLoopGuard } from "./loopGuard";
 
 /**
  * Google Gemini native API. Picked specifically because the free tier has
@@ -58,6 +61,11 @@ interface GeminiResponse {
     finishReason?: string;
   }[];
   promptFeedback?: { blockReason?: string };
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
   error?: { message: string };
 }
 
@@ -87,8 +95,9 @@ export const geminiProvider: ChatProvider = {
     toolHandler,
     tools,
     systemPrompt,
-    maxRoundtrips = 6,
+    maxRoundtrips = DEFAULT_MAX_ROUNDTRIPS,
     signal,
+    onToolCall,
   }: ChatTurnArgs): Promise<ChatMessage> {
     const contents: GeminiContent[] = history.map<GeminiContent>((m) => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -113,8 +122,16 @@ export const geminiProvider: ChatProvider = {
 
     const toolTrace: { name: string; input: unknown; output: unknown }[] = [];
     let finalText = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
 
-    for (let i = 0; i < maxRoundtrips; i++) {
+    // One extra iteration beyond the tool budget with function calling
+    // disabled to force a final text answer instead of dead-ending
+    // (see anthropic.ts). The loop guard forces that early on a repeat loop.
+    const loopGuard = makeToolLoopGuard();
+    let loopBroken = false;
+    for (let i = 0; i <= maxRoundtrips; i++) {
+      const forceFinal = i === maxRoundtrips || loopBroken;
       const body = {
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents,
@@ -122,8 +139,12 @@ export const geminiProvider: ChatProvider = {
           functionDeclarations.length > 0
             ? [{ functionDeclarations }]
             : undefined,
+        ...(forceFinal && functionDeclarations.length > 0
+          ? { toolConfig: { functionCallingConfig: { mode: "NONE" } } }
+          : {}),
         safetySettings: HARMLESS_SETTINGS,
-        generationConfig: { maxOutputTokens: 1500 },
+        // 8192 = generous safety ceiling, not a work limiter (see anthropic.ts).
+        generationConfig: { maxOutputTokens: 8192 },
       };
 
       let json: GeminiResponse;
@@ -149,6 +170,10 @@ export const geminiProvider: ChatProvider = {
       if (json.error) {
         throw new Error(`Gemini API error: ${json.error.message}`);
       }
+      if (json.usageMetadata) {
+        inputTokens += json.usageMetadata.promptTokenCount ?? 0;
+        outputTokens += json.usageMetadata.candidatesTokenCount ?? 0;
+      }
       const candidate = json.candidates?.[0];
       if (!candidate || !candidate.content) {
         const reason =
@@ -161,7 +186,7 @@ export const geminiProvider: ChatProvider = {
       const parts = candidate.content.parts || [];
       const functionCalls = parts.filter(isFunctionCallPart);
 
-      if (functionCalls.length === 0) {
+      if (functionCalls.length === 0 || forceFinal) {
         finalText = parts
           .filter(isTextPart)
           .map((p) => p.text)
@@ -171,9 +196,12 @@ export const geminiProvider: ChatProvider = {
       }
 
       const responseParts: GeminiPart[] = [];
+      const roundtripCalls: { name: string; input: unknown }[] = [];
       for (const call of functionCalls) {
         const name = call.functionCall.name;
+        onToolCall?.(name);
         const input = call.functionCall.args ?? {};
+        roundtripCalls.push({ name, input });
         let output: unknown;
         try {
           output = await toolHandler(name, input);
@@ -188,6 +216,10 @@ export const geminiProvider: ChatProvider = {
           },
         });
       }
+      // Repeating the same WRITE? Force a final answer next pass. Reads are
+      // excluded so a legit per-building assess {} loop doesn't false-positive.
+      if (loopGuard.record(roundtripCalls.filter((c) => WRITE_TOOL_NAMES.has(c.name))))
+        loopBroken = true;
       contents.push({ role: "user", parts: responseParts });
     }
 
@@ -195,6 +227,7 @@ export const geminiProvider: ChatProvider = {
       role: "assistant",
       content: finalText || "(No final response after tool roundtrips.)",
       toolTrace: toolTrace.length ? toolTrace : undefined,
+      usage: { inputTokens, outputTokens, model },
     };
   },
 };

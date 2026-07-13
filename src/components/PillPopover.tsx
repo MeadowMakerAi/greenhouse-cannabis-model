@@ -96,8 +96,10 @@ export default function PillPopover({
   return (
     <div
       ref={popRef}
-      role="dialog"
-      aria-modal="false"
+      // Non-modal inline popover: `role="group"` (not "dialog") so we don't
+      // assert a focus trap we don't implement — Tab flows on naturally, Esc
+      // and click-outside close it. See a11y audit 2026-07-12.
+      role="group"
       aria-labelledby={triggerId}
       id={id}
       tabIndex={-1}

@@ -87,6 +87,16 @@ This greenhouse model is a synthesis of peer-reviewed plant science, greenhouse 
 
 ---
 
+## Bench layout & floor-space utilization
+
+**University of Wisconsin–Madison Extension** — *Space Utilization* (fyi.extension.wisc.edu/energy/greenhouses/space-utilization). Movable/rolling benches make **up to ~90%** of floor area usable for growing; **peninsular** (fixed) benches **>75%**. Rolling benches reclaim inter-bench aisle space by collapsing all aisles into a single movable walk aisle, opened only where the grower is working.
+
+**University of Arkansas — Greenhouse Management** (greenhouse.hosted.uark.edu, Benching Systems, Unit 02 §05). Documented case study: retrofit from **fixed benches (50%)** to **rolling benches (76%)** space-use efficiency. Individual/fixed island layouts run ~50–67%.
+
+- Basis for the canopy floor-utilization flag in `scenarioAdvisor.assessCompleteness`: when canopy:floor utilization is below 80%, the advisor surfaces it as unrealized optimization and names the ~90% rolling-bench ceiling. Threshold and ceiling are the cited figures above, not invented. Screening-level: a layout heuristic, not a bench-packing solver.
+
+---
+
 ## Software science / rendering
 
 **React Three Fiber** + **drei** + **@react-three/postprocessing** (Poimandres) — open-source R3F ecosystem.
