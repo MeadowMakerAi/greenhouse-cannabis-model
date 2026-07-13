@@ -1083,12 +1083,18 @@ export default function Chatbot() {
         setUndoSummary(describeWrites(turnTrace));
       }
     } catch (err) {
-      const msg = (err as Error).message;
-      setError(msg);
-      setHistory((h) => [
-        ...h,
-        { role: "assistant", content: `_Error: ${msg}_` },
-      ]);
+      // User hit Stop (this turn's controller was aborted) — that's a
+      // deliberate cancel, not an error. Providers already humanize
+      // timeout/abort via describeAbort() at the dispatch boundary, so any
+      // message that reaches here is already user-facing.
+      if (!ctrl.signal.aborted) {
+        const msg = (err as Error).message;
+        setError(msg);
+        setHistory((h) => [
+          ...h,
+          { role: "assistant", content: `_Error: ${msg}_` },
+        ]);
+      }
     } finally {
       chatAbortRef.current = null;
       setStreaming(null);
@@ -1325,6 +1331,7 @@ export default function Chatbot() {
                 value={providerId}
                 onChange={(e) => switchProvider(e.target.value as ProviderId)}
                 className="rounded border border-ink-300 px-1 py-0.5 text-xs"
+                aria-label="AI provider"
                 title="Provider"
               >
                 {PROVIDER_ORDER.map((id) => (
@@ -1337,6 +1344,7 @@ export default function Chatbot() {
                 value={model}
                 onChange={(e) => saveModel(e.target.value)}
                 className="rounded border border-ink-300 px-1 py-0.5 text-xs"
+                aria-label="Model"
                 title="Model"
               >
                 {cfg.models.map((o) => (
@@ -1516,7 +1524,7 @@ export default function Chatbot() {
               </div>
             ))}
             {streaming != null && streaming.length > 0 && (
-              <div className="mr-6 rounded bg-ink-300/10 p-2 text-sm text-ink-900">
+              <div className="mr-6 rounded bg-ink-300/10 p-2 text-sm text-ink-900" aria-live="polite" aria-atomic="false">
                 <div className="whitespace-pre-wrap">
                   {streaming}
                   <span className="ml-0.5 inline-block animate-pulse">▍</span>
@@ -1701,12 +1709,14 @@ export default function Chatbot() {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
                 className="btn px-2"
+                aria-label="Attach a greenhouse or fixture spec sheet (PDF or image)"
                 title="Attach a greenhouse or fixture spec sheet (PDF or image)"
               >
                 📎
               </button>
               <input
                 type="text"
+                aria-label="Message Sage"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {

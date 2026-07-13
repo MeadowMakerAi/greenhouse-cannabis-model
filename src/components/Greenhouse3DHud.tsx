@@ -148,6 +148,9 @@ export default function Greenhouse3DHud({
             </div>
           </div>
         )}
+        <div className="mt-2 border-t border-ink-300/30 pt-1.5 text-[9px] leading-tight text-ink-500">
+          Screening-level estimate — verify against stamped engineering before capex.
+        </div>
       </div>
 
       {/* Top-right: compass with sun pointer */}

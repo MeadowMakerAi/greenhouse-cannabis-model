@@ -42,7 +42,10 @@ export function useSiteIntelligence(): SiteIntelligenceState {
         // 10 most-recent complete years for stable frost/GDD normals.
         const end = 2024;
         const start = end - 9;
-        const [elevationFt, history] = await Promise.all([
+        // Elevation is a nice-to-have (one line of the brief); the temp
+        // history is load-bearing. allSettled so a dead elevation endpoint
+        // doesn't null out the whole site profile — degrade to no-elevation.
+        const [elevRes, histRes] = await Promise.allSettled([
           fetchElevationFt(inputs.latitude, inputs.longitude, ctrl.signal),
           fetchDailyTempHistory(
             inputs.latitude,
@@ -52,7 +55,10 @@ export function useSiteIntelligence(): SiteIntelligenceState {
             ctrl.signal,
           ),
         ]);
-        const profile = computeSiteProfile(history, elevationFt);
+        if (histRes.status === "rejected") throw histRes.reason;
+        const elevationFt =
+          elevRes.status === "fulfilled" ? elevRes.value : null;
+        const profile = computeSiteProfile(histRes.value, elevationFt);
         if (alive) setState({ profile, loading: false, error: null });
       } catch (e) {
         if ((e as Error).name === "AbortError") return;

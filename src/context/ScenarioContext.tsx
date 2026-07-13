@@ -765,8 +765,18 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
             message: `Loaded ${data.length} months from NASA POWER.`,
             retrievedAt: new Date().toISOString(),
           });
-      } catch {
-        // keep fallback
+      } catch (err) {
+        // Live climate unreachable on mount. Keep the built-in normals as data
+        // (the app stays fully usable) but mark status:"error" so the climate
+        // banner tells the user the numbers are fallback normals, not the
+        // site's live climatology — silently labeling them "ok" would be a
+        // quiet lie about data provenance.
+        if (!cancelled)
+          setClimate((c) => ({
+            ...c,
+            status: "error",
+            message: `Live climate unavailable (${(err as Error).message}). Using built-in normals — refresh to retry.`,
+          }));
       }
     })();
     return () => {

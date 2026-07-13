@@ -129,6 +129,16 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
+      // Throttle state commits to ≤10 Hz. Each setHourOfDay re-renders every
+      // clock consumer (the whole 3D scene, HUD, charts); committing at the
+      // full ~60 Hz rAF rate was ~6× the render work for motion the eye can't
+      // resolve. dtSec still spans the full gap since last commit, so no
+      // simulated time is dropped — the clock advances the same amount, just
+      // in coarser steps. ponytail: 100ms fixed; expose if users want smoother.
+      if (now - lastTickRef.current < 100) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       const dtSec = (now - lastTickRef.current) / 1000;
       lastTickRef.current = now;
       const dtSimHr = speed * dtSec;

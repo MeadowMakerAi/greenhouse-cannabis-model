@@ -3088,6 +3088,14 @@ export default function Greenhouse3D({
     >
       <Canvas
         shadows
+        // Clamp DPR: on a 3× retina panel, rendering at native 3× is ~2.8× the
+        // fragment work of 1.75× for detail the eye barely resolves on a busy
+        // scene. 1.75 keeps edges crisp while capping the pixel budget.
+        // powerPreference nudges the browser onto the discrete GPU on laptops.
+        // (frameloop stays "always" — 4 useFrame animations need per-frame
+        // paints; "demand" would freeze them. Deferred with the mesh rewrite.)
+        dpr={[1, 1.75]}
+        gl={{ powerPreference: "high-performance" }}
         camera={{ fov: 35, near: 1, far: 1500 }}
       >
         <Suspense fallback={null}>

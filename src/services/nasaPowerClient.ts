@@ -50,17 +50,29 @@ export async function fetchNasaPowerMonthly(
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`NASA POWER error ${res.status}`);
   const json: PowerResponse = await res.json();
-  const p = json.properties.parameter;
+  const p = json.properties?.parameter;
+
+  // Validate the two load-bearing fields before accepting the response.
+  // POWER occasionally returns its sentinel -999 for a cell, or omits a
+  // parameter entirely — a `?? 0` fill would then hand the model a
+  // silently-zeroed climate (no sun, 32°F) that looks plausible but is
+  // garbage. Reject → the caller falls back to built-in normals.
+  const finite = (v: unknown): v is number =>
+    typeof v === "number" && Number.isFinite(v) && v > -900;
+  const sw = p?.ALLSKY_SFC_SW_DWN;
+  const t2m = p?.T2M;
+  if (!sw || !t2m || !MONTH_KEYS.every((mk) => finite(sw[mk]) && finite(t2m[mk]))) {
+    throw new Error("NASA POWER returned incomplete or sentinel climate data");
+  }
 
   return MONTH_KEYS.map((mk, idx) => {
-    const meanTempC = p.T2M?.[mk] ?? 0;
-    const minTempC = p.T2M_MIN?.[mk] ?? meanTempC;
-    const maxTempC = p.T2M_MAX?.[mk] ?? meanTempC;
-    const dewC = p.T2MDEW?.[mk] ?? 0;
+    const meanTempC = p.T2M[mk];
+    const minTempC = finite(p.T2M_MIN?.[mk]) ? p.T2M_MIN[mk] : meanTempC;
+    const maxTempC = finite(p.T2M_MAX?.[mk]) ? p.T2M_MAX[mk] : meanTempC;
+    const dewC = finite(p.T2MDEW?.[mk]) ? p.T2MDEW[mk] : meanTempC;
     return {
       month: idx,
-      shortwaveKwhPerM2PerDay:
-        (p.ALLSKY_SFC_SW_DWN?.[mk] ?? 0) * MJ_PER_M2_DAY_TO_KWH,
+      shortwaveKwhPerM2PerDay: p.ALLSKY_SFC_SW_DWN[mk] * MJ_PER_M2_DAY_TO_KWH,
       meanTempF: cToF(meanTempC),
       minTempF: cToF(minTempC),
       maxTempF: cToF(maxTempC),

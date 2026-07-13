@@ -46,9 +46,10 @@ export default function ForecastWatch() {
   useEffect(() => {
     if (!open || !auth.user) return;
     let active = true;
+    const userId = auth.user.id;
     (async () => {
       try {
-        const fs = await listFarms();
+        const fs = await listFarms(userId);
         if (!active) return;
         setFarms(fs);
         const entries = await Promise.all(
@@ -84,7 +85,8 @@ export default function ForecastWatch() {
   }
 
   async function refreshFarms() {
-    const fs = await listFarms();
+    if (!auth.user) return;
+    const fs = await listFarms(auth.user.id);
     setFarms(fs);
     const entries = await Promise.all(
       fs.map(async (f) => [f.id, await latestObservation(f.id)] as const),
@@ -114,8 +116,9 @@ export default function ForecastWatch() {
   }
 
   async function removeFarm(id: string) {
+    if (!auth.user) return;
     try {
-      await deleteFarm(id);
+      await deleteFarm(id, auth.user.id);
       await refreshFarms();
     } catch (e: unknown) {
       setMonitorMsg(e instanceof Error ? e.message : "Could not stop monitoring");

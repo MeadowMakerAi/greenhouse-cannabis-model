@@ -104,16 +104,13 @@ You provide your own API key, stored only in your browser's localStorage.
 - **One-click "Forget everything"** — clears the API key, the chat
   history, and the model preference from localStorage in a single click.
 
-### Recommended posture for forks / public deploys
+### Recommended posture for BYO-key use
 
 1. Create a dedicated Anthropic key for this dashboard at
    [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys).
 2. Set a daily spend cap (e.g. $5/day) at
    [console.anthropic.com/settings/limits](https://console.anthropic.com/settings/limits).
 3. Don't reuse a production key. Don't paste any key on a screen-share.
-4. If you fork this repo to a public Vercel/Netlify/etc deploy, treat
-   the key entry surface as untrusted by default and configure your
-   Anthropic key with the lowest reasonable rate limits.
 
 ## Architecture
 

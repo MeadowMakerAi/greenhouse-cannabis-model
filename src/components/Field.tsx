@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 interface NumberFieldProps {
   label: string;
@@ -23,6 +23,7 @@ interface NumberFieldProps {
 }
 
 export function NumberField({ label, value, onChange, step = 1, min, max, unit, hint, debounceMs, disabled }: NumberFieldProps) {
+  const id = useId();
   // Draft holds the in-progress text only while debouncing. null = "show the
   // committed prop value" (so external changes — presets, canopy auto-scale —
   // flow straight through when the user isn't mid-edit).
@@ -74,11 +75,12 @@ export function NumberField({ label, value, onChange, step = 1, min, max, unit, 
 
   return (
     <div>
-      <label className="field-label">
+      <label className="field-label" htmlFor={id}>
         {label}
-        {unit ? <span className="ml-1 text-ink-300">[{unit}]</span> : null}
+        {unit ? <span className="ml-1 text-ink-500">[{unit}]</span> : null}
       </label>
       <input
+        id={id}
         type="number"
         value={display}
         step={step}
@@ -102,10 +104,11 @@ interface SelectFieldProps<T extends string> {
 }
 
 export function SelectField<T extends string>({ label, value, onChange, options, hint }: SelectFieldProps<T>) {
+  const id = useId();
   return (
     <div>
-      <label className="field-label">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value as T)}>
+      <label className="field-label" htmlFor={id}>{label}</label>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value as T)}>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

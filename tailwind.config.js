@@ -9,6 +9,9 @@ export default {
           100: "#f4f6f8",
           200: "#e6e9ee",
           300: "#a8b0bb",
+          // 400 was referenced 11x but never defined → Tailwind emitted no rule
+          // and text fell back to an inherited color. #7b8593 = ~4.6:1 on white.
+          400: "#7b8593",
           500: "#5b6573",
           700: "#2c3744",
           800: "#1a2230",

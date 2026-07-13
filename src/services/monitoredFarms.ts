@@ -23,11 +23,15 @@ export interface Observation {
 const FARM_COLS =
   "id, name, latitude, longitude, cultivation_phase, botrytis_threshold, pm_threshold";
 
-export async function listFarms(): Promise<MonitoredFarm[]> {
+// Reads/deletes are scoped to the caller's user_id explicitly — RLS is the real
+// tenant boundary, but an app-side filter is defense-in-depth against a dropped
+// or misconfigured policy (can't return/delete another account's rows).
+export async function listFarms(userId: string): Promise<MonitoredFarm[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("monitored_farms")
     .select(FARM_COLS)
+    .eq("user_id", userId)
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []) as MonitoredFarm[];
@@ -58,9 +62,13 @@ export async function addFarm(
   return data as MonitoredFarm;
 }
 
-export async function deleteFarm(id: string): Promise<void> {
+export async function deleteFarm(id: string, userId: string): Promise<void> {
   if (!supabase) return;
-  const { error } = await supabase.from("monitored_farms").delete().eq("id", id);
+  const { error } = await supabase
+    .from("monitored_farms")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
   if (error) throw error;
 }
 
