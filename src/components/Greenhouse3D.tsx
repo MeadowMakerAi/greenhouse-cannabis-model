@@ -1551,6 +1551,7 @@ function FanLeafCluster({
   size,
   color,
   rng,
+  lod = "high",
 }: {
   position: [number, number, number];
   rotationY: number;
@@ -1558,11 +1559,15 @@ function FanLeafCluster({
   size: number;
   color: string;
   rng: (n: number) => number;
+  /** "low" halves the leaflet count for dense canopies where each plant is
+   *  a few px tall and the palmate detail is invisible. */
+  lod?: "high" | "low";
 }) {
   // Cannabis fan leaf: 5–7 elongated palmate leaflets. Each leaflet ≈ thin
   // cone (length ≈ size × 1.0, base ≈ size × 0.18). Center leaflet longest,
-  // outer leaflets shorter — classic palmate gradient.
-  const leaflets = 5 + Math.round(rng(70) * 2); // 5–7
+  // outer leaflets shorter — classic palmate gradient. Each leaflet is its own
+  // draw call, so this count is the dominant per-plant mesh multiplier.
+  const leaflets = lod === "low" ? 3 : 5 + Math.round(rng(70) * 2); // 3 | 5–7
   const tilt = -Math.PI / 6; // leaflets pitch slightly upward from horizontal
   const leafLen = size;
   const leafThick = size * 0.16;
@@ -1615,10 +1620,15 @@ function CannabisPlant({
   position,
   growth,
   seed,
+  lod = "high",
 }: {
   position: [number, number, number];
   growth: PlantGrowthGeom;
   seed: number;
+  /** "low" (dense canopies): fewer tiers, 3-leaflet clusters, and skip the
+   *  translucent trichome-shimmer inner cones — invisible at that scale but
+   *  ~2× material cost. Cuts per-plant draw calls roughly in half. */
+  lod?: "high" | "low";
 }) {
   // Deterministic per-plant variation from seed
   const r = (n: number) => {
@@ -1670,13 +1680,17 @@ function CannabisPlant({
           size={Math.max(0.18, foliageR * 0.7)}
           color={fanLeafColorLight}
           rng={r}
+          lod={lod}
         />
       </group>
     );
   }
 
   // Determine node count based on plant size — taller plants have more tiers.
-  const tierCount = Math.max(3, Math.min(6, Math.round(2 + height * 0.6)));
+  // Cap tiers lower in low-LOD (dense canopy) — each tier is 2 branches ×
+  // (cylinder + leaf cluster), so this compounds with the leaflet reduction.
+  const tierCap = lod === "low" ? 4 : 6;
+  const tierCount = Math.max(3, Math.min(tierCap, Math.round(2 + height * 0.6)));
   const tiers: { y: number; branchLen: number; tierFrac: number }[] = [];
   for (let i = 0; i < tierCount; i++) {
     // Skip the bottom 20% (bare stalk near base), distribute the rest evenly
@@ -1748,6 +1762,7 @@ function CannabisPlant({
                   size={leafSize}
                   color={tier.tierFrac > 0.7 ? fanLeafColorLight : fanLeafColor}
                   rng={r}
+                  lod={lod}
                 />
               </group>
               {/* Lateral cola at upper branches in flower */}
@@ -1759,20 +1774,22 @@ function CannabisPlant({
                     />
                     <meshStandardMaterial color={colaColor} roughness={0.85} />
                   </mesh>
-                  <mesh scale={[0.92, 0.92, 0.92]} position={[0, 0.04, 0]}>
-                    <coneGeometry
-                      args={[Math.max(0.05, colaSize * 0.85), Math.max(0.12, colaSize * 1.7), 7]}
-                    />
-                    <meshStandardMaterial
-                      color={`hsl(${growth.foliageHueDeg - 10}, ${
-                        Math.max(20, growth.foliageSat - 12)
-                      }%, ${Math.min(72, growth.foliageLight + 24)}%)`}
-                      roughness={0.55}
-                      metalness={0.05}
-                      transparent
-                      opacity={trichomeAlpha}
-                    />
-                  </mesh>
+                  {lod === "high" && (
+                    <mesh scale={[0.92, 0.92, 0.92]} position={[0, 0.04, 0]}>
+                      <coneGeometry
+                        args={[Math.max(0.05, colaSize * 0.85), Math.max(0.12, colaSize * 1.7), 7]}
+                      />
+                      <meshStandardMaterial
+                        color={`hsl(${growth.foliageHueDeg - 10}, ${
+                          Math.max(20, growth.foliageSat - 12)
+                        }%, ${Math.min(72, growth.foliageLight + 24)}%)`}
+                        roughness={0.55}
+                        metalness={0.05}
+                        transparent
+                        opacity={trichomeAlpha}
+                      />
+                    </mesh>
+                  )}
                 </group>
               )}
             </group>
@@ -1794,24 +1811,26 @@ function CannabisPlant({
             <meshStandardMaterial color={colaColor} roughness={0.85} />
           </mesh>
           {/* Main-cola trichome shimmer */}
-          <mesh scale={[0.94, 0.94, 0.94]} position={[0, 0.06, 0]}>
-            <coneGeometry
-              args={[
-                Math.max(0.08, growth.colaSizeFt * 1.18),
-                Math.max(0.22, growth.colaSizeFt * 2.4),
-                8,
-              ]}
-            />
-            <meshStandardMaterial
-              color={`hsl(${growth.foliageHueDeg - 12}, ${
-                Math.max(22, growth.foliageSat - 12)
-              }%, ${Math.min(72, growth.foliageLight + 26)}%)`}
-              roughness={0.5}
-              metalness={0.05}
-              transparent
-              opacity={trichomeAlpha}
-            />
-          </mesh>
+          {lod === "high" && (
+            <mesh scale={[0.94, 0.94, 0.94]} position={[0, 0.06, 0]}>
+              <coneGeometry
+                args={[
+                  Math.max(0.08, growth.colaSizeFt * 1.18),
+                  Math.max(0.22, growth.colaSizeFt * 2.4),
+                  8,
+                ]}
+              />
+              <meshStandardMaterial
+                color={`hsl(${growth.foliageHueDeg - 12}, ${
+                  Math.max(22, growth.foliageSat - 12)
+                }%, ${Math.min(72, growth.foliageLight + 26)}%)`}
+                roughness={0.5}
+                metalness={0.05}
+                transparent
+                opacity={trichomeAlpha}
+              />
+            </mesh>
+          )}
         </group>
       ) : (
         <FanLeafCluster
@@ -1820,6 +1839,7 @@ function CannabisPlant({
           size={Math.max(0.25, foliageR * 0.55)}
           color={fanLeafColorLight}
           rng={r}
+          lod={lod}
         />
       )}
     </group>
@@ -2137,8 +2157,15 @@ function CanopyAndPlants({
           </mesh>
         );
       })}
-      {/* Plants — phase-aware geometry from sim clock if provided, else static. */}
-      {plants.map((p, i) => {
+      {/* Plants — phase-aware geometry from sim clock if provided, else static.
+          LOD by count: below ~60 plants (hero view / small house) each plant is
+          large on screen → full detail. Denser than that, each plant is a few
+          px and the palmate/trichome detail is invisible → "low" roughly halves
+          per-plant draw calls. ponytail: fixed 60 threshold; make it a distance
+          test if the camera ever pushes in on a dense house. */}
+      {(() => {
+        const lod: "high" | "low" = plants.length > 60 ? "low" : "high";
+        return plants.map((p, i) => {
         const fallbackGrowth: PlantGrowthGeom = {
           phase: "flower-mid",
           heightFt: plantHeight,
@@ -2156,9 +2183,11 @@ function CanopyAndPlants({
             position={[p.x, 0.5, p.z]}
             growth={plantGrowth ?? fallbackGrowth}
             seed={p.seed}
+            lod={lod}
           />
         );
-      })}
+        });
+      })()}
     </group>
   );
 }
