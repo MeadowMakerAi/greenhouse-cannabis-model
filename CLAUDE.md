@@ -29,6 +29,12 @@ The model is **screening-level decision support** — every output should
 disclose this and refer the user to a sealed CFD / engineering-stamped
 design before capex.
 
+**Settled principle (Decision Log):** *Re-derive inherited constraints when their
+originating business decision changes.* (2026-07-12: the closed-source pivot
+dissolved the client-only / no-server / CSP-locked constraint stack — those were
+consequences of the open-source plan, not technical requirements. Don't
+reflexively re-impose them.)
+
 ## Iron rules
 
 - **ZERO FABRICATION** for model coefficients, citations, and benchmark
