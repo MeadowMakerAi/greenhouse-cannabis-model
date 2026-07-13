@@ -49,7 +49,7 @@ export type ToolHandler = (
   input: Record<string, unknown>,
 ) => Promise<unknown> | unknown;
 
-export type ProviderId = "anthropic" | "openai" | "openrouter" | "groq" | "gemini" | "ollama";
+export type ProviderId = "anthropic" | "openai" | "xai" | "openrouter" | "groq" | "gemini" | "ollama";
 
 export interface ProviderConfig {
   /** Stable provider identifier. */

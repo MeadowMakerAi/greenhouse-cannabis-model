@@ -52,7 +52,7 @@ export const CHATBOT_TOOLS: ToolDefinition[] = [
   {
     name: "set_scenario",
     description:
-      "Update one or more scenario inputs. Provide a JSON object of key/value pairs to patch. Examples of keys: canopyAreaSqFt, greenhouseFloorAreaSqFt, latitude, longitude, fixtureId, electricityRatePerKwh, co2Enabled, co2SetpointPpm, ventilationMode, shadeEnabled, indoorTargetDryBulbF, targetNightTempF, cultivationPhase, cyclesPerYear, thermalScreenEnabled, useIntegratedHeatPump.",
+      "Update one or more scenario inputs. Provide a JSON object of key/value pairs to patch. UNITS ARE US CUSTOMARY — all lengths/heights are FEET (greenhouseLengthFt, greenhouseWidthFt, eaveHeightFt, peakHeightFt), areas are square feet (canopyAreaSqFt, greenhouseFloorAreaSqFt), temperatures are °F (indoorTargetDryBulbF, targetNightTempF), rates are $/kWh. If a spec sheet is metric (meters, °C, m²), CONVERT to these units before writing — a value written in the wrong unit will be accepted silently at the wrong scale. Nested fields may be written dotted (e.g. \"envelope.baseTransmissionPct\") or nested. Examples of keys: canopyAreaSqFt, greenhouseFloorAreaSqFt, latitude, longitude, fixtureId, electricityRatePerKwh, co2Enabled, co2SetpointPpm, ventilationMode, shadeEnabled, indoorTargetDryBulbF, targetNightTempF, cultivationPhase, cyclesPerYear, thermalScreenEnabled, useIntegratedHeatPump.",
     input_schema: {
       type: "object",
       properties: {
@@ -189,6 +189,7 @@ Default profile: Montgomery NY (lat 41.475, lon −74.245). Default crop: cannab
 
 You have read AND write tools. Bias toward acting inside a single turn.
 
+- **The current model state is injected at the top of each user message as \`CURRENT MODEL STATE\` (live JSON — location, geometry, envelope, targets, fixture, key derived outputs).** Treat it as authoritative and current — it already reflects every edit made this session. You almost never need \`get_scenario\` or \`get_derived_outputs\` for a value shown there; go straight to acting. Call those tools only for a field the snapshot doesn't include, or to confirm the effect of a write you just made.
 - **When the user gives a spec, describes equipment, or asks for a change, CALL THE WRITE TOOL FIRST** — \`set_scenario\`, \`set_active_fixture\`, or \`add_custom_fixture\` — then read \`get_derived_outputs\` once to report the effect. Apply the change and state what you changed and why; don't ask for permission first.
 - Only call \`get_scenario\` when you genuinely don't already know the value you're about to change. Don't reflexively read before every reply — it burns a roundtrip and stalls the conversation.
 - **Relative changes are the exception: for "increase / decrease / bump / scale by X%", read the current value FIRST** — you can't compute a delta off a number you didn't read. Absolute sets (from a spec or an explicit target) don't need a read.

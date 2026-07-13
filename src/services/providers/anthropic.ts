@@ -64,6 +64,41 @@ function markLastToolCached(tools: unknown): unknown {
   return out;
 }
 
+/**
+ * Walking cache breakpoint on the conversation. The system block + tools are
+ * already cached, but the MESSAGES (the base64 PDF a spec turn inlines, plus
+ * every prior tool_result) were re-sent and re-prefilled UNCACHED on every one
+ * of up to 26 roundtrips — the dominant latency + token cost of a deep turn.
+ *
+ * apiHistory is append-only, so the prefix up to the last message is stable
+ * across roundtrips. Tagging the last block of the last message with
+ * cache_control caches that whole prefix (system → tools → PDF → all prior
+ * tool_results); the next roundtrip (seconds later, inside the 5-min ephemeral
+ * TTL) reads it at ~0.10×. The marker "walks" to the new end each roundtrip
+ * because we rebuild from the plain (un-tagged) apiHistory every call, so at
+ * most ONE message breakpoint exists per request — 3 total with system + tools,
+ * under Anthropic's limit of 4. A plain-string message is normalized to a
+ * single text block so the marker has somewhere to attach.
+ */
+function markLastMessageCached(messages: APIMessage[]): APIMessage[] {
+  if (messages.length === 0) return messages;
+  const out = messages.slice();
+  const last = out[out.length - 1];
+  const blocks: APIContentBlock[] =
+    typeof last.content === "string"
+      ? [{ type: "text", text: last.content }]
+      : last.content.map((b) => ({ ...b }));
+  if (blocks.length === 0) return messages;
+  blocks[blocks.length - 1] = {
+    ...blocks[blocks.length - 1],
+    // cache_control isn't in APIContentBlock's declared shape (it's a caching
+    // directive, not content); attach via a cast so the type stays clean.
+    ...({ cache_control: { type: "ephemeral" } } as object),
+  };
+  out[out.length - 1] = { ...last, content: blocks };
+  return out;
+}
+
 interface AnthropicTurn {
   content: APIContentBlock[];
   stop_reason: APIResponse["stop_reason"];
@@ -144,7 +179,7 @@ async function requestAnthropicTurn(
       ],
       tools: markLastToolCached(req.tools),
       ...(req.toolChoice ? { tool_choice: req.toolChoice } : {}),
-      messages: req.messages,
+      messages: markLastMessageCached(req.messages),
       ...(streaming ? { stream: true } : {}),
     }),
   });
@@ -375,7 +410,13 @@ export const anthropicProvider: ChatProvider = {
     // The loop guard forces that same final answer early if the model starts
     // repeating an identical call (a non-converging loop), so the high ceiling
     // is safe.
-    const loopGuard = makeToolLoopGuard();
+    // Two guards: WRITEs break at 4 (a stuck set_scenario↔assess mutation loop),
+    // READs break at a looser 12 — a legit multi-building flow re-issues
+    // byte-identical reads (assess_completeness {}) per building, so the read
+    // threshold sits above any realistic building count but still catches a
+    // model stuck re-reading forever instead of running to the 26th roundtrip.
+    const writeGuard = makeToolLoopGuard(4);
+    const readGuard = makeToolLoopGuard(12);
     let loopBroken = false;
     for (let i = 0; i <= maxRoundtrips; i++) {
       const forceFinal = i === maxRoundtrips || loopBroken;
@@ -446,11 +487,12 @@ export const anthropicProvider: ChatProvider = {
           content: JSON.stringify(output),
         });
       }
-      // Repeating the same WRITE? Force a final answer next pass. Reads are
-      // excluded — a legit flow re-issues identical reads (assess {}) per
-      // building; only a stuck mutation loop is a real runaway.
-      if (loopGuard.record(roundtripCalls.filter((c) => WRITE_TOOL_NAMES.has(c.name))))
-        loopBroken = true;
+      // Force a final answer next pass if the model is stuck repeating a WRITE
+      // (limit 4) OR a READ (limit 12). Splitting the signature streams by kind
+      // keeps the tight write threshold while tolerating legit repeated reads.
+      const writes = roundtripCalls.filter((c) => WRITE_TOOL_NAMES.has(c.name));
+      const reads = roundtripCalls.filter((c) => !WRITE_TOOL_NAMES.has(c.name));
+      if (writeGuard.record(writes) || readGuard.record(reads)) loopBroken = true;
       apiHistory.push({ role: "user", content: toolResultBlocks });
     }
 

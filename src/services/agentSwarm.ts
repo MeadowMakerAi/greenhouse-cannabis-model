@@ -107,6 +107,7 @@ async function runPass(
       history: [],
       userMessage: passPrompt(pass, input.contextJson),
       toolHandler: NOOP_TOOL,
+      tools: [], // audit analyzes from inline JSON — no tool schema needed
       maxRoundtrips: 1,
       signal: input.signal,
     });
@@ -171,6 +172,7 @@ export async function runAuditSwarm(
       history: [],
       userMessage: synthesisPrompt,
       toolHandler: NOOP_TOOL,
+      tools: [], // synthesis writes prose from the findings — no tool schema needed
       maxRoundtrips: 1,
       signal: input.signal,
     });

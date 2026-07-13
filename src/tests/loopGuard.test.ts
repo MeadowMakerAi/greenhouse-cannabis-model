@@ -108,17 +108,19 @@ describe("loop guard shortens a runaway turn", () => {
     expect(fetchCount()).toBeLessThan(25);
   });
 
-  it("does NOT trip on a repeated READ — reads run to the ceiling but still answer", async () => {
+  it("breaks a repeated READ at the looser read limit (12), not the full ceiling", async () => {
     // A legit multi-building flow re-issues identical `assess_completeness {}`
-    // after each building; that must not be mistaken for a runaway. Reads are
-    // excluded from the guard, so this runs to the 25-roundtrip ceiling and the
-    // ceiling's own forced-final still returns an answer (not an error).
+    // after each building, so the read threshold is loose (12) — well above any
+    // realistic building count. But a model truly STUCK re-reading forever
+    // shouldn't burn all 26 roundtrips: at 12 identical reads the guard trips and
+    // the 13th pass is forced-final, returning an answer (not an error) early.
     const tools: ToolDefinition[] = [
       { name: "assess_completeness", description: "", input_schema: { type: "object", properties: {} } },
     ];
     const fetchCount = stubLoopingModel("assess_completeness");
     const reply = await runTurn(tools);
     expect(reply.content).toBe("done");
-    expect(fetchCount()).toBe(26); // 25 roundtrips + the forced-final pass
+    expect(fetchCount()).toBe(13); // 12 identical reads trip the guard + forced-final
+    expect(fetchCount()).toBeLessThan(26);
   });
 });

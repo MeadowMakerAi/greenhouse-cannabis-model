@@ -471,7 +471,10 @@ export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
   clampMin("greenhouseLengthFt", 1);
   clampMax("greenhouseLengthFt", 300); // single-zone practical max
   clampMin("greenhouseWidthFt", 1);
-  clampMax("greenhouseWidthFt", 60); // single-bay practical max
+  // Gutter-connected ranges are wide: the shipped default house is 120×90, so a
+  // 60 ft cap silently snapped every default scenario to 60 on the first write
+  // (chatbot or UI), corrupting geometry + energy math. Match the length bound.
+  clampMax("greenhouseWidthFt", 300); // multi-bay gutter-connect practical max
   clampMin("eaveHeightFt", 1);
   clampMax("eaveHeightFt", 18); // typical commercial high-bay ceiling
   clampMin("peakHeightFt", 1); // geometryFromDims further enforces > eave

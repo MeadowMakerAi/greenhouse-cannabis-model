@@ -16,13 +16,14 @@ import {
 import { PROVIDER_ORDER } from "../services/providers";
 import { WRITE_TOOL_NAMES } from "../services/chatbotTools";
 import { estimateCost, formatCost } from "../services/pricing";
-import { useScenario } from "../context/ScenarioContext";
-import { useDerived } from "../context/useDerived";
+import { useScenario, defaultScenario } from "../context/ScenarioContext";
+import { useDerived, computeDerived } from "../context/useDerived";
 import { useSimulation } from "../context/SimulationContext";
 import { useAllFixtures } from "../context/useAllFixtures";
 import { useLiveDynamics } from "../context/useLiveDynamics";
 import { fixtureKWFromPPFD, type FixtureSpec } from "../models/fixtureModel";
 import { DAYS_IN_MONTH } from "../utils/formatting";
+import { expandDottedKeys } from "../utils/expandDottedKeys";
 import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
@@ -41,7 +42,6 @@ const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
 const SESSION_PREF_KEY = "greenhouse-model:keyPersistencePref";
 const PROVIDER_KEY = "greenhouse-model:chatbotProvider";
 const MODEL_KEY_PREFIX = "greenhouse-model:chatbotModel:";
-const HISTORY_KEY = "greenhouse-model:chatHistory";
 const LEGACY_KEY = "greenhouse-model:anthropicApiKey";
 const LEGACY_MODEL_KEY = "greenhouse-model:chatbotModel";
 
@@ -342,7 +342,7 @@ function describeWrites(trace: NonNullable<ChatMessage["toolTrace"]>): string {
 }
 
 export default function Chatbot() {
-  const { inputs, setInputs, customFixtures, addCustomFixture } = useScenario();
+  const { inputs, climate, setInputs, customFixtures, addCustomFixture } = useScenario();
   const derived = useDerived();
   const sim = useSimulation();
   const allFixtures = useAllFixtures();
@@ -635,7 +635,6 @@ export default function Chatbot() {
     localStorage.removeItem(LEGACY_MODEL_KEY);
     localStorage.removeItem(PROVIDER_KEY);
     localStorage.removeItem(SESSION_PREF_KEY);
-    localStorage.removeItem(HISTORY_KEY);
     setApiKey("");
     setHistory([]);
     setError(null);
@@ -672,26 +671,40 @@ export default function Chatbot() {
       case "get_scenario":
         return scenarioNow();
       case "get_derived_outputs": {
+        // Recompute from the same-turn overlay so writes made earlier this turn
+        // are reflected NOW. The React `derived` memo lags a full render, so a
+        // bare read after a set_scenario would report pre-write numbers and Sage
+        // would narrate values that contradict the change it just made.
+        const d = computeDerived(scenarioNow(), climate, allFixtures);
+        // Climate normals are an ASYNC per-site fetch keyed on lat/lon — they
+        // can't refresh within a turn. So if the user moved the site this turn,
+        // the recompute pairs the NEW latitude with the OLD site's climate
+        // (shortwave, temps, wet-bulb): outdoor DLI + climate-driven figures
+        // reflect the prior location until the next turn. Warn rather than
+        // silently report a mismatched blend. (Geometry/fixture/envelope edits
+        // have no such lag — they're fully live above.)
+        const movedSite =
+          "latitude" in turnPatchRef.current || "longitude" in turnPatchRef.current;
         return {
-          ...(Object.keys(turnPatchRef.current).length > 0
+          ...(movedSite
             ? {
-                warning:
-                  "Scenario inputs changed earlier THIS turn; these derived outputs reflect the PRE-change state. Re-check next turn for post-change numbers.",
+                climateWarning:
+                  "Site coordinates changed THIS turn. Outdoor-climate figures (outdoorDLI, monthly temps, wet-bulb, heating/cooling from normals) still reflect the PREVIOUS location — climate normals refetch next turn. Geometry, fixture, and envelope numbers are current. Tell the user the climate-based figures update on the next message.",
               }
             : {}),
-          peakInstalledKW: derived.peakInstalledKW,
-          peakFixtureCount: derived.peakFixtureCount,
-          peakWattsPerSqFt: derived.peakWattsPerSqFt,
-          peakCoveragePerFixtureSqFt: derived.peakCoveragePerFixtureSqFt,
-          peakSquareGridSpacingFt: derived.peakSquareGridSpacingFt,
-          annualKwh: derived.annualKwh,
-          annualCost: derived.annualCost,
-          peakCoolingTons: derived.peakCoolingTons,
-          peakNetHeatingLoad: derived.peakNetHeatingLoad,
-          annualHeatingFuelMMBtu: derived.annualHeatingFuelMMBtu,
-          activeFixture: derived.fixture,
-          target: derived.target,
-          months: derived.months.map((m) => ({
+          peakInstalledKW: d.peakInstalledKW,
+          peakFixtureCount: d.peakFixtureCount,
+          peakWattsPerSqFt: d.peakWattsPerSqFt,
+          peakCoveragePerFixtureSqFt: d.peakCoveragePerFixtureSqFt,
+          peakSquareGridSpacingFt: d.peakSquareGridSpacingFt,
+          annualKwh: d.annualKwh,
+          annualCost: d.annualCost,
+          peakCoolingTons: d.peakCoolingTons,
+          peakNetHeatingLoad: d.peakNetHeatingLoad,
+          annualHeatingFuelMMBtu: d.annualHeatingFuelMMBtu,
+          activeFixture: d.fixture,
+          target: d.target,
+          months: d.months.map((m) => ({
             month: m.monthLabel,
             outdoorDLI: +m.outdoorDLI.toFixed(1),
             flowerWindowDLI: +m.flowerWindowDLI.toFixed(1),
@@ -705,13 +718,22 @@ export default function Chatbot() {
             botrytisScore: Math.round(m.botrytisScore),
             powderyMildewScore: Math.round(m.powderyMildewScore),
           })),
-          yieldProjection: derived.yieldProjection,
-          cropSteering: derived.cropSteering,
-          energyUseIntensity_kWhPerGram: derived.energyUseIntensity_kWhPerGram,
+          yieldProjection: d.yieldProjection,
+          cropSteering: d.cropSteering,
+          energyUseIntensity_kWhPerGram: d.energyUseIntensity_kWhPerGram,
         };
       }
       case "set_scenario": {
-        const rawPatches = (input.patches ?? {}) as Record<string, unknown>;
+        // Expand dotted keys → nested objects. The system prompt instructs Sage
+        // to write nested envelope/bench fields as "envelope.baseTransmissionPct";
+        // if the model emits that literal flat key, the nested deep-merge below
+        // never fires and it lands as a junk top-level property no model consumer
+        // reads (silent no-op write). Splitting on "." here accepts BOTH the
+        // dotted and the already-nested shape. `__proto__` segments are dropped
+        // so a crafted key can't reach Object.prototype.
+        const rawPatches = expandDottedKeys(
+          (input.patches ?? {}) as Record<string, unknown>,
+        );
         const merged: Record<string, unknown> = { ...rawPatches };
         // Registry-id fields must reference real entries — a model-invented id
         // (found live: GPT-5 wrote a made-up cropTargetId) would persist into
@@ -805,7 +827,11 @@ export default function Chatbot() {
             eaveHeightFt: defaultGreenhouseGeometry.eaveHeightFt,
             peakHeightFt: defaultGreenhouseGeometry.peakHeightFt,
             envelopeBaseTransmissionPct: defaultEnvelope.baseTransmissionPct,
-            fixtureId: "ledHighEfficiency",
+            // Source of truth — a literal here drifted from the shipped default
+            // ("ledHighEfficiency" ≠ gavitaPro1700eLED), which made a fresh
+            // scenario report its default fixture as user-established, inverting
+            // the lighting completeness answer.
+            fixtureId: defaultScenario.fixtureId,
             serviceVoltagePrimary: defaultElectricalService.serviceVoltages[1] ?? 240,
             branchCircuitAmps: defaultElectricalService.branchCircuitAmps,
             electricityRatePerKwh: defaultEconomics.electricityRatePerKwh,
@@ -819,13 +845,17 @@ export default function Chatbot() {
           : Object.values(allFixtures).filter((f) => f.type === "LED");
         if (fixtures.length === 0) return { error: "No matching fixtures." };
         const s = scenarioNow();
+        // Fresh solar from the same-turn overlay: if the user just changed
+        // geometry/glazing this turn, size against the NEW monthly flower-window
+        // DLI, not the pre-write memo.
+        const dNow = computeDerived(s, climate, allFixtures);
         const rec = recommendLighting({
           targetPPFD: input.targetPPFD != null ? Number(input.targetPPFD) : undefined,
           targetDLI: input.targetDLI != null ? Number(input.targetDLI) : undefined,
           photoperiodHours: s.flowerPhotoperiodHours,
           canopyAreaSqFt: s.canopyAreaSqFt,
           electricityRatePerKwh: s.electricityRatePerKwh,
-          monthlyFlowerWindowDLI: derived.months.map((m) => m.flowerWindowDLI),
+          monthlyFlowerWindowDLI: dNow.months.map((m) => m.flowerWindowDLI),
           fixtures,
         });
         if (!("error" in rec) && rec.options[0]) {
@@ -1045,6 +1075,10 @@ export default function Chatbot() {
         model,
         history,
         userMessage: userMsg,
+        // Live scenario snapshot so Sage always sees current state without
+        // burning a get_scenario roundtrip — the fix for "generic / doesn't
+        // know my scenario" answers. Same compact JSON the audit swarm uses.
+        liveContext: buildAuditContext(),
         // Pass the full set; chatTurn re-filters per provider, so a PDF the
         // primary can't take still reaches a fallback (Gemini) that can.
         // sentAttachments above only drives the primary's UI drop-note + guards.

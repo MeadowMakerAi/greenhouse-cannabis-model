@@ -39,12 +39,16 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     keyHint: "AIza...",
     keyFormat: /^AIza[0-9A-Za-z_-]{30,}$/,
     keyUrl: "https://aistudio.google.com/app/apikey",
-    defaultModel: "gemini-2.0-flash",
+    // Verified live against the v1beta models endpoint 2026-07-12. gemini-1.5-*
+    // is retired (no longer served) and was removed. gemini-3.x is the current
+    // generation; 2.x remains for cheap/free-tier PDF ingest.
+    defaultModel: "gemini-2.5-flash",
     models: [
+      { value: "gemini-3-flash-preview", label: "Gemini 3 Flash — newest, fast, 1M ctx, PDFs" },
+      { value: "gemini-3-pro-preview", label: "Gemini 3 Pro — deepest reasoning, 1M ctx" },
+      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — free, balanced, PDFs" },
+      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — free tier limited, strong reasoning" },
       { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash — free, 1M ctx, PDFs" },
-      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — free, smarter" },
-      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — free tier limited, deepest reasoning" },
-      { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash — legacy" },
     ],
     supportsImages: true,
     supportsPdf: true,
@@ -80,6 +84,27 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     supportsPdf: false,
     note: "PDFs are not supported here — convert spec sheets to images or use Gemini/Anthropic for PDF ingest.",
   },
+  xai: {
+    id: "xai",
+    label: "xAI (Grok)",
+    // OpenAI-compatible surface at api.x.ai/v1 (docs.x.ai — uses the OpenAI SDK
+    // pointed at this base URL), so it routes through the openAICompatibleProvider.
+    defaultBaseUrl: "https://api.x.ai/v1",
+    allowedHosts: ["api.x.ai"],
+    requiresKey: true,
+    allowCustomBaseUrl: false,
+    keyHint: "xai-...",
+    keyFormat: /^xai-[A-Za-z0-9_-]{20,}$/,
+    keyUrl: "https://console.x.ai",
+    defaultModel: "grok-4.5",
+    models: [
+      { value: "grok-4.5", label: "Grok 4.5 (flagship — 500k ctx, fast agentic tool-use)" },
+      { value: "grok-4.3", label: "Grok 4.3 (1M context)" },
+    ],
+    supportsImages: true,
+    supportsPdf: false,
+    note: "Grok 4.5 is xAI's flagship — 500k context, strong agentic tool-use, low latency. OpenAI-compatible API; key from console.x.ai. Not available in the EU. PDFs unsupported here — use Anthropic or Gemini to ingest spec sheets.",
+  },
   openrouter: {
     id: "openrouter",
     label: "OpenRouter (mixed, free models)",
@@ -113,12 +138,14 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     keyHint: "gsk_...",
     keyFormat: /^gsk_[A-Za-z0-9_-]{20,}$/,
     keyUrl: "https://console.groq.com/keys",
+    // Verified against console.groq.com/docs/models 2026-07-12: the two llama
+    // models + gpt-oss are current production; qwen3-32b is preview (eval-only).
     defaultModel: "llama-3.3-70b-versatile",
     models: [
-      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B versatile — free" },
+      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B versatile — free, production" },
       { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B instant — free, fastest" },
-      { value: "qwen/qwen3-32b", label: "Qwen3 32B — free" },
-      { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 distill 70B — reasoning" },
+      { value: "openai/gpt-oss-120b", label: "GPT-OSS 120B — free, production" },
+      { value: "qwen/qwen3-32b", label: "Qwen3 32B — preview (eval only)" },
     ],
     supportsImages: false,
     supportsPdf: false,
@@ -149,6 +176,7 @@ export const PROVIDER_ORDER: ProviderId[] = [
   "anthropic",
   "gemini",
   "openai",
+  "xai",
   "openrouter",
   "groq",
   "ollama",
@@ -161,6 +189,7 @@ export function getProvider(id: ProviderId): ChatProvider {
     case "gemini":
       return geminiProvider;
     case "openai":
+    case "xai":
     case "openrouter":
     case "groq":
     case "ollama":

@@ -79,4 +79,50 @@ describe("anthropic prompt caching", () => {
     await call();
     expect(TOOLS[TOOLS.length - 1]).not.toHaveProperty("cache_control");
   });
+
+  it("puts a walking cache breakpoint on the last block of the last message", async () => {
+    // The PDF/tool-history prefix was re-sent uncached every roundtrip; a
+    // breakpoint on the last message caches that whole prefix for ~0.1× reads
+    // on subsequent roundtrips.
+    const cap = stubCapture();
+    await call();
+    const messages = cap.body().messages as { content: unknown }[];
+    const last = messages[messages.length - 1];
+    // A plain-string user message is normalized to a single text block carrying
+    // the marker.
+    expect(Array.isArray(last.content)).toBe(true);
+    const blocks = last.content as { type: string; cache_control?: unknown }[];
+    expect(blocks[blocks.length - 1].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("does not carry cache_control forward into the persisted history", async () => {
+    // The marker is applied to a copy at send time; apiHistory stays plain so
+    // only ONE message breakpoint exists per request (≤4 total with sys+tools).
+    const cap = stubCapture();
+    const history = [
+      { role: "user" as const, content: "earlier" },
+      { role: "assistant" as const, content: "reply" },
+    ];
+    await anthropicProvider.chat({
+      apiKey: "sk-ant-" + "a".repeat(48),
+      baseUrl: "https://api.anthropic.com/v1/messages",
+      model: "claude-sonnet-5",
+      history,
+      userMessage: "now",
+      toolHandler: () => ({}),
+      tools: TOOLS,
+      systemPrompt: "SYS",
+      maxRoundtrips: 6,
+    });
+    const messages = cap.body().messages as { content: unknown }[];
+    // Only the final message is tagged; earlier ones are untouched.
+    const earlier = messages.slice(0, -1);
+    for (const m of earlier) {
+      if (Array.isArray(m.content)) {
+        for (const b of m.content as { cache_control?: unknown }[]) {
+          expect(b.cache_control).toBeUndefined();
+        }
+      }
+    }
+  });
 });

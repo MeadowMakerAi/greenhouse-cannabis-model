@@ -1,4 +1,4 @@
-import { CHATBOT_TOOLS, CHATBOT_SYSTEM_PROMPT } from "./chatbotTools";
+import { CHATBOT_TOOLS, CHATBOT_SYSTEM_PROMPT, type ToolDefinition } from "./chatbotTools";
 import {
   PROVIDER_CONFIGS,
   getProvider,
@@ -70,6 +70,23 @@ export interface ChatTurnInput {
   model: string;
   history: ChatMessage[];
   userMessage: string;
+  /**
+   * Tool schemas to expose this turn. Defaults to the full CHATBOT_TOOLS.
+   * Audit passes pass `[]` — they analyze from inline JSON with tools disabled,
+   * so shipping the 11-tool schema on all 6 parallel calls was pure token +
+   * latency overhead.
+   */
+  tools?: ToolDefinition[];
+  /**
+   * Live, authoritative scenario snapshot injected into THIS turn only (not
+   * persisted to history). Without it the model can only learn current state by
+   * spending a roundtrip on get_scenario/get_derived_outputs — and the prompt
+   * tells it not to reflexively read — so answers drift generic/stale. Prepended
+   * to the user message: rides the always-uncached user turn, stays out of the
+   * cached system block, and reaches every provider uniformly. Ephemeral per
+   * turn, so it never accumulates or goes stale in the transcript.
+   */
+  liveContext?: string;
   attachments?: FileAttachment[];
   toolHandler: ToolHandler;
   maxRoundtrips?: number;
@@ -168,15 +185,21 @@ export async function chatTurn(args: ChatTurnInput): Promise<ChatMessage> {
           : true,
     );
 
+    // Prepend the live scenario snapshot to the user turn so the model always
+    // sees current, authoritative state without spending a read roundtrip.
+    const userMessage = args.liveContext
+      ? `CURRENT MODEL STATE (live, authoritative — reflects all prior edits this session):\n${args.liveContext}\n\n---\n\n${args.userMessage}`
+      : args.userMessage;
+
     const reply = await getProvider(providerId).chat({
       apiKey,
       baseUrl: resolvedBaseUrl,
       model,
       history,
-      userMessage: args.userMessage,
+      userMessage,
       attachments: providerAttachments,
       toolHandler: args.toolHandler,
-      tools: CHATBOT_TOOLS,
+      tools: args.tools ?? CHATBOT_TOOLS,
       systemPrompt: CHATBOT_SYSTEM_PROMPT,
       // Centralize the ceiling so anthropic + gemini + openai-compat all get the
       // same budget (each provider's own default is only a direct-call fallback).
