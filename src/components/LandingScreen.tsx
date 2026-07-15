@@ -306,7 +306,7 @@ export default function LandingScreen({
             <Step
               n="02"
               title="Watch the model compute"
-              body="Every input feeds a pure model function in src/models/. Annual energy, peak loads, yield, pathogen pressure update on every change."
+              body="Every input feeds a validated model function. Annual energy, peak loads, yield, pathogen pressure update on every change."
             />
             <Step
               n="03"
