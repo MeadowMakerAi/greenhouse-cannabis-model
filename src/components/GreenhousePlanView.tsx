@@ -17,9 +17,9 @@ interface Props {
 
 /**
  * Top-down schematic of the greenhouse with canopy footprint, aisles, and
- * fixture grid. NOT an architectural drawing — geometry is derived by
- * assuming a 1.5:1 length:width aspect ratio. Drop in a measured floor plan
- * to override.
+ * fixture grid. NOT an architectural drawing — geometry is derived from the
+ * greenhouse's real length:width aspect (falling back to 1.5:1 when the
+ * footprint is unknown). Drop in a measured floor plan to override.
  */
 export default function GreenhousePlanView({
   floorAreaSqFt,
@@ -32,10 +32,16 @@ export default function GreenhousePlanView({
   benchLayout,
 }: Props) {
   // Benched houses draw at their real footprint so benches + aisles are true
-  // to plan; open houses keep the 1.5:1 area-derived schematic (unchanged).
+  // to plan; open houses derive their shape from the real greenhouse aspect
+  // (length:width) so the schematic matches the 3D scene — which reshapes the
+  // canopy to greenhouseLengthFt/greenhouseWidthFt. Falls back to 1.5:1 only
+  // when dimensions are unknown. Keep in lockstep with Greenhouse3D.
   const benched =
     !!benchLayout?.enabled && !!greenhouseLengthFt && !!greenhouseWidthFt;
-  const ASPECT = 1.5;
+  const ASPECT =
+    greenhouseLengthFt && greenhouseWidthFt
+      ? greenhouseLengthFt / greenhouseWidthFt
+      : 1.5;
   const floorWidth = benched
     ? greenhouseWidthFt!
     : Math.sqrt(floorAreaSqFt / ASPECT);
@@ -111,7 +117,9 @@ export default function GreenhousePlanView({
           Top-down plan · {floorLength.toFixed(0)}′ × {floorWidth.toFixed(0)}′ greenhouse · {fixtureCount} × {fixtureLabel}
         </text>
         <text x={svgWidth / 2} y={36} textAnchor="middle" className="fill-ink-500" fontSize="10">
-          Schematic — geometry derived from area assuming 1.5:1 aspect ratio
+          {greenhouseLengthFt && greenhouseWidthFt
+            ? "Schematic — geometry derived from the greenhouse footprint"
+            : "Schematic — geometry derived from area assuming 1.5:1 aspect ratio"}
         </text>
 
         {/* Floor outline (greenhouse footprint) */}
