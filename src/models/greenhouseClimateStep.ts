@@ -192,7 +192,17 @@ export function climateSubstep(input: ClimateSubstepInput): ClimateSubstepResult
     dehumRemovalLbPerHr;
 
   const newWaterMassLb = AH * dryAirMassLb + netWaterLbPerHr * dtHours;
-  const newAH = Math.max(0, newWaterMassLb / dryAirMassLb);
+  const grossAH = Math.max(0, newWaterMassLb / dryAirMassLb);
+  // Condensation sink: air cannot hold more water than saturation. Excess vapor
+  // condenses out (onto cooler surfaces / as fog) and leaves the bulk air, so
+  // cap AH at the saturation value for the new temperature. Without this, a
+  // closed, humidifying house (vents shut + dehumidifier off) accumulates
+  // unphysical supersaturated AH that later "re-evaporates" as temperature
+  // rises, faking high RH/VPD (Codex finding). The latent heat released is
+  // treated as exported through the envelope surface where condensation forms,
+  // not returned to the bulk air — conservative for a screening model.
+  const saturationAH = ahAtRH(newT, 100);
+  const newAH = Math.min(grossAH, saturationAH);
   const newRH = Math.max(0, Math.min(100, rhFromAbsoluteHumidity(fahrenheitToCelsius(newT), newAH)));
 
   return {

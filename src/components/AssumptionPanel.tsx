@@ -822,6 +822,18 @@ export default function AssumptionPanel() {
           unit="%"
           hint="Pad media efficiency. New pads 75–80, aged 60–70."
         />
+        <ToggleField
+          label="Fog / misting"
+          value={inputs.fogCoolingEnabled}
+          onChange={(b) => setInputs({ fogCoolingEnabled: b })}
+        />
+        <NumberField
+          label="Fog efficiency"
+          value={inputs.fogEfficiencyPct}
+          onChange={(n) => setInputs({ fogEfficiencyPct: n })}
+          unit="%"
+          hint="High-pressure fog cools interior air toward its wet-bulb. 70–85 typical."
+        />
         <NumberField
           label="Indoor target temp"
           value={inputs.indoorTargetDryBulbF}

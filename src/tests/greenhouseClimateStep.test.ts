@@ -112,6 +112,34 @@ describe("climateSubstep", () => {
     expect(r.indoorRHPct).toBeGreaterThanOrEqual(59); // not below target
   });
 
+  it("caps AH at saturation — a closed humidifying house cannot supersaturate", () => {
+    // Vents shut, dehum off, canopy transpiring hard. Without a condensation
+    // sink, AH marches past saturation forever (Codex finding).
+    let ah = absoluteHumidityKgPerKg(fahrenheitToCelsius(73), 72);
+    let t = 73;
+    for (let i = 0; i < 12; i++) {
+      const r = climateSubstep(
+        base({
+          indoorTempF: t,
+          indoorAH: ah,
+          outdoorTempF: 73,
+          outdoorRHPct: 72,
+          outdoorAH: ah,
+          ventCFM: 0,
+          transpirationLbPerHr: 100,
+          volumeCuFt: 151200,
+          dtHours: 0.25,
+        }),
+      );
+      t = r.indoorTempF;
+      ah = r.indoorAH;
+      // AH must never exceed saturation AH at the current temperature.
+      const satAH = absoluteHumidityKgPerKg(fahrenheitToCelsius(t), 100);
+      expect(ah).toBeLessThanOrEqual(satAH + 1e-9);
+      expect(r.indoorRHPct).toBeLessThanOrEqual(100);
+    }
+  });
+
   it("never produces non-finite state", () => {
     const r = climateSubstep(base({ solarGainBTUhr: 1e7, volumeCuFt: 1 }));
     expect(Number.isFinite(r.indoorTempF)).toBe(true);

@@ -83,6 +83,15 @@ export interface LiveSnapshot {
   plant: PlantGrowthState;
 }
 
+/**
+ * Trace spacing AND the physics outer-step, kept identical so elapsed clock
+ * time equals elapsed integrated time. They previously diverged (trace advanced
+ * 0.5 h while the outer step was 0.25 h), which under-integrated every daily
+ * trace by ~2× — most visibly on the carried moisture state (Codex P1).
+ * The adaptive substep loop subdivides this for numerical stability.
+ */
+const TRACE_STEP_HOURS = 0.5;
+
 export interface DailyTracePoint {
   hour: number;
   outdoorTempF: number;
@@ -249,7 +258,7 @@ export function useLiveDynamics() {
        * Fix: substep the 15-min outer step into 1-min inner steps so the
        * vent feedback acts gradually. Vent state, vent CFM, heating, and
        * cooling are recomputed every substep against the latest temp. */
-      const dt = 0.25; // 15-min outer step
+      const dt = TRACE_STEP_HOURS; // outer step = trace spacing (see constant)
       const stackHeightFt = Math.max(
         0.5,
         inputs.peakHeightFt - inputs.eaveHeightFt / 2,
@@ -427,7 +436,7 @@ export function useLiveDynamics() {
       fahrenheitToCelsius(climateRow.meanTempF),
       climateRow.meanRH,
     );
-    for (let h = 0; h <= 24; h += 0.5) {
+    for (let h = 0; h <= 24; h += TRACE_STEP_HOURS) {
       const r = computeAt(h, prevIndoor, prevVent, prevAH);
       prevIndoor = r.indoorTempF;
       prevVent = r.ventOpen;
@@ -452,7 +461,7 @@ export function useLiveDynamics() {
     // into another computeAt → snapshot was always one 15-min step ahead of
     // the chart. Fix: feed the PREVIOUS trace point's state in so computeAt
     // produces the same step the trace point represents.
-    const idx = Math.max(0, Math.min(trace.length - 1, Math.round(sim.hourOfDay * 2)));
+    const idx = Math.max(0, Math.min(trace.length - 1, Math.round(sim.hourOfDay / TRACE_STEP_HOURS)));
     const prevIdx = Math.max(0, idx - 1);
     const prev = trace[prevIdx];
     // Reconstruct the previous point's absolute humidity from its (T, RH) — the
