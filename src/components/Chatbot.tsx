@@ -678,6 +678,7 @@ export default function Chatbot() {
     localStorage.removeItem(LEGACY_MODEL_KEY);
     localStorage.removeItem(PROVIDER_KEY);
     localStorage.removeItem(SESSION_PREF_KEY);
+    localStorage.removeItem(HISTORY_KEY);
     setApiKey("");
     setHistory([]);
     setError(null);
