@@ -84,9 +84,12 @@ export default function GreenhousePlanView({
   });
   const colSpacingPx = drawnCanopyLengthPx / Math.max(1, cols);
   const rowSpacingPx = drawnCanopyWidthPx / Math.max(1, rows);
+  // Render exactly `fixtureCount` lamps (the solver rounds rows×cols up to
+  // cover it) so the schematic matches its own title/BoM, never drawing more
+  // fixtures than are specified. Keep in lockstep with Greenhouse3D.
   const fixtures: { x: number; y: number }[] = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
+  for (let r = 0; r < rows && fixtures.length < fixtureCount; r++) {
+    for (let c = 0; c < cols && fixtures.length < fixtureCount; c++) {
       fixtures.push({
         x: canopyX + colSpacingPx * (c + 0.5),
         y: canopyY + rowSpacingPx * (r + 0.5),

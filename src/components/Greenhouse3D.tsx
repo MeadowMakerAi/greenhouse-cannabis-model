@@ -3024,15 +3024,11 @@ export default function Greenhouse3D({
   const canopyOffsetX = -canopyLength / 2;
   const canopyOffsetZ = -canopyWidth / 2;
 
-  // Derive both rows and cols from gridSpacingFt so the grid always renders
-  // as a clean rectangle. Prior code computed rows = ceil(fixtureCount / cols)
-  // which produced a partial last row when fixtureCount didn't fit a clean
-  // rectangle (commercial designs always snap to perfect grids).
-  // If the snapped grid differs from fixtureCount by ≤ 2, prefer the perfect
-  // grid (visual). If it differs by more (user manually overrode count), bias
-  // rows toward fixtureCount to keep the BoM honest.
-  // Shared solver (src/models/fixtureGrid.ts) — keeps this in lockstep with
-  // GreenhousePlanView and guards against the single-row collapse.
+  // Near-square grid SHAPE from the shared solver (src/models/fixtureGrid.ts),
+  // kept in lockstep with GreenhousePlanView and guarded against the single-row
+  // collapse. The solver rounds rows×cols UP to cover the count, so we render
+  // exactly `fixtureCount` lamps (row-major, last row may be short) — the scene
+  // must match the BoM/power sizing, never draw more lamps than are specified.
   const { rows, cols } = solveFixtureGrid({
     fixtureCount,
     canopyLengthFt: canopyLength,
@@ -3042,8 +3038,8 @@ export default function Greenhouse3D({
   const colSpacing = canopyLength / Math.max(1, cols);
   const rowSpacing = canopyWidth / Math.max(1, rows);
   const fixtures: { x: number; z: number }[] = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
+  for (let r = 0; r < rows && fixtures.length < fixtureCount; r++) {
+    for (let c = 0; c < cols && fixtures.length < fixtureCount; c++) {
       fixtures.push({
         x: canopyOffsetX + colSpacing * (c + 0.5),
         z: canopyOffsetZ + rowSpacing * (r + 0.5),

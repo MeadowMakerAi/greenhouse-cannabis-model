@@ -421,6 +421,14 @@ export function computeDerived(
           : 0,
       ),
     );
+    // Nameplate power of the install — the physical "100%" that pairs with
+    // installedFullCanopyPPFD. grow-core's installedKW is electricalWatts/1000
+    // (the EXACT pre-rounding requirement), but you buy whole fixtures, so the
+    // real full-power draw is peakFixtureCount × wattsPerFixture. The live
+    // dimming heat scales this by dim so a fixture at 50% dim draws ~50% of its
+    // rated watts. Matters most for small designs where the whole-fixture
+    // rounding slack is a large fraction of the load.
+    const installedNameplateKW = (peakFixtureCount * fixture.wattsPerFixture) / 1000;
 
     const activeFixtureSupports120V =
       fixture.minVoltage <= 120 && fixture.maxVoltage >= 120;
@@ -629,6 +637,7 @@ export function computeDerived(
       peakSquareGridSpacingFt,
       peakSquareGridSpacingM,
       installedFullCanopyPPFD,
+      installedNameplateKW,
       activeFixtureSupports120V,
       activeFixtureSupports240V,
       peakAmpsPerFixture120V,

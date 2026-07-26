@@ -95,6 +95,9 @@ This greenhouse model is a synthesis of peer-reviewed plant science, greenhouse 
 
 - Basis for the canopy floor-utilization flag in `scenarioAdvisor.assessCompleteness`: when canopy:floor utilization is below 80%, the advisor surfaces it as unrealized optimization and names the ~90% rolling-bench ceiling. Threshold and ceiling are the cited figures above, not invented. Screening-level: a layout heuristic, not a bench-packing solver.
 
+**Ciolkosz, D.E., Both, A.J. & Albright, L.D. (2001).** *Selection and placement of greenhouse luminaires for uniformity.* Applied Engineering in Agriculture 17(6): 875–882 (ASABE).
+- Peer-reviewed basis for the near-square fixture-grid layout in `models/fixtureGrid.ts` (`solveFixtureGrid`): at a given mounting height, long dense single-file rows lose canopy PPFD uniformity versus square/near-square luminaire spacing. The solver derives rows from the fixture count and canopy aspect so each grid CELL stays near-square (colSpacing ≈ rowSpacing), and refuses a single-file collapse for any canopy below a 4:1 strip aspect. Screening-level: a uniformity-motivated layout heuristic, not a photometric ray-trace — `STRIP_ASPECT = 4` is the app's own guard threshold, not a value from the paper.
+
 ---
 
 ## Software science / rendering

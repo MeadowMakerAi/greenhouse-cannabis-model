@@ -48,6 +48,9 @@ export function solveFixtureGrid({
   canopyLengthFt,
   canopyWidthFt,
 }: FixtureGridParams): FixtureGrid {
+  // Fail loud/clean on non-finite inputs rather than propagating NaN into
+  // rows/cols, which would make callers silently render zero fixtures.
+  if (!Number.isFinite(fixtureCount)) return { rows: 0, cols: 0 };
   const n = Math.max(0, Math.round(fixtureCount));
   if (n <= 0) return { rows: 0, cols: 0 };
   if (n === 1) return { rows: 1, cols: 1 };

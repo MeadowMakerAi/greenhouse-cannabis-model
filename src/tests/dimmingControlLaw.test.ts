@@ -3,28 +3,40 @@ import { computeDerived } from "../context/useDerived";
 import { defaultScenario } from "../context/ScenarioContext";
 import { fixtureLibrary } from "../data/fixtureLibrary";
 import { fallbackMontgomeryClimate } from "../data/fallbackMontgomeryClimate";
+import { supplementalDim } from "../models/dimmingControl";
 
 /**
- * The real-time dimming control law lives in useLiveDynamics.computeAt but its
- * physics is a pure function of three model quantities: the target canopy PPFD,
- * the instantaneous natural PPFD (the "light meter"), and the installed
- * full-power output (derived.installedFullCanopyPPFD). This test pins that law
- * directly so the regression that motivated it — the canopy sagging below
- * target in partial sun because the dim was applied twice — can't come back.
+ * The real-time dimming control law is the SAME pure function the live sim uses
+ * (models/dimmingControl.supplementalDim — imported here, not re-implemented, so
+ * the test can't silently pass while production drifts). It's a pure function of
+ * the target canopy PPFD, the instantaneous natural PPFD (the "light meter"),
+ * and the installed full-power output (derived.installedFullCanopyPPFD). These
+ * tests pin the fix that motivated it — the canopy sagging below target in
+ * partial sun because the dim was applied twice.
  *
  * Old (buggy) law: supplemental = deficit × (deficit/target) = deficit²/target.
  * Correct law:     dim = min(1, deficit/installedFull); supplemental = dim×full.
  */
 const climate = { data: fallbackMontgomeryClimate } as never;
 
-/** Mirror of the control law in useLiveDynamics.computeAt. */
+/** Thin adapter over the production law (fixtures on) for the algebra cases. */
 function dim(targetPPFD: number, naturalPPFD: number, installedFull: number) {
-  const deficit = Math.max(0, targetPPFD - naturalPPFD);
-  const dimLevel = installedFull > 0 ? Math.min(1, deficit / installedFull) : 0;
-  return { dimLevel, supplemental: dimLevel * installedFull };
+  const { dimLevel, supplementalPPFD } = supplementalDim({
+    targetPPFD,
+    naturalPPFD,
+    installedFullPPFD: installedFull,
+    on: true,
+  });
+  return { dimLevel, supplemental: supplementalPPFD };
 }
 
 describe("real-time dimming control law", () => {
+  it("is off (dim 0) whenever the fixtures are not commanded on", () => {
+    const off = supplementalDim({ targetPPFD: 925, naturalPPFD: 0, installedFullPPFD: 900, on: false });
+    expect(off.dimLevel).toBe(0);
+    expect(off.supplementalPPFD).toBe(0);
+  });
+
   it("derives a positive installed full-output PPFD for a lit greenhouse design", () => {
     const d = computeDerived(
       { ...defaultScenario, fixtureId: "gavitaPro1700eLED" },
@@ -35,6 +47,13 @@ describe("real-time dimming control law", () => {
     // Installed capacity must cover the worst-month supplemental requirement.
     const peakReq = Math.max(...d.months.map((m) => m.supplementalPPFDRequired));
     expect(d.installedFullCanopyPPFD).toBeGreaterThanOrEqual(peakReq - 1e-6);
+    // Nameplate kW (the live-heat basis) must equal peak fixtures × rated watts,
+    // and be ≥ the exact-watts peakInstalledKW (whole-fixture rounding slack).
+    expect(d.installedNameplateKW).toBeCloseTo(
+      (d.peakFixtureCount * d.fixture.wattsPerFixture) / 1000,
+      6,
+    );
+    expect(d.installedNameplateKW).toBeGreaterThanOrEqual(d.peakInstalledKW - 1e-6);
   });
 
   it("holds the canopy at target in partial sun — no midday sag (the bug)", () => {

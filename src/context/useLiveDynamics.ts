@@ -18,6 +18,7 @@ import {
   type LightsState,
 } from "../models/simulationModel";
 import { netCanopyTransmissionPct } from "../models/solarModel";
+import { supplementalDim } from "../models/dimmingControl";
 import { isShadeActive } from "../models/shadeModel";
 import { vpdFromTempRH } from "../models/vpdModel";
 import {
@@ -153,8 +154,9 @@ export function useLiveDynamics() {
         targetPPFD: derived.target.targetTopCanopyPPFD,
         dimWhenBright: true,
       });
-      // Real-time (per-trace-step) dimming control law — light-meter driven.
-      // The "light meter" is canopyNaturalPPFD, recomputed every step, so the
+      // Real-time (per-trace-step) dimming control law — light-meter driven,
+      // shared with the test via models/dimmingControl.supplementalDim. The
+      // "light meter" is canopyNaturalPPFD, recomputed every step, so the
       // fixtures fade as the sun climbs toward noon and brighten as it falls.
       //
       // grow-core reports dimLevel = deficit/target, which is wrong twice over:
@@ -162,25 +164,26 @@ export function useLiveDynamics() {
       // output, so it isn't "what % the fixtures actually run at"; and (2) the
       // old code multiplied that by the deficit again → supplemental =
       // deficit²/target, sagging the canopy ~25% below target in half-sun.
-      //
-      // Correct law: dim = fraction of INSTALLED fixture power needed to top the
-      // canopy up to target, capped at 100% (you cannot exceed installed
-      // capacity). supplemental = dim × installed full output, so the canopy
-      // holds flat at target whenever the fixtures still have headroom, and
-      // rides down to natural-only once the sun alone exceeds target (grow-core
-      // switches lights off there via dimWhenBright). We model fully-dimmable
-      // fixtures — a real controller has a per-fixture dimming floor (Gavita's
-      // is controller-dependent and NOT OBSERVED from a spec sheet, so no floor
-      // is imposed rather than fabricate one; add fixture.dimmingFloorPct here
-      // when a sourced value exists).
-      const fullPPFD = derived.installedFullCanopyPPFD;
-      const deficit = Math.max(0, derived.target.targetTopCanopyPPFD - canopyNaturalPPFD);
-      const dimLevel =
-        lightsRaw.on && fullPPFD > 0 ? Math.min(1, deficit / fullPPFD) : 0;
+      // supplementalDim fixes both: dim = fraction of installed (nameplate)
+      // power, supplemental = dim × installed full output. We model fully-
+      // dimmable fixtures — a per-fixture dimming floor (Gavita's is
+      // controller-dependent, NOT OBSERVED from a spec sheet) is left unset
+      // rather than fabricated; add fixture.dimmingFloorPct when sourced.
+      const { dimLevel, supplementalPPFD } = supplementalDim({
+        targetPPFD: derived.target.targetTopCanopyPPFD,
+        naturalPPFD: canopyNaturalPPFD,
+        installedFullPPFD: derived.installedFullCanopyPPFD,
+        on: lightsRaw.on,
+      });
       const lights = { ...lightsRaw, dimLevel };
-      const supplementalPPFD = dimLevel * fullPPFD;
       const canopyTotalPPFD = canopyNaturalPPFD + supplementalPPFD;
-      const lightingBTUhr = lights.on ? kWToBTUhr(derived.peakInstalledKW * dimLevel) : 0;
+      // Lighting heat scales dim against NAMEPLATE power (dim is a fraction of
+      // nameplate output), NOT peakInstalledKW — grow-core's installedKW is the
+      // exact pre-rounding requirement and would under-report heat by the
+      // whole-fixture slack (material for small fixture counts). Codex P2.
+      const lightingBTUhr = lights.on
+        ? kWToBTUhr(derived.installedNameplateKW * dimLevel)
+        : 0;
       /* Stack-effect ridge-vent area is large (paired N+S leaves × full
        * ridge length), and CFM ∝ √ΔT — small at small ΔT, large at large
        * ΔT. With a single 15-min Euler step + ~200 kW lighting heat input

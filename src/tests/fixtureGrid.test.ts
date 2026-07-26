@@ -71,6 +71,9 @@ describe("solveFixtureGrid", () => {
           // never produce an absurd rectangle
           expect(g.rows * g.cols).toBeLessThanOrEqual(n + Math.max(g.rows, g.cols));
           expect(g.rows * g.cols).toBeGreaterThan(0);
+          // the grid must cover the count so callers can render exactly `n`
+          // lamps (they cap at fixtureCount) without ever coming up short.
+          expect(g.rows * g.cols).toBeGreaterThanOrEqual(n);
         }
       }
     }
