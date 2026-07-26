@@ -22,6 +22,13 @@ describe("estimateCost", () => {
     expect(est?.usd).toBeCloseTo((100_000 * 2.5 + 10_000 * 15) / 1_000_000, 9);
   });
 
+  it("prices gpt-4o-mini so the session spend cap can enforce (was unpriced)", () => {
+    // Regression for the cap no-op: gpt-4o-mini must return a real usd, not null.
+    const est = estimateCost(u("gpt-4o-mini", 1_000_000, 1_000_000));
+    expect(est?.usd).toBeCloseTo(0.15 + 0.6, 6);
+    expect(est?.usd).not.toBeNull();
+  });
+
   it("marks free-tier / local models as free with $0", () => {
     for (const m of ["gemini-2.0-flash", "llama-3.3-70b-versatile", "llama3.2", "deepseek/deepseek-chat-v3.1:free"]) {
       const est = estimateCost(u(m, 500, 500));

@@ -28,6 +28,7 @@ import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
 import AuditResultsView from "./AuditResultsView";
 import MarkdownLite from "./MarkdownLite";
+import ChatErrorBoundary from "./ChatErrorBoundary";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
 import { assessCompleteness, recommendLighting } from "../services/scenarioAdvisor";
 import { cropTargets } from "../data/cropTargets";
@@ -105,6 +106,40 @@ function storedModelFor(providerId: ProviderId): string {
     }
   }
   return PROVIDER_CONFIGS[providerId].defaultModel;
+}
+
+// Persist the chat thread so a reload doesn't wipe the conversation (the
+// "Forget everything" control clears it). Bounded to the most recent turns so
+// a long audit-heavy session can't blow the localStorage quota.
+const HISTORY_PERSIST_MAX = 40;
+
+function loadHistory(): ChatMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Keep only well-formed message shapes; tolerate older/newer field sets.
+    return parsed.filter(
+      (m): m is ChatMessage =>
+        m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function persistHistory(history: ChatMessage[]) {
+  try {
+    if (history.length === 0) {
+      localStorage.removeItem(HISTORY_KEY);
+      return;
+    }
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-HISTORY_PERSIST_MAX)));
+  } catch {
+    /* quota / blocked storage — a non-persisted session still works */
+  }
 }
 
 function isPublicHostname(): boolean {
@@ -365,7 +400,7 @@ export default function Chatbot() {
   const [showKeyConfig, setShowKeyConfig] = useState(false);
   const [model, setModel] = useState<string>(() => storedModelFor(providerId));
   const [draft, setDraft] = useState("");
-  const [history, setHistory] = useState<ChatMessage[]>([]);
+  const [history, setHistory] = useState<ChatMessage[]>(loadHistory);
   const [busy, setBusy] = useState(false);
   // Live-streamed assistant text for the in-flight turn (Anthropic streams; other
   // providers leave this null and show the "Thinking…" spinner until done).
@@ -513,6 +548,11 @@ export default function Chatbot() {
   // have returned for the progress indicator.
   const [auditing, setAuditing] = useState(false);
   const [auditDone, setAuditDone] = useState<string[]>([]);
+
+  // Persist the thread on every change so a reload resumes the conversation.
+  useEffect(() => {
+    persistHistory(history);
+  }, [history]);
 
   // Tell the proactive layer whether the chat panel is open (so it doesn't
   // overlap), and badge the launcher with the live observation count.
@@ -1431,6 +1471,14 @@ export default function Chatbot() {
                 {overBudget && (
                   <span className="font-semibold text-warn-600">reached</span>
                 )}
+                {budgetUSD != null && !overBudget && sessionMeter.anyUnpriced && (
+                  <span
+                    className="text-warn-600"
+                    title="This model isn't in the price table, so the dollar cap can't be enforced. The token counter still runs."
+                  >
+                    · unpriced model — cap can't enforce
+                  </span>
+                )}
               </div>
               </div>
             </div>
@@ -1613,20 +1661,22 @@ export default function Chatbot() {
                     : "mr-6 bg-ink-300/10 text-ink-900"
                 }`}
               >
-                {m.content &&
-                  (m.role === "assistant" ? (
-                    <MarkdownLite text={m.content} />
-                  ) : (
-                    <div className="whitespace-pre-wrap">{m.content}</div>
-                  ))}
-                {m.findings && m.findings.length > 0 && (
-                  <div className={m.content ? "mt-2" : ""}>
-                    <AuditResultsView findings={m.findings} onApply={applyFindingPatch} />
-                  </div>
-                )}
-                {m.toolTrace && m.toolTrace.length > 0 && (
-                  <ToolTracePanel trace={m.toolTrace} />
-                )}
+                <ChatErrorBoundary>
+                  {m.content &&
+                    (m.role === "assistant" ? (
+                      <MarkdownLite text={m.content} />
+                    ) : (
+                      <div className="whitespace-pre-wrap">{m.content}</div>
+                    ))}
+                  {m.findings && m.findings.length > 0 && (
+                    <div className={m.content ? "mt-2" : ""}>
+                      <AuditResultsView findings={m.findings} onApply={applyFindingPatch} />
+                    </div>
+                  )}
+                  {m.toolTrace && m.toolTrace.length > 0 && (
+                    <ToolTracePanel trace={m.toolTrace} />
+                  )}
+                </ChatErrorBoundary>
                 {m.usage && (m.usage.inputTokens > 0 || m.usage.outputTokens > 0) && (
                   <div className="mt-1 text-xs text-ink-400" title="Estimated cost — see pricing.ts">
                     {fmtTokens(m.usage.inputTokens)} in · {fmtTokens(m.usage.outputTokens)} out

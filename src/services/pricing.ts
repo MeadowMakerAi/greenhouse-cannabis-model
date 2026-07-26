@@ -3,7 +3,7 @@ import type { ChatUsage } from "./providers/types";
 /**
  * Estimated model pricing, USD per 1M tokens (input / output).
  *
- * Prices as of 2026-07-10. This drives the cost meter, which is an ESTIMATE
+ * Prices as of 2026-07-26. This drives the cost meter, which is an ESTIMATE
  * surfaced to the user — NOT a billing source of truth. Providers change
  * pricing; update this table (and the date above) when they do. Anything not
  * listed and not matched as free returns `usd: null` so the meter shows token
@@ -31,6 +31,11 @@ const PRICES: Record<string, Price> = {
   // xAI Grok (docs.x.ai, verified 2026-07-12). grok-4.3 pricing not published at
   // check time → left unlisted so the meter shows "—" rather than a guess.
   "grok-4.5": { in: 2, out: 6 },
+  // OpenAI legacy (offered as fallback models in the picker). GPT-5 / GPT-5-mini
+  // are intentionally omitted — their rates aren't confirmed here, so they stay
+  // unpriced rather than guessed (ZERO-FABRICATION).
+  "gpt-4o": { in: 2.5, out: 10 },
+  "gpt-4o-mini": { in: 0.15, out: 0.6 },
 };
 
 // Model ids treated as free (Gemini free tier, Groq free, local Ollama,
