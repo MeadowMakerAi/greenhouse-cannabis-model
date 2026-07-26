@@ -196,6 +196,16 @@ export interface ExtractedFindings {
  * on any parse failure returns `{ findings: null, cleanedReport: raw }` so the
  * caller shows the prose report exactly as before.
  */
+/** Drop orphan fence-only lines (```json / ```) a model sometimes leaves
+ *  around the JSON block, without touching prose. */
+function stripOrphanFences(text: string): string {
+  return text
+    .split("\n")
+    .filter((l) => !/^\s*```(json)?\s*$/i.test(l))
+    .join("\n")
+    .trim();
+}
+
 export function extractFindings(raw: string): ExtractedFindings {
   const block = extractJsonBlock(raw);
   if (!block) return { findings: null, cleanedReport: raw };
@@ -204,6 +214,6 @@ export function extractFindings(raw: string): ExtractedFindings {
   const findings = arr
     .map((f, i) => coerceFinding(f, i))
     .filter((f): f is SageFinding => f !== null);
-  const cleanedReport = (raw.slice(0, block.start) + raw.slice(block.end)).trim();
+  const cleanedReport = stripOrphanFences(raw.slice(0, block.start) + raw.slice(block.end));
   return { findings: findings.length ? findings : null, cleanedReport };
 }

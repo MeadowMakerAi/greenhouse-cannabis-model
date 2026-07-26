@@ -533,7 +533,10 @@ export default function Chatbot() {
     else localStorage.setItem(BUDGET_KEY, String(next));
   };
   const overBudget = budgetUSD != null && sessionMeter.usd >= budgetUSD;
-  const budgetMsg = `Session spend cap ($${budgetUSD?.toFixed(2)}) reached — you're at ~$${sessionMeter.usd.toFixed(2)}. Raise or clear the cap under the meter to continue.`;
+  // Sub-cent caps/costs need more than 2 decimals or the message reads
+  // "cap $0.00 reached at $0.00" for a real $0.0006 session.
+  const fmtUsd = (n: number) => (n > 0 && n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
+  const budgetMsg = `Session spend cap (${fmtUsd(budgetUSD ?? 0)}) reached — you're at ~${fmtUsd(sessionMeter.usd)}. Raise or clear the cap under the meter to continue.`;
 
   // Proactive-agent wiring. `obs` mirrors AgentObservations' active-count so
   // the launcher can badge it; sendRef keeps the latest send() for the
@@ -1662,16 +1665,30 @@ export default function Chatbot() {
                 }`}
               >
                 <ChatErrorBoundary>
-                  {m.content &&
+                  {m.findings && m.findings.length > 0 ? (
+                    // Findings present: cards lead; the prose write-up is
+                    // secondary (it restates the cards), so tuck it behind a
+                    // disclosure instead of stacking a duplicate wall above.
+                    <>
+                      <AuditResultsView findings={m.findings} onApply={applyFindingPatch} />
+                      {m.content && (
+                        <details className="mt-2 text-xs">
+                          <summary className="cursor-pointer select-none text-ink-500 hover:text-ink-700">
+                            Full write-up
+                          </summary>
+                          <div className="mt-1">
+                            <MarkdownLite text={m.content} />
+                          </div>
+                        </details>
+                      )}
+                    </>
+                  ) : (
+                    m.content &&
                     (m.role === "assistant" ? (
                       <MarkdownLite text={m.content} />
                     ) : (
                       <div className="whitespace-pre-wrap">{m.content}</div>
-                    ))}
-                  {m.findings && m.findings.length > 0 && (
-                    <div className={m.content ? "mt-2" : ""}>
-                      <AuditResultsView findings={m.findings} onApply={applyFindingPatch} />
-                    </div>
+                    ))
                   )}
                   {m.toolTrace && m.toolTrace.length > 0 && (
                     <ToolTracePanel trace={m.toolTrace} />
@@ -1904,7 +1921,8 @@ export default function Chatbot() {
               <button
                 type="button"
                 onClick={() => send()}
-                disabled={busy || (!draft.trim() && attachments.length === 0)}
+                disabled={busy || overBudget || (!draft.trim() && attachments.length === 0)}
+                title={overBudget ? budgetMsg : undefined}
                 className="btn-primary"
               >
                 Send

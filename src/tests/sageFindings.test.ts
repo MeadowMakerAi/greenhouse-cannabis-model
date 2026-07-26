@@ -57,6 +57,17 @@ describe("extractFindings", () => {
     expect(findings![0].title).toBe("Keep me");
   });
 
+  it("strips an orphan opening fence the model leaves before the json", () => {
+    const raw =
+      "Report body.\n```json\n```json\n" +
+      '{"findings":[{"title":"A","summary":"b","severity":"info"}]}\n```';
+    const { findings, cleanedReport } = extractFindings(raw);
+    expect(findings).toHaveLength(1);
+    // No stray ``` fence survives in the user-visible prose.
+    expect(cleanedReport).not.toContain("```");
+    expect(cleanedReport).toBe("Report body.");
+  });
+
   it("parses a brace-scanned block when there is no code fence", () => {
     const raw =
       'Report text. {"findings":[{"title":"A","summary":"b","severity":"info"}]}';
