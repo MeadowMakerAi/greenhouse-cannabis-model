@@ -15,7 +15,7 @@ This greenhouse model is a synthesis of peer-reviewed plant science, greenhouse 
 
 **University of Illinois (FACE consortium)** — Ainsworth, E.A. & Long, S.P. (2005). *What have we learned from 15 years of free-air CO₂ enrichment (FACE)? A meta-analytic review of the responses of photosynthesis, canopy properties and plant production to rising CO₂.* New Phytologist 165(2): 351–372.
 - Stomatal-conductance response to elevated CO₂ in C3 crops (~20% reduction at ~550 ppm vs. ~370 ppm ambient, monotonic to ~30–35% at 1200–1500 ppm). Basis for `co2StomatalFactor` in `co2Model.ts`. Net whole-canopy transpiration response is more muted than leaf-level gs because of partially compensating LAI; our coefficient table is the conservative whole-canopy figure used by `dehumidificationModel.ts` and the latent-load term in `heatLoadModel.ts`.
-- The coefficient table represents a DAILY-AGGREGATE, WHOLE-CANOPY reduction (already photoperiod-weighted in the FACE empirical fit). Seasonal/monthly aggregates apply it directly. **Known gap:** the per-tick live-tick humidity model in `useLiveDynamics.ts` does NOT yet apply this factor — sub-daily application would need lights-on gating and the moisture balance moved inside the substepped Euler loop (a Plan Mode change). Filed as a follow-up.
+- The coefficient table represents a DAILY-AGGREGATE, WHOLE-CANOPY reduction (already photoperiod-weighted in the FACE empirical fit). Seasonal/monthly aggregates apply it directly. **Partially closed (2026-07-26):** the moisture balance IS now inside the substepped Euler loop in `useLiveDynamics.ts` (`models/greenhouseClimateStep.ts` — transpiration + pad/fog evaporation + vent exchange − dehumidification carry indoor absolute humidity forward per substep, so RH and evaporative cooling move together). **Remaining gap:** the per-tick transpiration source uses the daily-aggregate rate WITHOUT sub-daily `co2StomatalFactor` gating — applying it per-tick still needs lights-on/CO₂ gating. Seasonal models (`dehumidificationModel`, `heatLoadModel`) apply the aggregate factor directly. Filed as a follow-up.
 - Open-vented and moderate-vented operation gate the factor (CO₂ cannot be physically held at the canopy under high ventilation rates), consistent with the feasibility model in `evaluateCO2`.
 
 ---
@@ -37,6 +37,10 @@ This greenhouse model is a synthesis of peer-reviewed plant science, greenhouse 
 
 **Ludvig Svensson** — Manufacturer technical specs for thermal screens / shade cloth.
 - Reference for screen transmission coefficients and deployment patterns.
+
+**Live per-tick climate coupling (2026-07-26)** — `models/greenhouseClimateStep.ts`, wired into `useLiveDynamics.ts`.
+- Solar heat gain now enters the live minute-by-minute energy balance using the same formula the seasonal `heatLoadModel` uses: `shortwaveWm2 × 0.317 × floorAreaSqFt × transmission × shadeFactor`. The 0.317 factor is a pure unit conversion (1 W/m² = 3.412 BTU/hr ÷ 10.764 ft²/m² = 0.317 BTU/hr/ft²). Instantaneous shortwave is the MEASURED monthly NASA/Open-Meteo total redistributed across the day by the sun-elevation clear-sky shape (`solarModel.distributeDailyIrradiance`), so the daily integral is conserved — no fabricated magnitude. Shade cloth now has a real thermal effect (drops `shadeFactor`).
+- Wet-wall (pad) and fog evaporative cooling apply the wet-bulb approach `evapSupplyTemp = dry − eff×(dry − wet)` (Stull wet-bulb, above), adiabatically converting sensible cooling to latent load at 1054 BTU/lb (matching `heatLoadModel`). Both key off the live natural-vent CFM (`naturalVentilationCFM`) — the only OBSERVED airflow — rather than a fabricated fan rating. Stability verified: a July-noon Montgomery worst case (90 °F, ~360 kW solar + 240 kW lighting, open vents + evap + fog) settles at ~98 °F with no oscillation, well inside the [−20, 140] °F clamp; adaptive substepping (15–60 inner steps) bounds per-step ΔT for the √ΔT vent feedback.
 
 ---
 

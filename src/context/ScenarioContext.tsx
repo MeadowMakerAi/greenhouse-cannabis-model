@@ -219,6 +219,9 @@ export interface ScenarioInputs {
   evapCoolingEnabled: boolean;
   evapEfficiencyPct: number;
   indoorTargetDryBulbF: number;
+  // Fog / misting — distinct in-situ evaporative system (see live climate model)
+  fogCoolingEnabled: boolean;
+  fogEfficiencyPct: number;
 
   // Mechanical cooling
   mechanicalCoolingEnabled: boolean;
@@ -363,6 +366,8 @@ export const defaultScenario: ScenarioInputs = {
   heatPumpCombinedCOP: 3.5,
   evapCoolingEnabled: defaultClimateControl.evap.evapCoolingEnabled,
   evapEfficiencyPct: defaultClimateControl.evap.evapEfficiencyPct,
+  fogCoolingEnabled: defaultClimateControl.evap.fogCoolingEnabled,
+  fogEfficiencyPct: defaultClimateControl.evap.fogEfficiencyPct,
   indoorTargetDryBulbF: defaultClimateControl.evap.indoorTargetDryBulbF,
   mechanicalCoolingEnabled: defaultClimateControl.cooling.mechanicalCoolingEnabled,
   envelopeUValueBTUhrFtF: defaultClimateControl.cooling.envelopeUValueBTUhrFtF,
