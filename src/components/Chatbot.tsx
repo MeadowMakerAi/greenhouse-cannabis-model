@@ -26,6 +26,7 @@ import { DAYS_IN_MONTH } from "../utils/formatting";
 import { expandDottedKeys } from "../utils/expandDottedKeys";
 import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
+import AuditResultsView from "./AuditResultsView";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
 import { assessCompleteness, recommendLighting } from "../services/scenarioAdvisor";
 import { cropTargets } from "../data/cropTargets";
@@ -42,6 +43,8 @@ const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
 const SESSION_PREF_KEY = "greenhouse-model:keyPersistencePref";
 const PROVIDER_KEY = "greenhouse-model:chatbotProvider";
 const MODEL_KEY_PREFIX = "greenhouse-model:chatbotModel:";
+const HISTORY_KEY = "greenhouse-model:chatHistory";
+const BUDGET_KEY = "greenhouse-model:sessionBudgetUSD";
 const LEGACY_KEY = "greenhouse-model:anthropicApiKey";
 const LEGACY_MODEL_KEY = "greenhouse-model:chatbotModel";
 
@@ -478,6 +481,23 @@ export default function Chatbot() {
     }
     return { inputTokens, outputTokens, usd, anyUnpriced };
   }, [history]);
+
+  // Optional session spend ceiling — turns the passive meter into a real
+  // guardrail for BYO-key users. null = off. When the session's estimated cost
+  // reaches the cap, new sends and audits are blocked until the user raises or
+  // clears it (their key, their money — a hard-but-overridable gate).
+  const [budgetUSD, setBudgetUSD] = useState<number | null>(() => {
+    const raw = typeof window === "undefined" ? null : localStorage.getItem(BUDGET_KEY);
+    const n = raw == null ? NaN : Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  });
+  const setBudget = (next: number | null) => {
+    setBudgetUSD(next);
+    if (next == null) localStorage.removeItem(BUDGET_KEY);
+    else localStorage.setItem(BUDGET_KEY, String(next));
+  };
+  const overBudget = budgetUSD != null && sessionMeter.usd >= budgetUSD;
+  const budgetMsg = `Session spend cap ($${budgetUSD?.toFixed(2)}) reached — you're at ~$${sessionMeter.usd.toFixed(2)}. Raise or clear the cap under the meter to continue.`;
 
   // Proactive-agent wiring. `obs` mirrors AgentObservations' active-count so
   // the launcher can badge it; sendRef keeps the latest send() for the
@@ -1000,6 +1020,10 @@ export default function Chatbot() {
     // consecutive same-role messages and corrupt the API's user/assistant
     // alternation (Stage-A P2). Audit and chat must not run at once.
     if (!hasInput || busy || auditing) return;
+    if (overBudget) {
+      setError(budgetMsg);
+      return;
+    }
     // Filter out attachments the selected provider can't handle so we
     // don't send images to text-only Groq/Ollama, or PDFs to OpenAI/
     // OpenRouter/Groq/Ollama. The UI warning was only advisory before —
@@ -1198,6 +1222,10 @@ export default function Chatbot() {
       setError(`Configure a ${cfg.label} API key first to run the audit.`);
       return;
     }
+    if (overBudget) {
+      setError(budgetMsg);
+      return;
+    }
     setError(null);
     setHistory((h) => [
       ...h,
@@ -1208,7 +1236,7 @@ export default function Chatbot() {
     const ctrl = new AbortController();
     auditAbortRef.current = ctrl;
     try {
-      const { report, usage } = await runAuditSwarm({
+      const { report, findings, usage } = await runAuditSwarm({
         providerId,
         apiKey,
         model,
@@ -1217,7 +1245,10 @@ export default function Chatbot() {
           setAuditDone((d) => (d.includes(k) ? d : [...d, k])),
         signal: ctrl.signal,
       });
-      setHistory((h) => [...h, { role: "assistant", content: report, usage }]);
+      setHistory((h) => [
+        ...h,
+        { role: "assistant", content: report, usage, findings: findings ?? undefined },
+      ]);
     } catch (e) {
       const msg = (e as Error).message;
       setError(msg);
@@ -1239,6 +1270,27 @@ export default function Chatbot() {
   };
   const runAuditRef = useRef<() => void>(() => {});
   runAuditRef.current = runAudit;
+
+  // Apply a finding's one-click scenario patch. The patch is already
+  // key-allowlisted + primitive-filtered in sageFindings; setInputs clamps
+  // values. Snapshot first so the existing Undo bar reverses it, and let
+  // WhatChangedBanner surface the diff — same explain-back path as chat writes.
+  const applyFindingPatch = (
+    patch: Partial<typeof inputs>,
+    label: string,
+  ) => {
+    const changes: string[] = [];
+    flattenChanges(patch as Record<string, unknown>, changes);
+    setUndoSnapshot(inputs);
+    setUndoSummary(
+      label && label !== "Apply"
+        ? label
+        : changes.length
+          ? `Set ${changes.slice(0, 3).join(", ")}`
+          : "Applied Sage's suggestion",
+    );
+    setInputs(patch);
+  };
 
   void customFixtures;
 
@@ -1358,6 +1410,27 @@ export default function Chatbot() {
                       : "free"}
                 </div>
               )}
+              <div className="flex items-center gap-1 text-xs text-ink-400">
+                <span title="Blocks new sends and audits once the session estimate reaches this cap. Blank = off.">
+                  cap $
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={budgetUSD ?? ""}
+                  placeholder="off"
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setBudget(Number.isFinite(v) && v > 0 ? v : null);
+                  }}
+                  className={`w-12 rounded border px-1 py-0.5 text-xs ${overBudget ? "border-warn-500 text-warn-600" : "border-ink-300"}`}
+                  title="Session spend cap in USD (blank = off)"
+                />
+                {overBudget && (
+                  <span className="font-semibold text-warn-600">reached</span>
+                )}
+              </div>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-1">
@@ -1539,7 +1612,12 @@ export default function Chatbot() {
                     : "mr-6 bg-ink-300/10 text-ink-900"
                 }`}
               >
-                <div className="whitespace-pre-wrap">{m.content}</div>
+                {m.content && <div className="whitespace-pre-wrap">{m.content}</div>}
+                {m.findings && m.findings.length > 0 && (
+                  <div className={m.content ? "mt-2" : ""}>
+                    <AuditResultsView findings={m.findings} onApply={applyFindingPatch} />
+                  </div>
+                )}
                 {m.toolTrace && m.toolTrace.length > 0 && (
                   <ToolTracePanel trace={m.toolTrace} />
                 )}

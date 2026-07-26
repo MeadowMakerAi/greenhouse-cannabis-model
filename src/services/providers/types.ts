@@ -33,6 +33,10 @@ export interface ChatMessage {
   content: string;
   toolTrace?: { name: string; input: unknown; output: unknown }[];
   usage?: ChatUsage;
+  /** Structured audit findings rendered as cards instead of markdown text.
+   *  Set by the audit swarm; absent on normal chat turns. Type-only import to
+   *  avoid a runtime cycle (erased at compile). */
+  findings?: import("../sageFindings").SageFinding[];
 }
 
 export interface FileAttachment {

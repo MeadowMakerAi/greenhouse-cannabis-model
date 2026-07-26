@@ -1,5 +1,6 @@
 import { chatTurn, type ProviderId } from "./chatbotService";
 import type { ChatUsage } from "./providers/types";
+import { extractFindings, type SageFinding } from "./sageFindings";
 
 /**
  * Thrown when the user stops an audit mid-run. Carries the usage already
@@ -120,11 +121,13 @@ async function runPass(
 }
 
 /**
- * Fire all passes in parallel, then synthesize. Returns a markdown report.
+ * Fire all passes in parallel, then synthesize. Returns a prose report plus
+ * structured findings (null if the model emitted none/invalid — the caller
+ * falls back to the report text so the feature never regresses).
  */
 export async function runAuditSwarm(
   input: SwarmInput,
-): Promise<{ report: string; usage: ChatUsage }> {
+): Promise<{ report: string; findings: SageFinding[] | null; usage: ChatUsage }> {
   const results = await Promise.all(AUDIT_PASSES.map((p) => runPass(p, input)));
 
   // Accumulate token usage across all 6 calls (5 specialists + synthesis) so the
@@ -149,7 +152,7 @@ export async function runAuditSwarm(
     throw new AuditStoppedError(usageOf());
   }
 
-  const findings = results
+  const specialistFindings = results
     .map((r) => `### ${r.pass.label}\n${r.text}`)
     .join("\n\n");
 
@@ -161,7 +164,14 @@ export async function runAuditSwarm(
     `Lead with the priorities. Markdown. Talk like the working expert you are.`,
     ``,
     `SPECIALIST FINDINGS:`,
-    findings,
+    specialistFindings,
+    ``,
+    `---`,
+    `AFTER the prose report, append a machine-readable findings block the UI renders as cards. Emit EXACTLY one fenced json code block, nothing after it:`,
+    "```json",
+    `{"findings":[{"title":"...","summary":"one line","detail":"why + the costed fix","severity":"warn|savings|info|celebrate","confidence":"high|medium|low","metric":"the benchmark/rule it's grounded in","tab":"build|optimized|science|live|dli|supplemental|ledHps|underCanopy|co2|shade|humidity|hvac|calendar"}]}`,
+    "```",
+    `Rules for the json: 3–6 findings, most important first. severity: warn=risk, savings=money on the table, info=note, celebrate=already dialed in. Pick the single most relevant tab per finding. Optionally include "patch" (a flat object of scenario fields to set, e.g. {"thermalScreenEnabled":true}) and "patchLabel" ONLY when there's a concrete one-click change; omit otherwise. No fabricated numbers — ground every "metric" in the specialist findings above.`,
   ].join("\n");
 
   try {
@@ -180,7 +190,10 @@ export async function runAuditSwarm(
       inputTokens += synth.usage.inputTokens;
       outputTokens += synth.usage.outputTokens;
     }
-    return { report: synth.content.trim(), usage: usageOf() };
+    // Split the prose report from the appended JSON findings block. On any
+    // parse miss, extractFindings returns findings:null + the untouched report.
+    const { findings, cleanedReport } = extractFindings(synth.content.trim());
+    return { report: cleanedReport, findings, usage: usageOf() };
   } catch (e) {
     // The user stopped mid-synthesis — honor it. Returning the findings
     // anyway would make Stop produce an audit result.
@@ -190,7 +203,8 @@ export async function runAuditSwarm(
     // Synthesis failed on its own — still return the raw specialist findings
     // so the grower gets value.
     return {
-      report: `**Full audit** (synthesis unavailable: ${(e as Error).message})\n\n${findings}`,
+      report: `**Full audit** (synthesis unavailable: ${(e as Error).message})\n\n${specialistFindings}`,
+      findings: null,
       usage: usageOf(),
     };
   }

@@ -269,6 +269,19 @@ export default function DashboardLayout() {
     if (!isTabVisibleInMode(tab, inputs.mode)) setTab("live");
   }, [inputs.mode, tab]);
 
+  // Deep-link from a Sage audit finding: "View in {tab}" dispatches this event.
+  // Validate against the known tab ids; the mode-visibility effect above then
+  // falls back to "live" if the target is hidden in the current mode.
+  useEffect(() => {
+    const onSelectTab = (e: Event) => {
+      const next = (e as CustomEvent).detail?.tab as TabId | undefined;
+      if (next && TABS.some((t) => t.id === next)) setTab(next);
+    };
+    window.addEventListener("greenhouse-model:select-tab", onSelectTab);
+    return () =>
+      window.removeEventListener("greenhouse-model:select-tab", onSelectTab);
+  }, []);
+
   // Render-safe effective tab: if the active tab isn't valid in the current mode
   // (e.g. you were on HVAC then flipped to outdoor), render "live" THIS frame
   // instead of flashing the forbidden greenhouse panel for one paint before the
