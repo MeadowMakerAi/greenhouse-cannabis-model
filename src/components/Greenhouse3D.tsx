@@ -3081,12 +3081,22 @@ export default function Greenhouse3D({
   const wattRatio = Math.min(1.6, Math.max(0.55, fixtureWatts / 720));
   const baseEmissive = fixtureFormFactor === "bulb" ? 2.6 : 1.8;
   const emissiveIntensity = baseEmissive * wattRatio * lightsDimLevel;
-  // Per-form-factor lamp dimensions. HPS reflectors are wide+shallow;
-  // panels are nearly square; bars are long+thin.
-  const fixtureMeshLength =
-    fixtureFormFactor === "panel" ? 3.2 : fixtureFormFactor === "bulb" ? 3.0 : 4.0;
-  const fixtureMeshWidth =
-    fixtureFormFactor === "panel" ? 2.6 : fixtureFormFactor === "bulb" ? 2.2 : 1.4;
+  // Per-form-factor lamp footprint in FEET (scene unit = 1 ft). HPS reflectors
+  // are wide+shallow; panels nearly square; "bar" covers modern horticultural
+  // LEDs, most of which are near-square 6-bar spiders — a Gavita Pro 1700e is
+  // 44.1"×43.7" ≈ 3.7×3.6 ft (growpackage.com / lightrail3.com brochure), NOT a
+  // long thin bar. Rendering it as 4.0×1.4 both mis-shaped it and made adjacent
+  // fixtures in a tight row touch, so a correct rows×cols grid read as N solid
+  // "lines." Widened to the real near-square footprint.
+  const baseMeshLength =
+    fixtureFormFactor === "panel" ? 3.2 : fixtureFormFactor === "bulb" ? 3.0 : 3.7;
+  const baseMeshWidth =
+    fixtureFormFactor === "panel" ? 2.6 : fixtureFormFactor === "bulb" ? 2.2 : 3.4;
+  // Clamp the mesh strictly inside the grid cell (≤72% of the center-to-center
+  // spacing) so there is ALWAYS a visible gap between neighbors — the layout
+  // reads as a discrete equidistant matrix at any density, never merged lines.
+  const fixtureMeshLength = Math.min(baseMeshLength, colSpacing * 0.72);
+  const fixtureMeshWidth = Math.min(baseMeshWidth, rowSpacing * 0.72);
 
   // Responsive canvas height. The fixed 760px is taller than a phone
   // screen, so on mobile it both overflowed the fold and (with the canvas
