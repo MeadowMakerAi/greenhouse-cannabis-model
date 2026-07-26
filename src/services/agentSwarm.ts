@@ -95,11 +95,12 @@ function passPrompt(pass: AuditPass, contextJson: string): string {
   ].join("\n");
 }
 
-/** Run one focused pass. Returns its markdown bullets (or an error note). */
+/** Run one focused pass. Returns its markdown bullets, or an error note plus a
+ *  machine-readable `error` so the aggregator can collapse a total failure. */
 async function runPass(
   pass: AuditPass,
   input: SwarmInput,
-): Promise<{ pass: AuditPass; text: string; usage?: ChatUsage }> {
+): Promise<{ pass: AuditPass; text: string; usage?: ChatUsage; error?: string }> {
   try {
     const reply = await chatTurn({
       providerId: input.providerId,
@@ -116,7 +117,8 @@ async function runPass(
     return { pass, text: reply.content.trim(), usage: reply.usage };
   } catch (e) {
     input.onPassDone?.(pass.key);
-    return { pass, text: `_(${pass.label} pass failed: ${(e as Error).message})_` };
+    const msg = (e as Error).message;
+    return { pass, text: `_(${pass.label} pass failed: ${msg})_`, error: msg };
   }
 }
 
@@ -150,6 +152,20 @@ export async function runAuditSwarm(
   // User stopped mid-run — don't spend another call synthesizing aborted passes.
   if (input.signal?.aborted) {
     throw new AuditStoppedError(usageOf());
+  }
+
+  // Every specialist failed (bad key, offline, rate limit) — surface ONE clean
+  // line instead of 5 stack-y pass notes + a doomed synthesis call. Dedupe the
+  // cause so an identical error (e.g. key format) shows once, not five times.
+  if (results.every((r) => r.error)) {
+    const causes = [...new Set(results.map((r) => r.error!))];
+    const cause =
+      causes.length === 1 ? causes[0] : `${causes[0]} (+${causes.length - 1} other error${causes.length > 2 ? "s" : ""})`;
+    return {
+      report: `Couldn't run the audit — all ${results.length} analysis passes failed: ${cause}`,
+      findings: null,
+      usage: usageOf(),
+    };
   }
 
   const specialistFindings = results

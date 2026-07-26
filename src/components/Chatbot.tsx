@@ -27,6 +27,7 @@ import { expandDottedKeys } from "../utils/expandDottedKeys";
 import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
 import AuditResultsView from "./AuditResultsView";
+import MarkdownLite from "./MarkdownLite";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
 import { assessCompleteness, recommendLighting } from "../services/scenarioAdvisor";
 import { cropTargets } from "../data/cropTargets";
@@ -1612,7 +1613,12 @@ export default function Chatbot() {
                     : "mr-6 bg-ink-300/10 text-ink-900"
                 }`}
               >
-                {m.content && <div className="whitespace-pre-wrap">{m.content}</div>}
+                {m.content &&
+                  (m.role === "assistant" ? (
+                    <MarkdownLite text={m.content} />
+                  ) : (
+                    <div className="whitespace-pre-wrap">{m.content}</div>
+                  ))}
                 {m.findings && m.findings.length > 0 && (
                   <div className={m.content ? "mt-2" : ""}>
                     <AuditResultsView findings={m.findings} onApply={applyFindingPatch} />

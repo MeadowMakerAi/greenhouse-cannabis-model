@@ -36,8 +36,11 @@ export const PROVIDER_CONFIGS: Record<ProviderId, ProviderConfig> = {
     allowedHosts: ["generativelanguage.googleapis.com"],
     requiresKey: true,
     allowCustomBaseUrl: false,
-    keyHint: "AIza...",
-    keyFormat: /^AIza[0-9A-Za-z_-]{30,}$/,
+    keyHint: "AIza... or AQ....",
+    // Google issues two live key formats: the classic `AIzaSy…` and the newer
+    // `AQ.Ab…` keys (AI Studio, 2025+). The old regex only matched AIza and
+    // locked every new-format key out of Sage entirely. Accept both.
+    keyFormat: /^(AIza[0-9A-Za-z_-]{30,}|AQ\.[0-9A-Za-z._-]{30,})$/,
     keyUrl: "https://aistudio.google.com/app/apikey",
     // Verified live against the v1beta models endpoint 2026-07-12. gemini-1.5-*
     // is retired (no longer served) and was removed. gemini-3.x is the current
