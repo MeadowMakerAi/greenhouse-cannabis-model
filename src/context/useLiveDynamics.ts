@@ -144,7 +144,7 @@ export function useLiveDynamics() {
       // commercial installs; we model as binary 0 for the simulation since
       // residual leak (<1%) is below the plant's perception threshold.
       const canopyNaturalPPFD = blackoutActive ? 0 : canopyNaturalPPFDRaw;
-      const lights = lightsStateAt({
+      const lightsRaw = lightsStateAt({
         hourOfDay,
         photoperiodHours: inputs.flowerPhotoperiodHours,
         windowStartHour: inputs.flowerWindowStartHr,
@@ -153,13 +153,34 @@ export function useLiveDynamics() {
         targetPPFD: derived.target.targetTopCanopyPPFD,
         dimWhenBright: true,
       });
-      const supplementalPPFD = lights.on
-        ? Math.max(0, derived.target.targetTopCanopyPPFD - canopyNaturalPPFD) * lights.dimLevel
-        : 0;
+      // Real-time (per-trace-step) dimming control law — light-meter driven.
+      // The "light meter" is canopyNaturalPPFD, recomputed every step, so the
+      // fixtures fade as the sun climbs toward noon and brighten as it falls.
+      //
+      // grow-core reports dimLevel = deficit/target, which is wrong twice over:
+      // (1) it's a fraction of the SETPOINT, not of the fixtures' installed
+      // output, so it isn't "what % the fixtures actually run at"; and (2) the
+      // old code multiplied that by the deficit again → supplemental =
+      // deficit²/target, sagging the canopy ~25% below target in half-sun.
+      //
+      // Correct law: dim = fraction of INSTALLED fixture power needed to top the
+      // canopy up to target, capped at 100% (you cannot exceed installed
+      // capacity). supplemental = dim × installed full output, so the canopy
+      // holds flat at target whenever the fixtures still have headroom, and
+      // rides down to natural-only once the sun alone exceeds target (grow-core
+      // switches lights off there via dimWhenBright). We model fully-dimmable
+      // fixtures — a real controller has a per-fixture dimming floor (Gavita's
+      // is controller-dependent and NOT OBSERVED from a spec sheet, so no floor
+      // is imposed rather than fabricate one; add fixture.dimmingFloorPct here
+      // when a sourced value exists).
+      const fullPPFD = derived.installedFullCanopyPPFD;
+      const deficit = Math.max(0, derived.target.targetTopCanopyPPFD - canopyNaturalPPFD);
+      const dimLevel =
+        lightsRaw.on && fullPPFD > 0 ? Math.min(1, deficit / fullPPFD) : 0;
+      const lights = { ...lightsRaw, dimLevel };
+      const supplementalPPFD = dimLevel * fullPPFD;
       const canopyTotalPPFD = canopyNaturalPPFD + supplementalPPFD;
-      const lightingBTUhr = lights.on
-        ? kWToBTUhr(derived.peakInstalledKW * lights.dimLevel)
-        : 0;
+      const lightingBTUhr = lights.on ? kWToBTUhr(derived.peakInstalledKW * dimLevel) : 0;
       /* Stack-effect ridge-vent area is large (paired N+S leaves × full
        * ridge length), and CFM ∝ √ΔT — small at small ΔT, large at large
        * ΔT. With a single 15-min Euler step + ~200 kW lighting heat input

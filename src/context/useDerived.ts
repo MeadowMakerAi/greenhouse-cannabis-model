@@ -404,6 +404,24 @@ export function computeDerived(
       peakCoveragePerFixtureSqFt > 0 ? Math.sqrt(peakCoveragePerFixtureSqFt) : 0;
     const peakSquareGridSpacingM = peakSquareGridSpacingFt / 3.2808;
 
+    // Full-power canopy PPFD the INSTALLED fixtures actually deliver. Each month
+    // is sized to its own supplemental deficit, then rounded UP to whole
+    // fixtures, so real full output slightly exceeds the requirement; the
+    // install is the peak month's count. This is the physical "100%" the
+    // real-time dimming law measures against — the fixtures never need to
+    // exceed it, and they fade toward it as sunlight drops. No new coefficient:
+    // scale each month's required PPFD by its whole-fixture rounding slack
+    // (installed watts ÷ exact watts) and take the peak.
+    const installedFullCanopyPPFD = Math.max(
+      0,
+      ...months.map((m) =>
+        m.electricalWatts > 0
+          ? m.supplementalPPFDRequired *
+            ((m.fixtureCount * fixture.wattsPerFixture) / m.electricalWatts)
+          : 0,
+      ),
+    );
+
     const activeFixtureSupports120V =
       fixture.minVoltage <= 120 && fixture.maxVoltage >= 120;
     const activeFixtureSupports240V =
@@ -610,6 +628,7 @@ export function computeDerived(
       peakFixturesPer100SqFt,
       peakSquareGridSpacingFt,
       peakSquareGridSpacingM,
+      installedFullCanopyPPFD,
       activeFixtureSupports120V,
       activeFixtureSupports240V,
       peakAmpsPerFixture120V,
