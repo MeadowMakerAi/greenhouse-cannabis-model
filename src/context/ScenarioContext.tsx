@@ -525,6 +525,12 @@ export function clampScenarioInputs(inputs: ScenarioInputs): ScenarioInputs {
   if (!VENT_MODES.includes(merged.ventilationMode)) {
     merged.ventilationMode = defaultScenario.ventilationMode;
   }
+  // Same defensive posture as the enums above: co2ControlMode feeds evaluateCO2
+  // (a chatbot/finding patch can set it), so snap an unknown value to default.
+  const CO2_MODES: ScenarioInputs["co2ControlMode"][] = ["ambient", "enriched", "sealed_or_semi_sealed"];
+  if (!CO2_MODES.includes(merged.co2ControlMode)) {
+    merged.co2ControlMode = defaultScenario.co2ControlMode;
+  }
   // Bench layout — nested object. An old share link lacks it; a bad one could
   // carry NaN dims that make solveBenchLayout divide oddly. Backfill from the
   // default and snap enum + numeric bounds (same defensive posture as the

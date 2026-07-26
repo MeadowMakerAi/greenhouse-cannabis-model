@@ -111,11 +111,15 @@ describe("registry-keyed id validation (live GPT-5 white-screen regression)", ()
       yieldRealismCase: "optimistic!!" as ScenarioInputs["yieldRealismCase"],
       cultivationPhase: "flowering" as ScenarioInputs["cultivationPhase"],
       ventilationMode: "open" as ScenarioInputs["ventilationMode"],
+      // "sealed" is a valid ventilationMode but NOT a co2ControlMode — a
+      // plausible LLM patch typo for "sealed_or_semi_sealed".
+      co2ControlMode: "sealed" as ScenarioInputs["co2ControlMode"],
     });
     expect(r.cropTargetId).toBe(defaultScenario.cropTargetId);
     expect(r.yieldRealismCase).toBe(defaultScenario.yieldRealismCase);
     expect(r.cultivationPhase).toBe(defaultScenario.cultivationPhase);
     expect(r.ventilationMode).toBe(defaultScenario.ventilationMode);
+    expect(r.co2ControlMode).toBe(defaultScenario.co2ControlMode);
   });
 
   it("passes valid ids through untouched", () => {
@@ -123,8 +127,10 @@ describe("registry-keyed id validation (live GPT-5 white-screen regression)", ()
       ...defaultScenario,
       cultivationPhase: "vegetative",
       ventilationMode: "sealed",
+      co2ControlMode: "sealed_or_semi_sealed",
     });
     expect(r.cultivationPhase).toBe("vegetative");
     expect(r.ventilationMode).toBe("sealed");
+    expect(r.co2ControlMode).toBe("sealed_or_semi_sealed");
   });
 });

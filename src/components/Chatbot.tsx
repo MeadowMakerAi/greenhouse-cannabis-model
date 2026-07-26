@@ -532,11 +532,18 @@ export default function Chatbot() {
     if (next == null) localStorage.removeItem(BUDGET_KEY);
     else localStorage.setItem(BUDGET_KEY, String(next));
   };
-  const overBudget = budgetUSD != null && sessionMeter.usd >= budgetUSD;
+  // The cap is a *session* ceiling, but sessionMeter.usd includes cost from a
+  // restored (persisted) thread — otherwise reopening the tab would count last
+  // session's spend and could block the first send. Snapshot the restored cost
+  // once at mount and measure the cap against spend incurred THIS load.
+  const baselineUsdRef = useRef<number | null>(null);
+  if (baselineUsdRef.current === null) baselineUsdRef.current = sessionMeter.usd;
+  const sessionSpendUSD = Math.max(0, sessionMeter.usd - baselineUsdRef.current);
+  const overBudget = budgetUSD != null && sessionSpendUSD >= budgetUSD;
   // Sub-cent caps/costs need more than 2 decimals or the message reads
   // "cap $0.00 reached at $0.00" for a real $0.0006 session.
   const fmtUsd = (n: number) => (n > 0 && n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
-  const budgetMsg = `Session spend cap (${fmtUsd(budgetUSD ?? 0)}) reached — you're at ~${fmtUsd(sessionMeter.usd)}. Raise or clear the cap under the meter to continue.`;
+  const budgetMsg = `Session spend cap (${fmtUsd(budgetUSD ?? 0)}) reached — you're at ~${fmtUsd(sessionSpendUSD)}. Raise or clear the cap under the meter to continue.`;
 
   // Proactive-agent wiring. `obs` mirrors AgentObservations' active-count so
   // the launcher can badge it; sendRef keeps the latest send() for the
