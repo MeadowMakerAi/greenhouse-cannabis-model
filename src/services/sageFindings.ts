@@ -43,27 +43,49 @@ export interface SageFinding {
 }
 
 /**
- * Scenario keys a finding-authored patch is allowed to set. A finding's patch
- * comes from the LLM, so this is a system-level blast-radius cap (not a prompt
- * instruction, which could be injected). Nested objects (envelope, benchLayout)
- * are intentionally excluded — those need deep-merge and are only written via
- * Sage's full set_scenario tool, not a convenience Apply chip.
+ * Scenario keys a finding-authored patch is allowed to set, grouped by their
+ * expected primitive TYPE. A finding's patch comes from the LLM, so this is a
+ * system-level blast-radius cap (not a prompt instruction, which could be
+ * injected). Nested objects (envelope, benchLayout) are intentionally excluded
+ * — those need deep-merge and are only written via Sage's full set_scenario
+ * tool, not a convenience Apply chip.
+ *
+ * The type grouping is load-bearing, not cosmetic: a model can emit a primitive
+ * of the WRONG type for an allowlisted key — `thermalScreenEnabled:"false"`
+ * (a truthy string that would ENABLE the screen) or `cyclesPerYear:"many"`
+ * (NaN that propagates through every downstream calc). sanitizeFindingPatch
+ * rejects any value whose runtime type doesn't match its key's group, so only
+ * a real boolean / finite number / non-empty string can pass. Enum membership
+ * (cropTargetId, co2ControlMode, ventilationMode) is then enforced downstream
+ * by clampScenarioInputs. (Codex challenge P2, 2026-07-26.)
  */
+const PATCH_BOOL_KEYS: readonly (keyof ScenarioInputs)[] = [
+  "co2Enabled", "shadeEnabled", "radiantHeatingEnabled",
+  "thermalScreenEnabled", "evapCoolingEnabled",
+];
+const PATCH_STR_KEYS: readonly (keyof ScenarioInputs)[] = [
+  "cropTargetId", "fixtureId", "co2ControlMode", "ventilationMode",
+];
+const PATCH_NUM_KEYS: readonly (keyof ScenarioInputs)[] = [
+  "customTargetDLIOverride", "flowerPhotoperiodHours", "co2SetpointPpm",
+  "radiantHeatingCapacityBTUhr", "targetNightTempF", "targetDayTempF",
+  "evapEfficiencyPct", "plantsPerSqFt", "cyclesPerYear",
+  "canopyAreaSqFt", "greenhouseLengthFt", "greenhouseWidthFt",
+  "eaveHeightFt", "peakHeightFt",
+];
+
 export const FINDING_PATCH_ALLOWLIST: ReadonlySet<keyof ScenarioInputs> =
   new Set<keyof ScenarioInputs>([
-    "customTargetDLIOverride", "flowerPhotoperiodHours", "cropTargetId",
-    "fixtureId",
-    "co2Enabled", "co2SetpointPpm", "co2ControlMode", "ventilationMode",
-    "shadeEnabled",
-    "radiantHeatingEnabled", "radiantHeatingCapacityBTUhr",
-    "thermalScreenEnabled", "targetNightTempF", "targetDayTempF",
-    "evapCoolingEnabled", "evapEfficiencyPct",
-    "plantsPerSqFt", "cyclesPerYear",
-    "canopyAreaSqFt", "greenhouseLengthFt", "greenhouseWidthFt",
-    "eaveHeightFt", "peakHeightFt",
+    ...PATCH_BOOL_KEYS, ...PATCH_STR_KEYS, ...PATCH_NUM_KEYS,
   ]);
 
-/** Keep only allowlisted keys whose value is a primitive. Returns undefined if
+const PATCH_BOOL = new Set<string>(PATCH_BOOL_KEYS as string[]);
+const PATCH_STR = new Set<string>(PATCH_STR_KEYS as string[]);
+const PATCH_NUM = new Set<string>(PATCH_NUM_KEYS as string[]);
+
+/** Keep only allowlisted keys whose value matches that key's expected type
+ *  (bool / finite number / non-empty string). Rejects wrong-typed values like
+ *  a string "false" for a boolean or NaN for a number. Returns undefined if
  *  nothing survives, so callers can treat "no patch" uniformly. */
 export function sanitizeFindingPatch(
   raw: unknown,
@@ -71,10 +93,14 @@ export function sanitizeFindingPatch(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (!FINDING_PATCH_ALLOWLIST.has(k as keyof ScenarioInputs)) continue;
     if (v === null) continue;
-    const t = typeof v;
-    if (t === "number" || t === "string" || t === "boolean") out[k] = v;
+    if (PATCH_BOOL.has(k)) {
+      if (typeof v === "boolean") out[k] = v;
+    } else if (PATCH_NUM.has(k)) {
+      if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+    } else if (PATCH_STR.has(k)) {
+      if (typeof v === "string" && v.trim()) out[k] = v.trim();
+    }
   }
   return Object.keys(out).length ? (out as Partial<ScenarioInputs>) : undefined;
 }

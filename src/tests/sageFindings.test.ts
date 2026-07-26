@@ -89,6 +89,26 @@ describe("sanitizeFindingPatch", () => {
     expect(patch).toEqual({ thermalScreenEnabled: true, co2SetpointPpm: 1200 });
   });
 
+  it("rejects a value whose type doesn't match the key's group (codex P2)", () => {
+    // "false" is a TRUTHY string that would enable the screen; "many" is NaN.
+    // Both must be dropped, not cast through to setInputs.
+    const patch = sanitizeFindingPatch({
+      thermalScreenEnabled: "false", // wrong type: string, not boolean
+      cyclesPerYear: "many", // wrong type: not a finite number
+      co2Enabled: 1, // wrong type: number, not boolean
+      co2SetpointPpm: "1200", // wrong type: numeric string, not number
+      shadeEnabled: true, // correct: real boolean survives
+      canopyAreaSqFt: 4000, // correct: finite number survives
+    });
+    expect(patch).toEqual({ shadeEnabled: true, canopyAreaSqFt: 4000 });
+  });
+
+  it("drops NaN / Infinity for numeric keys", () => {
+    expect(
+      sanitizeFindingPatch({ co2SetpointPpm: NaN, greenhouseLengthFt: Infinity }),
+    ).toBeUndefined();
+  });
+
   it("returns undefined when nothing survives", () => {
     expect(sanitizeFindingPatch({ siteAddress: "x", latitude: 40 })).toBeUndefined();
     expect(sanitizeFindingPatch(null)).toBeUndefined();

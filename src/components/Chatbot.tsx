@@ -30,6 +30,7 @@ import AuditResultsView from "./AuditResultsView";
 import MarkdownLite from "./MarkdownLite";
 import ChatErrorBoundary from "./ChatErrorBoundary";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
+import { HISTORY_KEY, loadHistory, persistHistory } from "../services/chatHistory";
 import { assessCompleteness, recommendLighting } from "../services/scenarioAdvisor";
 import { cropTargets } from "../data/cropTargets";
 import {
@@ -45,7 +46,6 @@ const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
 const SESSION_PREF_KEY = "greenhouse-model:keyPersistencePref";
 const PROVIDER_KEY = "greenhouse-model:chatbotProvider";
 const MODEL_KEY_PREFIX = "greenhouse-model:chatbotModel:";
-const HISTORY_KEY = "greenhouse-model:chatHistory";
 const BUDGET_KEY = "greenhouse-model:sessionBudgetUSD";
 const LEGACY_KEY = "greenhouse-model:anthropicApiKey";
 const LEGACY_MODEL_KEY = "greenhouse-model:chatbotModel";
@@ -106,40 +106,6 @@ function storedModelFor(providerId: ProviderId): string {
     }
   }
   return PROVIDER_CONFIGS[providerId].defaultModel;
-}
-
-// Persist the chat thread so a reload doesn't wipe the conversation (the
-// "Forget everything" control clears it). Bounded to the most recent turns so
-// a long audit-heavy session can't blow the localStorage quota.
-const HISTORY_PERSIST_MAX = 40;
-
-function loadHistory(): ChatMessage[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    // Keep only well-formed message shapes; tolerate older/newer field sets.
-    return parsed.filter(
-      (m): m is ChatMessage =>
-        m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function persistHistory(history: ChatMessage[]) {
-  try {
-    if (history.length === 0) {
-      localStorage.removeItem(HISTORY_KEY);
-      return;
-    }
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-HISTORY_PERSIST_MAX)));
-  } catch {
-    /* quota / blocked storage — a non-persisted session still works */
-  }
 }
 
 function isPublicHostname(): boolean {
@@ -539,6 +505,12 @@ export default function Chatbot() {
   const baselineUsdRef = useRef<number | null>(null);
   if (baselineUsdRef.current === null) baselineUsdRef.current = sessionMeter.usd;
   const sessionSpendUSD = Math.max(0, sessionMeter.usd - baselineUsdRef.current);
+  // Soft, between-request gate: checked BEFORE a send/audit, not mid-flight, so
+  // a request that starts just under the cap still runs to completion and can
+  // land just past it (a 6-call audit is the worst case). A true hard cap needs
+  // per-request token prediction we don't have for a screening tool — the
+  // overshoot is bounded to one request and disclosed in the cap tooltip.
+  // (Codex challenge P1, 2026-07-26.)
   const overBudget = budgetUSD != null && sessionSpendUSD >= budgetUSD;
   // Sub-cent caps/costs need more than 2 decimals or the message reads
   // "cap $0.00 reached at $0.00" for a real $0.0006 session.
@@ -1462,7 +1434,7 @@ export default function Chatbot() {
                 </div>
               )}
               <div className="flex items-center gap-1 text-xs text-ink-400">
-                <span title="Blocks new sends and audits once the session estimate reaches this cap. Blank = off.">
+                <span title="Soft cap: blocks the NEXT send/audit once the session estimate reaches it. A request already running (e.g. a 6-call audit) still finishes, so the estimate can land just past the cap. Blank = off.">
                   cap $
                 </span>
                 <input
