@@ -12,6 +12,11 @@ export const defaultClimateControl = {
     evapCoolingEnabled: true,
     evapEfficiencyPct: 75,
     indoorTargetDryBulbF: 78,
+    // Fog / high-pressure misting — a distinct in-situ evaporative system
+    // (the wet wall above pre-cools ventilation intake; fog cools interior air
+    // directly). Off by default; the operator enables it to see its effect.
+    fogCoolingEnabled: false,
+    fogEfficiencyPct: 75,
   },
   radiant: {
     radiantHeatingEnabled: true,

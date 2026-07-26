@@ -14,6 +14,7 @@ import { useLiveDynamics } from "../context/useLiveDynamics";
 import { useSimulation } from "../context/SimulationContext";
 import { useScenario } from "../context/ScenarioContext";
 import { fmt1, fmtInt } from "../utils/formatting";
+import { btuhrToKW } from "../utils/unitConversions";
 
 export default function DailyDynamicsChart() {
   const { inputs } = useScenario();
@@ -25,9 +26,12 @@ export default function DailyDynamicsChart() {
     "Indoor T (°F)": +p.indoorTempF.toFixed(1),
     "Outdoor RH (%)": +p.outdoorRH.toFixed(0),
     "Canopy PPFD ÷10": +(p.canopyPPFD / 10).toFixed(0),
+    // Solar heat gain in kW, scaled ÷10 to share the axis with T / PPFD.
+    "Solar gain kW÷10": +(btuhrToKW(p.solarGainBTUhr) / 10).toFixed(1),
     "Lights on": p.supplementalOnFraction * 100,
     "Vent open": p.ventOpen * 100,
   }));
+  const coolingKW = btuhrToKW(snapshot.padCoolingBTUhr + snapshot.fogCoolingBTUhr);
 
   return (
     <div className="space-y-3">
@@ -45,6 +49,8 @@ export default function DailyDynamicsChart() {
           <Stat label="Outdoor RH" value={`${fmtInt(snapshot.outdoorRH)}%`} />
           <Stat label="Indoor T" value={`${fmt1(snapshot.indoorTempF)}°F`} hint={snapshot.ventOpen ? "vents open" : "vents closed"} />
           <Stat label="Canopy PPFD" value={`${fmtInt(snapshot.canopyTotalPPFD)} µmol/m²/s`} hint={`${fmtInt(snapshot.canopyNaturalPPFD)} natural`} />
+          <Stat label="Solar gain" value={`${fmtInt(btuhrToKW(snapshot.solarGainBTUhr))} kW`} hint="greenhouse effect" />
+          <Stat label="Evap cooling" value={`${fmtInt(coolingKW)} kW`} hint="wet wall + fog" />
         </div>
       </div>
 
@@ -66,6 +72,7 @@ export default function DailyDynamicsChart() {
               <Line dataKey="Canopy PPFD ÷10" stroke="#1f6c50" strokeWidth={2} dot={false} />
               <Line dataKey="Outdoor T (°F)" stroke="#c0573a" strokeWidth={2} dot={false} />
               <Line dataKey="Indoor T (°F)" stroke="#0d1117" strokeWidth={2} dot={false} />
+              <Line dataKey="Solar gain kW÷10" stroke="#e8843a" strokeWidth={1.5} dot={false} strokeDasharray="5 2" />
               <Line dataKey="Outdoor RH (%)" stroke="#aa3bff" strokeWidth={1.5} dot={false} strokeDasharray="3 3" />
               <ReferenceLine x={sim.hourOfDay} stroke="#0d1117" strokeWidth={1.5} label={{ value: "now", fontSize: 10, fill: "#0d1117" }} />
               <ReferenceLine y={inputs.indoorTargetDryBulbF} stroke="#5b6573" strokeDasharray="2 2" label={{ value: `${inputs.indoorTargetDryBulbF}°F target`, fontSize: 10, position: "left", fill: "#5b6573" }} />
@@ -74,7 +81,7 @@ export default function DailyDynamicsChart() {
           </ResponsiveContainer>
         </div>
         <p className="card-body pt-0 text-[11px] text-ink-500">
-          Yellow band = lights on · gray band = vents open · green = canopy PPFD ÷10 · red = outdoor air T · black = indoor air T · purple dashed = outdoor RH. The "now" line follows the simulation clock — press play and watch the day unfold.
+          Yellow band = lights on · gray band = vents open · green = canopy PPFD ÷10 · red = outdoor air T · black = indoor air T · orange dashed = solar heat gain (kW ÷10) · purple dashed = outdoor RH. The "now" line follows the simulation clock — press play and watch the day unfold.
         </p>
       </div>
     </div>

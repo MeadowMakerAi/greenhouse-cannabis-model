@@ -7,7 +7,6 @@ import {
   canopyPPFDFromOutdoor,
   diurnalState,
   effectiveVentAreaSqFt,
-  indoorTempStep,
   lightsStateAt,
   naturalVentilationCFM,
   outdoorPPFDFromElevation,
@@ -17,8 +16,12 @@ import {
   type SunPosition,
   type LightsState,
 } from "../models/simulationModel";
-import { netCanopyTransmissionPct } from "../models/solarModel";
+import { netCanopyTransmissionPct, distributeDailyIrradiance } from "../models/solarModel";
 import { supplementalDim } from "../models/dimmingControl";
+import {
+  climateSubstep,
+  AIR_THERMAL_CAPACITY_BTU_PER_FT3_F,
+} from "../models/greenhouseClimateStep";
 import { isShadeActive } from "../models/shadeModel";
 import { vpdFromTempRH } from "../models/vpdModel";
 import {
@@ -70,20 +73,38 @@ export interface LiveSnapshot {
   indoorVPD: number;
   /** Outdoor VPD (kPa) — air-only, no leaf */
   outdoorVPD: number;
+  /** Interior solar heat gain right now (BTU/hr) — the greenhouse effect. */
+  solarGainBTUhr: number;
+  /** Wet-wall (pad) evaporative cooling right now (BTU/hr). */
+  padCoolingBTUhr: number;
+  /** Fog/misting evaporative cooling right now (BTU/hr). */
+  fogCoolingBTUhr: number;
   /** Plant growth state (visual geometry + phase) */
   plant: PlantGrowthState;
 }
+
+/**
+ * Trace spacing AND the physics outer-step, kept identical so elapsed clock
+ * time equals elapsed integrated time. They previously diverged (trace advanced
+ * 0.5 h while the outer step was 0.25 h), which under-integrated every daily
+ * trace by ~2× — most visibly on the carried moisture state (Codex P1).
+ * The adaptive substep loop subdivides this for numerical stability.
+ */
+const TRACE_STEP_HOURS = 0.5;
 
 export interface DailyTracePoint {
   hour: number;
   outdoorTempF: number;
   indoorTempF: number;
   outdoorRH: number;
+  indoorRH: number;
   canopyPPFD: number;
   supplementalOnFraction: number; // 0 or 1 for line steps
   ventOpen: number; // 0..1 (proportional opening)
   sunElev: number;
   outdoorPPFD: number;
+  /** Interior solar heat gain (BTU/hr) — the "greenhouse effect", peaks at noon. */
+  solarGainBTUhr: number;
 }
 
 export function useLiveDynamics() {
@@ -103,7 +124,32 @@ export function useLiveDynamics() {
 
     const transmission = netCanopyTransmissionPct(inputs.envelope);
 
-    const computeAt = (hourOfDay: number, prevIndoor: number, prevVent: number) => {
+    // Instantaneous solar irradiance (W/m²) across today, distributing the
+    // MEASURED monthly shortwave total by the sun-elevation shape so magnitude
+    // stays real and the curve peaks at solar noon. Built once per day.
+    const solarWm2At = distributeDailyIrradiance(
+      lat,
+      sim.dayOfYear,
+      climateRow.shortwaveKwhPerM2PerDay,
+    );
+    // W/m² → BTU/hr/ft² — matches grow-core heatLoadModel's constant
+    // (CITATIONS.md → greenhouse climate engineering). Solar heat into the house
+    // = irradiance × this × floor area × glazing transmission × shade factor.
+    const W_PER_M2_TO_BTU_PER_FT2_HR = 0.317;
+    // Canopy transpiration as a moisture source (lb water/hr): the seasonal
+    // daily rate spread across the hours. 8.3454 lb/gal, 24 h/day.
+    const transpirationLbPerHr =
+      ((inputs.canopyAreaSqFt / 1000) *
+        inputs.plantTranspirationGalPerDayPer1000SqFt *
+        8.3454) /
+      24;
+
+    const computeAt = (
+      hourOfDay: number,
+      prevIndoor: number,
+      prevVent: number,
+      prevAH: number,
+    ) => {
       const sun = sunPositionAt(lat, sim.dayOfYear, hourOfDay);
       const diurnal = diurnalState(
         hourOfDay,
@@ -184,6 +230,24 @@ export function useLiveDynamics() {
       const lightingBTUhr = lights.on
         ? kWToBTUhr(derived.installedNameplateKW * dimLevel)
         : 0;
+      // Interior solar heat gain — the "greenhouse effect", now live per-tick.
+      // Same formula grow-core heatLoadEstimate uses seasonally (CITATIONS.md →
+      // greenhouse climate engineering): instantaneous shortwave × 0.317 ×
+      // floor area × glazing transmission × shade factor. Shade cloth now has a
+      // real thermal effect (it drops the shade factor when deployed).
+      const shadeFactorNow = shadeActive ? inputs.shadeTransmissionPct / 100 : 1;
+      const solarGainBTUhr =
+        solarWm2At(hourOfDay) *
+        W_PER_M2_TO_BTU_PER_FT2_HR *
+        inputs.greenhouseFloorAreaSqFt *
+        transmission *
+        shadeFactorNow;
+      // Outdoor absolute humidity drives the moisture balance (vent exchange +
+      // pad intake). Constant across this step's inner substeps.
+      const outdoorAH = absoluteHumidityKgPerKg(
+        fahrenheitToCelsius(diurnal.outdoorTempF),
+        diurnal.outdoorRH,
+      );
       /* Stack-effect ridge-vent area is large (paired N+S leaves × full
        * ridge length), and CFM ∝ √ΔT — small at small ΔT, large at large
        * ΔT. With a single 15-min Euler step + ~200 kW lighting heat input
@@ -194,9 +258,7 @@ export function useLiveDynamics() {
        * Fix: substep the 15-min outer step into 1-min inner steps so the
        * vent feedback acts gradually. Vent state, vent CFM, heating, and
        * cooling are recomputed every substep against the latest temp. */
-      const dt = 0.25; // 15-min outer step
-      const subSteps = 15;
-      const subDt = dt / subSteps;
+      const dt = TRACE_STEP_HOURS; // outer step = trace spacing (see constant)
       const stackHeightFt = Math.max(
         0.5,
         inputs.peakHeightFt - inputs.eaveHeightFt / 2,
@@ -228,8 +290,39 @@ export function useLiveDynamics() {
         ...derived.months.map((m) => m.totalCoolingBTUhr),
       );
 
+      // Adaptive substepping. The 15×1-min split was tuned for ~234 kW lighting
+      // heat; summer solar gain (~340 kW for a large house) plus lighting can
+      // push a bigger ΔT per inner step, and the √ΔT natural-vent feedback
+      // overshoots if one inner step moves T too far. Size the inner-step count
+      // so the worst-case forcing (all heat + cooling magnitudes summed) can't
+      // move T more than ~2 °F per inner step; floor at 15, cap at 60 for cost.
+      const thermalCapacityBTUperF = Math.max(
+        1,
+        inputs.greenhouseVolumeCuFt * AIR_THERMAL_CAPACITY_BTU_PER_FT3_F,
+      );
+      const heatingCapBTUhr = inputs.radiantHeatingEnabled
+        ? inputs.radiantHeatingCapacityBTUhr * 0.7
+        : 0;
+      const forcingBTUhr =
+        lightingBTUhr + solarGainBTUhr + heatingCapBTUhr + peakCoolingCapBTUhr;
+      const MAX_DT_PER_SUBSTEP_F = 2;
+      const subSteps = Math.max(
+        15,
+        Math.min(
+          60,
+          Math.ceil(
+            (forcingBTUhr * dt) /
+              (MAX_DT_PER_SUBSTEP_F * thermalCapacityBTUperF),
+          ),
+        ),
+      );
+      const subDt = dt / subSteps;
+
       let T = prevIndoor;
       let vent = prevVent; // proportional opening 0..1
+      let AH = prevAH; // indoor absolute humidity (kg/kg) — loop state now
+      let padCoolingBTUhr = 0;
+      let fogCoolingBTUhr = 0;
       for (let s = 0; s < subSteps; s++) {
         // Proportional vent control: open % scales with how far indoor
         // temp is above the setpoint, capped at full open. CFM through
@@ -258,33 +351,62 @@ export function useLiveDynamics() {
         // Mechanical cooling backs up natural ventilation when vents
         // alone can't keep up. Phased in as vents approach full open.
         const ventInsufficient = vent < 0.95;
-        const coolingSub =
+        const mechCoolingSub =
           T > inputs.indoorTargetDryBulbF + 2 && ventInsufficient
             ? peakCoolingCapBTUhr * 0.5 * (1 - vent)
             : 0;
-        T = indoorTempStep({
+        // Coupled sensible + latent update. Solar folds into the heat input;
+        // wet-wall pad pre-cools the ventilation intake; fog cools interior
+        // air toward its wet-bulb; the moisture balance carries AH forward so
+        // evaporative effectiveness fades as RH climbs ("full latent coupling").
+        // Pad + fog airflow both key off the live natural-vent CFM — the only
+        // OBSERVED airflow (mechanical ventilationCFM defaults to 0); no
+        // fabricated fan spec. See models/greenhouseClimateStep.
+        const step = climateSubstep({
+          indoorTempF: T,
+          indoorAH: AH,
           outdoorTempF: diurnal.outdoorTempF,
-          prevIndoorTempF: T,
+          outdoorRHPct: diurnal.outdoorRH,
+          outdoorAH,
+          ventCFM: ventCFMSub,
+          solarGainBTUhr,
           lightingBTUhr,
           heatingBTUhr: heatingSub,
-          coolingBTUhr: coolingSub,
+          mechCoolingBTUhr: mechCoolingSub,
           envelopeAreaSqFt: inputs.greenhouseEnvelopeAreaSqFt,
           envelopeUValue: envelopeUValueNow,
-          ventilationCFM: ventCFMSub,
           volumeCuFt: inputs.greenhouseVolumeCuFt,
+          transpirationLbPerHr,
+          padEnabled: inputs.evapCoolingEnabled,
+          padEfficiencyPct: inputs.evapEfficiencyPct,
+          fogEnabled: inputs.fogCoolingEnabled,
+          fogEfficiencyPct: inputs.fogEfficiencyPct,
+          fogAirflowCFM: ventCFMSub,
+          dehumEnabled: inputs.dehumidificationEnabled,
+          targetRHPct: inputs.targetRHPct,
           dtHours: subDt,
         });
+        T = step.indoorTempF;
+        AH = step.indoorAH;
+        padCoolingBTUhr = step.padCoolingBTUhr;
+        fogCoolingBTUhr = step.fogCoolingBTUhr;
         // Physical clamp: a real greenhouse can't exit −20 °F to 140 °F.
         // If the integrator still trips on extreme inputs, this stops the
         // numerical blowup from poisoning downstream VPD/RH calcs.
         if (!Number.isFinite(T)) {
           T = inputs.indoorTargetDryBulbF;
+          AH = prevAH;
           break;
         }
         T = Math.max(-20, Math.min(140, T));
       }
       const ventOpen = vent;
       const indoorTempF = T;
+      // Indoor RH from the final coupled state (same grow-core inverse
+      // climateSubstep uses internally, so it's consistent tick-to-tick).
+      const indoorRHPct = Number.isFinite(T)
+        ? Math.max(0, Math.min(100, rhFromAbsoluteHumidity(fahrenheitToCelsius(T), AH)))
+        : inputs.targetRHPct;
       return {
         sun,
         outdoor: diurnal,
@@ -294,6 +416,11 @@ export function useLiveDynamics() {
         lights,
         ventOpen,
         indoorTempF,
+        indoorAH: AH,
+        indoorRHPct,
+        solarGainBTUhr,
+        padCoolingBTUhr,
+        fogCoolingBTUhr,
         shadeActive,
         blackoutActive,
       };
@@ -303,20 +430,29 @@ export function useLiveDynamics() {
     const trace: DailyTracePoint[] = [];
     let prevIndoor = climateRow.meanTempF;
     let prevVent = 0;
-    for (let h = 0; h <= 24; h += 0.5) {
-      const r = computeAt(h, prevIndoor, prevVent);
+    // Seed indoor absolute humidity from the day's mean conditions so the
+    // moisture state has a physical starting point for the integration.
+    let prevAH = absoluteHumidityKgPerKg(
+      fahrenheitToCelsius(climateRow.meanTempF),
+      climateRow.meanRH,
+    );
+    for (let h = 0; h <= 24; h += TRACE_STEP_HOURS) {
+      const r = computeAt(h, prevIndoor, prevVent, prevAH);
       prevIndoor = r.indoorTempF;
       prevVent = r.ventOpen;
+      prevAH = r.indoorAH;
       trace.push({
         hour: h,
         outdoorTempF: r.outdoor.outdoorTempF,
         indoorTempF: r.indoorTempF,
         outdoorRH: r.outdoor.outdoorRH,
+        indoorRH: r.indoorRHPct,
         canopyPPFD: r.canopyTotalPPFD,
         supplementalOnFraction: r.lights.on ? r.lights.dimLevel : 0,
         ventOpen: r.ventOpen,
         sunElev: r.sun.elevationDeg,
         outdoorPPFD: r.outdoorPPFD,
+        solarGainBTUhr: r.solarGainBTUhr,
       });
     }
 
@@ -325,13 +461,21 @@ export function useLiveDynamics() {
     // into another computeAt → snapshot was always one 15-min step ahead of
     // the chart. Fix: feed the PREVIOUS trace point's state in so computeAt
     // produces the same step the trace point represents.
-    const idx = Math.max(0, Math.min(trace.length - 1, Math.round(sim.hourOfDay * 2)));
+    const idx = Math.max(0, Math.min(trace.length - 1, Math.round(sim.hourOfDay / TRACE_STEP_HOURS)));
     const prevIdx = Math.max(0, idx - 1);
     const prev = trace[prevIdx];
+    // Reconstruct the previous point's absolute humidity from its (T, RH) — the
+    // grow-core AH↔RH pair is a clean inverse, so this recovers the loop's AH
+    // state without widening the trace-point interface just to carry it.
+    const prevSnapAH = absoluteHumidityKgPerKg(
+      fahrenheitToCelsius(prev.indoorTempF),
+      prev.indoorRH,
+    );
     const fullSnap = computeAt(
       sim.hourOfDay,
       prev.indoorTempF,
       prev.ventOpen,
+      prevSnapAH,
     );
     // Hard guard: even with the substepped solver, sustained numerical
     // pathology in user inputs (e.g., volume = 0, U-value 0) could produce
@@ -341,52 +485,20 @@ export function useLiveDynamics() {
       fullSnap.indoorTempF = inputs.indoorTargetDryBulbF;
     }
 
-    // Indoor RH model — proper psychrometric coupling.
-    //
-    // Step 1: outdoor absolute humidity (kg water / kg dry air) from outdoor T/RH.
-    // Step 2: indoor air picks up moisture from outdoor (via leakage / open
-    //         vents) plus a small transpiration addition. Dehumidifier removes
-    //         moisture down to the target RH setpoint at indoor T.
-    // Step 3: convert resulting AH back to RH at indoor T.
-    //
-    // Dehumidifier behavior: when indoor AH would translate to RH > target,
-    // the dehumidifier holds it at the target RH. When ambient AH is already
-    // dry (e.g., cold winter outdoor air in lit greenhouse), indoor RH can
-    // run BELOW target.
-    const targetRH = inputs.targetRHPct;
+    // Indoor RH now comes from the coupled moisture balance inside the substep
+    // loop (transpiration + pad/fog evaporation + vent exchange − dehumidifier),
+    // NOT a post-hoc estimate. This closes the CITATIONS.md gap: the per-tick
+    // humidity model DOES apply a full moisture balance moved inside the
+    // substepped Euler loop, so evaporative cooling and RH move together.
+    // The dehumidifier is modeled in-loop (holds toward targetRHPct when RH is
+    // above it), so no separate target cap is applied here.
+    const indoorRH = Number.isFinite(fullSnap.indoorRHPct)
+      ? Math.max(0, Math.min(100, fullSnap.indoorRHPct))
+      : inputs.targetRHPct;
+    // Outdoor absolute humidity still feeds the richer HUD vent decision below.
     const outdoorAH = absoluteHumidityKgPerKg(
       fahrenheitToCelsius(fullSnap.outdoor.outdoorTempF),
       fullSnap.outdoor.outdoorRH,
-    );
-    // KNOWN GAP: this is a 24/7 average lift, NOT CO₂-aware. Applying
-    // a stomatal-closure factor here would be wrong — the lights-off
-    // window is exactly where dehumidification sizing and pathogen risk
-    // peak, and stomata are already mostly closed at night regardless of
-    // CO₂. Proper per-tick CO₂ × RH coupling needs the moisture balance
-    // moved INSIDE the substepped Euler loop alongside vent state +
-    // indoor T. That is a "Plan Mode required" change (see CLAUDE.md
-    // "Numerical stability — load-bearing decisions"). Seasonal models
-    // (dehumidificationModel + heatLoadModel via useDerived) DO apply
-    // the daily-aggregate co2StomatalFactor — see CITATIONS.md →
-    // Ainsworth & Long (2005).
-    const transpirationAH = 0.0008; // ~0.8 g/kg lift from dense canopy transpiration
-    // Indoor↔outdoor air mixing scales with proportional vent opening:
-    // baseline 25 % leakage (vents closed) up to 85 % at full open.
-    const ventMixingFraction = 0.25 + 0.6 * fullSnap.ventOpen;
-    const ambientIndoorAH =
-      outdoorAH * ventMixingFraction +
-      outdoorAH * (1 - ventMixingFraction) +
-      transpirationAH;
-    const ambientIndoorRH = rhFromAbsoluteHumidity(
-      fahrenheitToCelsius(fullSnap.indoorTempF),
-      ambientIndoorAH,
-    );
-    // Cap by dehumidifier setpoint (when indoor RH would exceed target, the
-    // dehumidifier holds at target). When dehum disabled or undersized, fall
-    // through to the ambient value.
-    const indoorRH = Math.max(
-      25,
-      Math.min(90, Math.min(ambientIndoorRH, targetRH * 1.05)),
     );
 
     const indoorVPDRaw = vpdFromTempRH(
@@ -473,6 +585,9 @@ export function useLiveDynamics() {
       indoorRH,
       indoorVPD,
       outdoorVPD,
+      solarGainBTUhr: fullSnap.solarGainBTUhr,
+      padCoolingBTUhr: fullSnap.padCoolingBTUhr,
+      fogCoolingBTUhr: fullSnap.fogCoolingBTUhr,
       plant,
     };
 
