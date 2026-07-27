@@ -332,23 +332,23 @@ export default function LiveGreenhouseScene({
               type="button"
               onClick={() => setFullscreen(false)}
               aria-label="Close full screen"
-              className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-md active:bg-black/60"
+              className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white active:bg-black/60"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
-            <span className="pointer-events-auto rounded-full border border-white/15 bg-black/40 px-3 py-1.5 font-mono text-xs tabular-nums text-white/90 backdrop-blur-md">
+            <span className="pointer-events-auto rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-xs tabular-nums text-white/90">
               {formatDOY(sim.dayOfYear)} · {formatHour(sim.hourOfDay)}
             </span>
             <button
               type="button"
               onClick={() => setDataOpen((v) => !v)}
               aria-pressed={dataOpen}
-              className={`pointer-events-auto flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-semibold backdrop-blur-md active:scale-95 ${
+              className={`pointer-events-auto flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-semibold active:scale-95 ${
                 dataOpen
                   ? "border-leaf-500/40 bg-leaf-500/80 text-white"
-                  : "border-white/20 bg-black/40 text-white"
+                  : "border-white/20 bg-black/60 text-white"
               }`}
             >
               <span className="inline-block h-2 w-2 rounded-full bg-leaf-400" />
@@ -430,7 +430,7 @@ export default function LiveGreenhouseScene({
               onClick={() => setFullscreen(true)}
               aria-label="Open full screen"
               title="Full screen"
-              className="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-lg border border-white/30 bg-black/40 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-black/60"
+              className="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-lg border border-white/30 bg-black/60 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black/60"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path

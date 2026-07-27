@@ -28,11 +28,15 @@ function Rain({ intensity, windSpeedMs, windDirDeg }: RainProps) {
   const geo = useRef<THREE.BufferGeometry>(null!);
   const mat = useRef<THREE.PointsMaterial>(null!);
   const pos = useMemo(() => initRainPositions(RAIN_COUNT), []);
+  const invalidate = useThree((s) => s.invalidate);
   const windRad = (windDirDeg * Math.PI) / 180;
   const windX = Math.sin(windRad) * windSpeedMs * 0.1;
   const windZ = Math.cos(windRad) * windSpeedMs * 0.1;
 
   useFrame((_, dt) => {
+    // frameloop="demand": keep painting while this precip is mounted (bounded —
+    // the parent unmounts Rain the moment intensity hits 0).
+    invalidate();
     if (!geo.current || intensity <= 0) return;
     const arr = geo.current.attributes.position.array as Float32Array;
     const fallRate = (18 + windSpeedMs * 0.5) * dt; // ft/s
@@ -101,11 +105,15 @@ function Snow({ intensity, windSpeedMs, windDirDeg }: SnowProps) {
     return p;
   }, []);
   const t = useRef(0);
+  const invalidate = useThree((s) => s.invalidate);
   const windRad = (windDirDeg * Math.PI) / 180;
   const windX = Math.sin(windRad) * windSpeedMs * 0.05;
   const windZ = Math.cos(windRad) * windSpeedMs * 0.05;
 
   useFrame((_, dt) => {
+    // frameloop="demand": keep painting while snow is mounted (parent unmounts
+    // it when intensity hits 0).
+    invalidate();
     if (!geo.current || intensity <= 0) return;
     t.current += dt;
     const arr = geo.current.attributes.position.array as Float32Array;
@@ -192,8 +200,12 @@ function Lightning() {
   const lightRef = useRef<THREE.DirectionalLight>(null!);
   const nextFlash = useRef(Math.random() * 8 + 4);
   const flashDur = useRef(0);
+  const invalidate = useThree((s) => s.invalidate);
 
   useFrame((_, dt) => {
+    // frameloop="demand": lightning timing runs every frame while a
+    // thunderstorm is mounted — keep the loop alive.
+    invalidate();
     if (!lightRef.current) return;
     nextFlash.current -= dt;
     if (flashDur.current > 0) {

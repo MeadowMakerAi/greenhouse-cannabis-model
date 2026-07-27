@@ -9,6 +9,7 @@ import {
   Environment,
   Lightformer,
   Html,
+  Stats,
 } from "@react-three/drei";
 import {
   EffectComposer,
@@ -150,6 +151,7 @@ function RetractableCurtain({
   const edgeBarRef = useRef<Mesh>(null);
   const bundleRef = useRef<Mesh>(null);
   const currentFraction = useRef(targetFraction);
+  const invalidate = useThree((s) => s.invalidate);
   const halfLength = length / 2;
   const halfWidth = width / 2 - 0.4; // gutter-rail setback
   const panelMaxLen = length - 0.4; // 0.2 setback at each gable
@@ -162,6 +164,9 @@ function RetractableCurtain({
     const diff = targetFraction - currentFraction.current;
     if (Math.abs(diff) > 0.001) {
       currentFraction.current += diff * 0.08;
+      // Under frameloop="demand" nothing else schedules the next frame while a
+      // curtain is mid-deploy — self-drive until the lerp settles, then stop.
+      invalidate();
     } else {
       currentFraction.current = targetFraction;
     }
@@ -1375,6 +1380,9 @@ function Fixtures({
     g.setAttribute("position", new THREE.BufferAttribute(verts, 3));
     return g;
   }, [fixtureLength, fixtureWidth, cableTopY]);
+  // Dispose the previous geometry when dims change and on unmount — R3F only
+  // auto-disposes JSX-declared objects, not ones we `new` ourselves.
+  useEffect(() => () => cableGeom.dispose(), [cableGeom]);
 
   return (
     <group>
@@ -1498,6 +1506,8 @@ function LightFootprints({
       ),
     [footprintLength, footprintWidth, fixtureZ, canopyZ, spreadFactor, apexFactor],
   );
+  // Dispose the prior frustum geometry on dep change / unmount (not JSX-owned).
+  useEffect(() => () => geometry.dispose(), [geometry]);
   if (dimLevel <= 0.001) return null;
   // HPS reads as much warmer + slightly more visible glow at the same dim
   // level — so bias the base opacity for bulb form factor.
@@ -1584,29 +1594,18 @@ function FanLeafCluster({
             position={[0, 0, 0]}
             rotation={[tilt, 0, fanAng]}
           >
-            {/* Each leaflet rendered as a stretched cone pointing +Y in local.
-                Physical material with subtle transmission — light passes
-                through the leaflet at grazing angles the way real foliage
-                does. Sheen gives the soft falloff at glancing angles.
-                ~2× memory of meshStandardMaterial but reads as alive. */}
+            {/* Each leaflet is a stretched cone pointing +Y in local. */}
             <coneGeometry args={[leafThick, leafLen * lenScale, 5]} />
-            {/* Leaf subsurface scattering (Axel #1 realism — Habel 2007).
-                transmission=0.28: light passes through thin leaf tissue.
-                attenuationColor: the warm yellow-green you see when sunlight
-                backlights a cannabis leaf — the key "alive" cue.
-                sheen: soft velvet falloff at grazing angles (waxy cuticle). */}
-            <meshPhysicalMaterial
+            {/* Opaque standard material, NOT physical/transmission. At canopy
+                scale each leaflet is a few px, so the subsurface-scattering glow
+                is invisible — but `transmission` forces a screen-space
+                refraction pass per leaflet, and a full house has thousands.
+                meshStandardMaterial keeps PBR shading + shadows at a fraction of
+                the per-frame cost (the dominant "clunky/freezing" driver). */}
+            <meshStandardMaterial
               color={color}
               roughness={0.82}
               metalness={0}
-              transmission={0.28}
-              thickness={0.06}
-              ior={1.42}
-              attenuationColor="#c8e87a"
-              attenuationDistance={0.18}
-              sheen={0.9}
-              sheenRoughness={0.65}
-              sheenColor="#d4f0a0"
               side={THREE.DoubleSide}
             />
           </mesh>
@@ -1897,6 +1896,13 @@ function Benches({
       ? PLANT_SPACING_FT * Math.sqrt(totalPlants / MAX_BENCH_PLANTS)
       : PLANT_SPACING_FT;
 
+  // Drop to low-detail plants on a dense benched house — mirrors the floor-mode
+  // guard in CanopyAndPlants (`plants.length > 60 ? "low"`). Without this, bench
+  // mode rendered every plant at full high LOD (~70 transmissive leaflet meshes
+  // each), so a 240-plant house pushed ~17k transmissive draw calls every frame
+  // — the palmate detail is invisible at canopy scale but murders the GPU.
+  const benchLod: "high" | "low" = totalPlants > 60 ? "low" : "high";
+
   // Reuse the floor-mode fallback growth so benched + open crops read identically.
   const growth: PlantGrowthGeom = plantGrowth ?? {
     phase: "flower-mid",
@@ -1949,6 +1955,7 @@ function Benches({
                   ]}
                   growth={growth}
                   seed={i * 1000 + rr * 40 + cc}
+                  lod={benchLod}
                 />
               )),
             )}
@@ -1981,10 +1988,10 @@ function CalloutChip({
       style={{ pointerEvents: "none" }}
     >
       <div
-        className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur-md ${
+        className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm ${
           tone === "leaf"
-            ? "border-leaf-500/40 bg-white/75 text-leaf-600"
-            : "border-white/45 bg-white/70 text-ink-900"
+            ? "border-leaf-500/40 bg-white/90 text-leaf-600"
+            : "border-white/45 bg-white/90 text-ink-900"
         }`}
       >
         {text}
@@ -2278,6 +2285,17 @@ function Sun({
           intensity={sunIntensity}
           color={sunColor}
           castShadow
+          ref={(l) => {
+            if (!l) return;
+            // Freeze the shadow map instead of re-rendering it every frame.
+            // The sun only moves when this component re-renders (elevation /
+            // azimuth props change), and this ref fires on exactly those
+            // renders — so flag a single shadow update then. Drops a 512² depth
+            // pass from every frame where the sun is static (all of playback
+            // between ticks, every camera-orbit frame).
+            l.shadow.autoUpdate = false;
+            l.shadow.needsUpdate = true;
+          }}
         />
       )}
       {elevAbove > -2 && (
@@ -2516,6 +2534,12 @@ function Ground({
     return mat;
   }, []);
 
+  // Grass + gravel materials are `new`-ed inside useMemo, so R3F won't
+  // auto-dispose them; free the compiled GLSL programs on unmount (tab switch /
+  // fullscreen remount) instead of leaking one pair per mount.
+  useEffect(() => () => grassMaterial.dispose(), [grassMaterial]);
+  useEffect(() => () => gravelMaterial.dispose(), [gravelMaterial]);
+
   return (
     <group>
       {/* Grass field */}
@@ -2684,6 +2708,10 @@ function MilkyWay({ visibility }: { visibility: number }) {
     });
     return mat;
   }, []);
+  // MilkyWay mounts/unmounts on every dawn/dusk crossing; dispose the
+  // ShaderMaterial + its compiled GLSL program so a fast-playback session
+  // doesn't leak one per crossing.
+  useEffect(() => () => material.dispose(), [material]);
 
   // Update uniform when visibility changes (re-render keeps it fresh)
   material.uniforms.uVisibility.value = visibility;
@@ -2733,40 +2761,12 @@ function NightSky({
     : sunElevationDeg >= -10 ? 0
     : (-sunElevationDeg - 10) / 8;
 
-  if (v <= 0.02 && milkyWayV <= 0.02) return null;
-
-  // Moon position: rough antipode of sun. Real moon orbits
-  // independently; this gives the right "opposite the sun" feel for
-  // sunrise/sunset transitions without needing an ephemeris.
-  const moonAz = (sunAzimuthDeg + 180) % 360;
-  const moonElev = -sunElevationDeg;
-  const moonElevRad = (moonElev * Math.PI) / 180;
-  const moonAzRad = (moonAz * Math.PI) / 180;
-  const moonDist = 420;
-  const moonHoriz = Math.cos(moonElevRad) * moonDist;
-  const moonX = Math.sin(moonAzRad) * moonHoriz;
-  const moonZ = -Math.cos(moonAzRad) * moonHoriz;
-  const moonY = Math.sin(moonElevRad) * moonDist;
-  // Hide moon when below horizon
-  const moonVisible = moonElev > -2;
-
-  // Lunar phase from month index — proxy day-of-year is the 15th
-  // of the active month (sufficient for visual change across the
-  // year; real ephemeris would require currentDayOfYear plumbed
-  // through every consumer).
-  const cumStart = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-  const dayOfYear = (cumStart[monthIndex] ?? 0) + 15;
-  const phase = approximateLunarPhase(dayOfYear);
-  // illuminationFraction: 0 at new, 1 at full
-  const illuminationFraction = 0.5 * (1 - Math.cos(phase * Math.PI * 2));
-  // phaseAngle ∈ [0, 2π) — used by the moon shader to position the
-  // terminator. 0 = full moon (terminator behind), π = new moon.
-  const phaseAngle = phase * Math.PI * 2;
-
-  // Moon shader material — applies a terminator across the sphere
-  // so we see crescent / gibbous / full phases. The sphere is
-  // rotated so the lit hemisphere faces the sun (we use a rough
-  // sun-direction unit vector for this).
+  // Moon shader material — HOISTED above the early return below. useMemo is a
+  // hook, so it MUST run on every render of NightSky; leaving it after the
+  // conditional `return null` changed the hook count the instant day↔night
+  // flipped the branch → React "rendered more hooks than expected" crash
+  // (latent, Codex finding). Created once; its uniforms are set per-render
+  // further down, inside the render path where the moon actually draws.
   const moonMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
@@ -2801,6 +2801,42 @@ function NightSky({
       transparent: true,
     });
   }, []);
+  // NightSky unmounts every dawn (returns null); dispose so the compiled GLSL
+  // program + material don't leak one instance per day/night crossing.
+  useEffect(() => () => moonMaterial.dispose(), [moonMaterial]);
+
+  if (v <= 0.02 && milkyWayV <= 0.02) return null;
+
+  // Moon position: rough antipode of sun. Real moon orbits
+  // independently; this gives the right "opposite the sun" feel for
+  // sunrise/sunset transitions without needing an ephemeris.
+  const moonAz = (sunAzimuthDeg + 180) % 360;
+  const moonElev = -sunElevationDeg;
+  const moonElevRad = (moonElev * Math.PI) / 180;
+  const moonAzRad = (moonAz * Math.PI) / 180;
+  const moonDist = 420;
+  const moonHoriz = Math.cos(moonElevRad) * moonDist;
+  const moonX = Math.sin(moonAzRad) * moonHoriz;
+  const moonZ = -Math.cos(moonAzRad) * moonHoriz;
+  const moonY = Math.sin(moonElevRad) * moonDist;
+  // Hide moon when below horizon
+  const moonVisible = moonElev > -2;
+
+  // Lunar phase from month index — proxy day-of-year is the 15th
+  // of the active month (sufficient for visual change across the
+  // year; real ephemeris would require currentDayOfYear plumbed
+  // through every consumer).
+  const cumStart = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  const dayOfYear = (cumStart[monthIndex] ?? 0) + 15;
+  const phase = approximateLunarPhase(dayOfYear);
+  // illuminationFraction: 0 at new, 1 at full
+  const illuminationFraction = 0.5 * (1 - Math.cos(phase * Math.PI * 2));
+  // phaseAngle ∈ [0, 2π) — used by the moon shader to position the
+  // terminator. 0 = full moon (terminator behind), π = new moon.
+  const phaseAngle = phase * Math.PI * 2;
+
+  // Moon shader material was hoisted above the early return (rules of hooks);
+  // here in the render path we just push the current phase/visibility uniforms.
   moonMaterial.uniforms.uPhaseAngle.value = phaseAngle;
   moonMaterial.uniforms.uVisibility.value = Math.min(0.98, 0.4 + v * 0.58);
 
@@ -2818,7 +2854,11 @@ function NightSky({
         factor={4}
         saturation={0.05}
         fade
-        speed={0.5}
+        // speed=0: drei <Stars> runs an internal per-frame uniform write for its
+        // twinkle. Under frameloop="demand" it was the ONE thing wanting endless
+        // idle frames at night. 0 stops the shimmer (imperceptible) so the GPU
+        // can rest; the star field itself is unchanged.
+        speed={0}
       />
 
       {moonVisible && (
@@ -2879,6 +2919,7 @@ function CameraRig({
   const controls = useThree((s) => s.controls) as
     | { target: THREE.Vector3; update: () => void }
     | null;
+  const invalidate = useThree((s) => s.invalidate);
   const lastSignal = useRef<number>(-1);
   const initialMount = useRef(true);
 
@@ -2898,7 +2939,10 @@ function CameraRig({
     }
     initialMount.current = false;
     lastSignal.current = resetSignal;
-  }, [camera, controls, floorLength, floorWidth, peak, resetSignal]);
+    // Effect mutates the camera imperatively; under frameloop="demand" that
+    // mutation won't paint on its own — request the frame that shows it.
+    invalidate();
+  }, [camera, controls, invalidate, floorLength, floorWidth, peak, resetSignal]);
 
   return null;
 }
@@ -3123,16 +3167,31 @@ export default function Greenhouse3D({
     >
       <Canvas
         shadows
+        // frameloop="demand": render ONLY when something actually changes,
+        // instead of a continuous 60fps loop that re-ran the FULL pipeline —
+        // raster + shadow-map pass + the whole EffectComposer (SSAO + normal
+        // pass, GodRays@60, Bloom, Vignette, ACES) — 60×/sec even while idle,
+        // paused, camera-still. That pinned the GPU and starved the OS
+        // compositor, so even minimizing the window stuttered. Under demand the
+        // GPU rests when nothing moves. Every animator that needs continuous
+        // frames calls invalidate() while active: the curtain lerp (self-drives
+        // until it settles), the weather particles (mounted only during precip),
+        // the camera reframe; OrbitControls damping and sim-clock prop changes
+        // auto-invalidate. drei <Stars speed={0}> no longer demands idle frames.
+        frameloop="demand"
         // Clamp DPR: on a 3× retina panel, rendering at native 3× is ~2.8× the
         // fragment work of 1.75× for detail the eye barely resolves on a busy
         // scene. 1.75 keeps edges crisp while capping the pixel budget.
         // powerPreference nudges the browser onto the discrete GPU on laptops.
-        // (frameloop stays "always" — 4 useFrame animations need per-frame
-        // paints; "demand" would freeze them. Deferred with the mesh rewrite.)
         dpr={[1, 1.75]}
         gl={{ powerPreference: "high-performance" }}
         camera={{ fov: 35, near: 1, far: 1500 }}
       >
+        {/* DEV-only FPS/frametime meter — never ships to production. Under
+            frameloop="demand" it only ticks while the scene is actively
+            rendering (orbit/playback); a still counter at rest is the GPU
+            correctly resting, not a freeze. */}
+        {import.meta.env.DEV && <Stats />}
         <Suspense fallback={null}>
           <Sun
             latitudeDeg={latitudeDeg}

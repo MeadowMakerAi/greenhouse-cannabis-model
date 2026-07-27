@@ -182,29 +182,42 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       setRangePlaying(false);
       return;
     }
+    // Last committed timestamp — throttle state commits to ≤10 Hz, mirroring the
+    // continuous ticker above (~line 138). Range-play previously committed every
+    // rAF (~60 Hz), re-rendering the whole scene + HUD + chart 6× more than the
+    // eye resolves; under frameloop="demand" each commit also forces a rendered
+    // frame, so this is the difference between 10 and 60 full-scene paints/sec.
+    let lastCommit = 0;
     const tick = (now: number) => {
       if (rangeStartTimeRef.current === 0) {
         rangeStartTimeRef.current = now;
       }
       const elapsedSec = (now - rangeStartTimeRef.current) / 1000;
       let progress = elapsedSec / rangeDurationSec;
+      let landing = false;
       if (progress >= 1) {
         if (rangeLoop) {
           progress = 0;
           rangeStartTimeRef.current = now;
         } else {
           progress = 1;
+          landing = true; // force the final commit so we land exactly on the end
           setRangePlaying(false);
         }
       }
-      const t = startSimTime + totalSimHours * progress;
-      // Wrap rather than clamp so a range that crosses Dec 31 plays through
-      // Jan 1 instead of getting stuck at 365.
-      const rawDOY = Math.floor(t / 24);
-      const newDOY = ((rawDOY - 1) % 365 + 365) % 365 + 1;
-      const newHour = ((t % 24) + 24) % 24;
-      setDayOfYear(newDOY);
-      setHourOfDay(newHour);
+      // Commit at ≤10 Hz, but ALWAYS commit the landing frame so a non-looping
+      // range ends precisely on its end DOY/hour rather than up to 100 ms short.
+      if (landing || now - lastCommit >= 100) {
+        lastCommit = now;
+        const t = startSimTime + totalSimHours * progress;
+        // Wrap rather than clamp so a range that crosses Dec 31 plays through
+        // Jan 1 instead of getting stuck at 365.
+        const rawDOY = Math.floor(t / 24);
+        const newDOY = ((rawDOY - 1) % 365 + 365) % 365 + 1;
+        const newHour = ((t % 24) + 24) % 24;
+        setDayOfYear(newDOY);
+        setHourOfDay(newHour);
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

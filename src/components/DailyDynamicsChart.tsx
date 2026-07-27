@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Area,
   CartesianGrid,
@@ -20,17 +21,25 @@ export default function DailyDynamicsChart() {
   const { inputs } = useScenario();
   const sim = useSimulation();
   const { snapshot, trace } = useLiveDynamics();
-  const data = trace.map((p) => ({
-    hour: p.hour,
-    "Outdoor T (°F)": +p.outdoorTempF.toFixed(1),
-    "Indoor T (°F)": +p.indoorTempF.toFixed(1),
-    "Outdoor RH (%)": +p.outdoorRH.toFixed(0),
-    "Canopy PPFD ÷10": +(p.canopyPPFD / 10).toFixed(0),
-    // Solar heat gain in kW, scaled ÷10 to share the axis with T / PPFD.
-    "Solar gain kW÷10": +(btuhrToKW(p.solarGainBTUhr) / 10).toFixed(1),
-    "Lights on": p.supplementalOnFraction * 100,
-    "Vent open": p.ventOpen * 100,
-  }));
+  // `trace` is day-keyed (changes once per simulated day), so memoize the mapped
+  // series on it. Without this the 49-point array was rebuilt every clock tick,
+  // handing Recharts a new reference each ~100ms and forcing it to regenerate
+  // every Line/Area SVG path — pure churn while the underlying day is unchanged.
+  const data = useMemo(
+    () =>
+      trace.map((p) => ({
+        hour: p.hour,
+        "Outdoor T (°F)": +p.outdoorTempF.toFixed(1),
+        "Indoor T (°F)": +p.indoorTempF.toFixed(1),
+        "Outdoor RH (%)": +p.outdoorRH.toFixed(0),
+        "Canopy PPFD ÷10": +(p.canopyPPFD / 10).toFixed(0),
+        // Solar heat gain in kW, scaled ÷10 to share the axis with T / PPFD.
+        "Solar gain kW÷10": +(btuhrToKW(p.solarGainBTUhr) / 10).toFixed(1),
+        "Lights on": p.supplementalOnFraction * 100,
+        "Vent open": p.ventOpen * 100,
+      })),
+    [trace],
+  );
   const coolingKW = btuhrToKW(snapshot.padCoolingBTUhr + snapshot.fogCoolingBTUhr);
 
   return (

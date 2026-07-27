@@ -84,7 +84,7 @@ export default function Greenhouse3DHud({
   return (
     <div className="pointer-events-none absolute inset-0 z-10 select-none">
       {/* Top-left: identity */}
-      <div className="pointer-events-auto absolute left-3 top-3 w-56 rounded-lg border border-white/30 bg-white/55 p-3 shadow-md backdrop-blur-md">
+      <div className="pointer-events-auto absolute left-3 top-3 w-56 rounded-lg border border-white/30 bg-white/90 p-3 shadow-md">
         <div className="text-[10px] uppercase tracking-wider text-ink-500">Site overview</div>
         <div className="font-mono text-base font-semibold text-ink-900">{formatDate(sim.dayOfYear)}</div>
         <div className="font-mono text-2xl font-semibold tabular-nums text-ink-900">
@@ -154,7 +154,7 @@ export default function Greenhouse3DHud({
       </div>
 
       {/* Top-right: compass with sun pointer */}
-      <div className="pointer-events-auto absolute right-3 top-3 rounded-lg border border-white/30 bg-white/55 p-2 shadow-md backdrop-blur-md">
+      <div className="pointer-events-auto absolute right-3 top-3 rounded-lg border border-white/30 bg-white/90 p-2 shadow-md">
         <CompassRose
           sunAzimuthDeg={sunArrowAngle}
           sunElevationDeg={snapshot.sun.elevationDeg}
@@ -163,7 +163,7 @@ export default function Greenhouse3DHud({
       </div>
 
       {/* Bottom-left: outdoor */}
-      <div className="pointer-events-auto absolute bottom-3 left-3 w-72 rounded-lg border border-white/30 bg-white/55 p-3 shadow-md backdrop-blur-md">
+      <div className="pointer-events-auto absolute bottom-3 left-3 w-72 rounded-lg border border-white/30 bg-white/90 p-3 shadow-md">
         <div className="mb-1 flex items-baseline justify-between gap-3">
           <span className="text-[10px] uppercase tracking-wider text-ink-500">Outdoor</span>
           <span className="text-[9px] text-ink-500">canopy 4 ft AGL approx</span>
@@ -185,7 +185,7 @@ export default function Greenhouse3DHud({
        * naturally instead of crowding the Vents cell.
        * Hidden in outdoor mode — no envelope, no climate systems. */}
       {!outdoor && (
-      <div className="pointer-events-auto absolute bottom-3 right-3 w-96 rounded-lg border border-white/30 bg-white/55 p-3 shadow-md backdrop-blur-md">
+      <div className="pointer-events-auto absolute bottom-3 right-3 w-96 rounded-lg border border-white/30 bg-white/90 p-3 shadow-md">
         <div className="mb-1.5 flex items-baseline justify-between gap-3">
           <span className="text-[10px] uppercase tracking-wider text-ink-500">Indoor · {sensorLabel}</span>
           <span className="text-[9px] text-ink-500">leaf {inputs.leafTempOffsetC.toFixed(1)}°C</span>
