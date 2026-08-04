@@ -2,10 +2,24 @@ import type { ToolDefinition } from "../chatbotTools";
 
 export type ChatRole = "user" | "assistant";
 
+/**
+ * Token usage for one chat turn, ACCUMULATED across every tool-use roundtrip
+ * (each roundtrip is a separately-billed API call, so summing input across
+ * roundtrips reflects real cost, not double-counting). `provider` is filled in
+ * by the dispatcher; providers set the token counts + model.
+ */
+export interface ChatUsage {
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+  provider?: ProviderId;
+}
+
 export interface ChatMessage {
   role: ChatRole;
   content: string;
   toolTrace?: { name: string; input: unknown; output: unknown }[];
+  usage?: ChatUsage;
 }
 
 export interface FileAttachment {
@@ -75,6 +89,20 @@ export interface ChatTurnArgs {
   tools: ToolDefinition[];
   systemPrompt: string;
   maxRoundtrips?: number;
+  /**
+   * Optional streaming callback. When provided, a provider that supports
+   * streaming emits the final answer's text deltas here as they arrive (the UI
+   * renders them live). Providers that don't stream simply never call it — the
+   * full text still arrives in the returned ChatMessage either way.
+   */
+  onDelta?: (delta: string) => void;
+  /**
+   * Fired at the start of each streamed roundtrip within a turn. A tool-use
+   * turn can stream preamble text before its tool calls; the persisted message
+   * keeps only the FINAL turn's text, so the UI should reset its live buffer
+   * here — otherwise preamble accumulates and "snaps" away on completion.
+   */
+  onRoundtripStart?: () => void;
   /**
    * Optional caller cancel signal. Providers combine it with a hard per-request
    * timeout (see abortTimeout.timedSignal) so a stalled model call can't hang

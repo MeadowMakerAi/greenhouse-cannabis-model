@@ -150,11 +150,13 @@ export const openAICompatibleProvider: ChatProvider = {
     // actuation turn without truncation.
     const tokenCap =
       new URL(url).hostname === "api.openai.com"
-        ? { max_completion_tokens: 4096 }
-        : { max_tokens: 4096 };
+        ? { max_completion_tokens: 8192 }
+        : { max_tokens: 8192 };
 
     const toolTrace: { name: string; input: unknown; output: unknown }[] = [];
     let finalText = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
 
     for (let i = 0; i < maxRoundtrips; i++) {
       const headers: Record<string, string> = {
@@ -190,6 +192,10 @@ export const openAICompatibleProvider: ChatProvider = {
         const aborted = describeAbort(err, CHAT_TIMEOUT_MS);
         if (aborted) throw new Error(aborted);
         throw err;
+      }
+      if (json.usage) {
+        inputTokens += json.usage.prompt_tokens ?? 0;
+        outputTokens += json.usage.completion_tokens ?? 0;
       }
       const choice = json.choices?.[0];
       if (!choice) {
@@ -240,6 +246,7 @@ export const openAICompatibleProvider: ChatProvider = {
       role: "assistant",
       content: finalText || "(No final response after tool roundtrips.)",
       toolTrace: toolTrace.length ? toolTrace : undefined,
+      usage: { inputTokens, outputTokens, model },
     };
   },
 };
