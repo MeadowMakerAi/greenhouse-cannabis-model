@@ -151,7 +151,11 @@ export function useLiveDynamics() {
         windowEndHour: inputs.flowerWindowEndHr,
         naturalCanopyPPFD: canopyNaturalPPFD,
         targetPPFD: derived.target.targetTopCanopyPPFD,
-        dimWhenBright: true,
+        // Dynamic trim needs a dimmable fixture AND a controller. Without both,
+        // the lights can't dim to fill the gap — they run full on the
+        // photoperiod schedule (surplus PPFD wasted as heat, captured below via
+        // dimLevel 1). This is the real "supplemental lighting" behavior.
+        dimWhenBright: derived.fixture.dimmable && inputs.lightingControllerCapable,
       });
       const supplementalPPFD = lights.on
         ? Math.max(0, derived.target.targetTopCanopyPPFD - canopyNaturalPPFD) * lights.dimLevel

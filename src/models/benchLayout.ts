@@ -164,3 +164,35 @@ export function solveBenchLayout(input: BenchLayoutInput): BenchLayoutResult {
 
   return { fits: true, benchCount, rows, cols, canopyAreaSqFt, aisleAreaSqFt, benchRects };
 }
+
+/**
+ * Distribute a fixture count across benches — one row of lights per bench,
+ * evenly spaced along the bench's long axis. Returns fixture centres in the
+ * same house-local feet as the bench rects. Shared by the 3D scene and the
+ * plan view so the two never drift (CLAUDE.md flags that pair).
+ */
+export function benchFixturePositions(
+  rects: BenchRect[],
+  fixtureCount: number,
+): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  const n = rects.length;
+  if (n === 0 || fixtureCount <= 0) return out;
+  const base = Math.floor(fixtureCount / n);
+  let remainder = fixtureCount - base * n;
+  for (const b of rects) {
+    const k = base + (remainder > 0 ? 1 : 0);
+    if (remainder > 0) remainder--;
+    if (k <= 0) continue;
+    const alongLength = b.lengthFt >= b.widthFt;
+    const span = alongLength ? b.lengthFt : b.widthFt;
+    for (let i = 0; i < k; i++) {
+      const t = (i + 0.5) / k - 0.5; // −0.5 … +0.5 across the bench span
+      out.push({
+        x: alongLength ? b.cx + t * span : b.cx,
+        z: alongLength ? b.cz : b.cz + t * span,
+      });
+    }
+  }
+  return out;
+}

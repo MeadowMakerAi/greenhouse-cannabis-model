@@ -34,6 +34,14 @@ export interface AdvisorScenario {
   serviceVoltagePrimary: number;
   branchCircuitAmps: number;
   electricityRatePerKwh: number;
+  // Bench layout + lighting-control capability (optional — older callers omit).
+  layoutMode?: "open" | "benched";
+  /** solveBenchLayout(...).fits when benched — false = benches don't fit. */
+  benchFits?: boolean;
+  benchCount?: number;
+  /** FixtureSpec.dimmable for the active fixture. */
+  fixtureDimmable?: boolean;
+  lightingControllerCapable?: boolean;
 }
 
 /** Default values a spec ingest typically does NOT establish; equality with
@@ -126,6 +134,28 @@ export function assessCompleteness(
       "heated greenhouse above 35°N with no thermal screen — roughly half the night heat loss is on the table",
     );
   }
+  // Bench layout — canopy is derived from benches in benched mode, so a spec
+  // whose benches don't fit the house is a real problem to surface at ingest.
+  if (s.layoutMode === "benched") {
+    if (s.benchFits === false) {
+      conflicts.push(
+        "benched layout, but the benches don't fit the house footprint — canopy can't be derived; shrink the bench/aisle/perimeter or the house is too small",
+      );
+    } else if (s.benchCount != null) {
+      have.push(`bench layout (${s.benchCount} benches; canopy derived from bench tops)`);
+    }
+  }
+  // Dynamic-lighting capability — flag when the lights can't trim, since the
+  // whole point of supplemental lighting is dimming to fill the DLI/PPFD gap.
+  if (s.fixtureDimmable === false) {
+    conflicts.push(
+      "the chosen fixture isn't dimmable — supplemental lights run full power and can't trim solar surplus (wasted as heat); dimmable LEDs + a controller would fill the DLI/PPFD gap dynamically and cut energy",
+    );
+  } else if (s.fixtureDimmable === true && s.lightingControllerCapable === false) {
+    conflicts.push(
+      "dimmable fixtures but no dimming controller selected — the lights can't trim as the sun fills the gap; add a controller to capture the dynamic-lighting saving",
+    );
+  }
 
   return { have, missing, conflicts };
 }
@@ -154,6 +184,10 @@ export interface LightingOption {
   label: string;
   type: "LED" | "HPS";
   ppe: number;
+  /** Whether this fixture can dim. Non-dimmable options can't trim to the
+   *  worst-month sizing in brighter months — their real annual energy is
+   *  higher than the sized operating point implies. */
+  dimmable: boolean;
   fixtureCount: number;
   /** Electrical kW required to hit the target (dimmable fixtures run here). */
   operatingKW: number;
@@ -242,6 +276,7 @@ export function recommendLighting(
     label: f.label,
     type: f.type,
     ppe: f.ppe,
+    dimmable: f.dimmable,
     fixtureCount: sized.fixtureCount,
     operatingKW: +sized.installedKW.toFixed(1),
     installedHardwareKW: +((sized.fixtureCount * f.wattsPerFixture) / 1000).toFixed(1),

@@ -20,6 +20,7 @@ import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
 import { assessCompleteness, recommendLighting } from "../services/scenarioAdvisor";
+import { solveBenchLayout } from "../models/benchLayout";
 import { cropTargets } from "../data/cropTargets";
 import {
   defaultSite,
@@ -491,6 +492,19 @@ export default function Chatbot() {
       }
       case "assess_completeness": {
         const s = scenarioNow();
+        const bench =
+          s.layoutMode === "benched"
+            ? solveBenchLayout({
+                houseLengthFt: s.greenhouseLengthFt,
+                houseWidthFt: s.greenhouseWidthFt,
+                benchType: s.benchType,
+                benchWidthFt: s.benchWidthFt,
+                benchLengthFt: s.benchLengthFt,
+                aisleWidthFt: s.benchAisleWidthFt,
+                perimeterAisleFt: s.benchPerimeterAisleFt,
+                orientation: s.benchOrientation,
+              })
+            : null;
         return assessCompleteness(
           {
             latitude: s.latitude,
@@ -512,6 +526,11 @@ export default function Chatbot() {
             serviceVoltagePrimary: s.serviceVoltagePrimary,
             branchCircuitAmps: s.branchCircuitAmps,
             electricityRatePerKwh: s.electricityRatePerKwh,
+            layoutMode: s.layoutMode,
+            benchFits: bench?.fits,
+            benchCount: bench?.benchCount,
+            fixtureDimmable: allFixtures[s.fixtureId]?.dimmable,
+            lightingControllerCapable: s.lightingControllerCapable,
           },
           {
             latitude: defaultSite.latitude,

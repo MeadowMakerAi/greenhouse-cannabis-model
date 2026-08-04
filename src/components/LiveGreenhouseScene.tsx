@@ -158,6 +158,9 @@ export default function LiveGreenhouseScene({
       heightOverride={!fill && isDesktop ? sceneHeight : undefined}
       equipment={inputs.equipment ?? []}
       showEnvelope={inputs.mode === "greenhouse"}
+      benchLayout={derived.benchLayout}
+      benchHeightFt={inputs.benchHeightFt}
+      benchType={inputs.benchType}
     />
   );
 

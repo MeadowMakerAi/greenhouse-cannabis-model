@@ -145,6 +145,13 @@ export interface ScenarioInputs {
 
   // Overhead lighting
   fixtureId: keyof typeof fixtureLibrary;
+  /** Whether a dimming-capable lighting controller is installed. Dynamic
+   *  supplemental trim (dimming lights down as the sun fills the DLI/PPFD gap)
+   *  requires BOTH a dimmable fixture (`FixtureSpec.dimmable`) AND a controller.
+   *  Non-dimmable fixtures (most HPS) — or no controller — run full power on
+   *  their photoperiod schedule and can't trim solar surplus (wasted as heat).
+   *  Default true (modern commercial control). */
+  lightingControllerCapable: boolean;
 
   // Under-canopy
   underCanopyEnabled: boolean;
@@ -320,6 +327,7 @@ export const defaultScenario: ScenarioInputs = {
   yieldRealismCase: "base",
   solarToPARFactor: defaultSolarConversion.solarToPARFactor,
   fixtureId: "ledHighEfficiency",
+  lightingControllerCapable: true,
   underCanopyEnabled: true,
   underCanopyPPFD: 150,
   underCanopyPhotoperiodHours: 12,

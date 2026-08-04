@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { solveBenchLayout, type BenchLayoutInput } from "./benchLayout";
+import {
+  solveBenchLayout,
+  benchFixturePositions,
+  type BenchLayoutInput,
+} from "./benchLayout";
 
 // Default house 48 L × 32 W, commercial rolling bench 4 × 40, 3 ft aisle,
 // 2 ft perimeter, running along the house length.
@@ -87,5 +91,36 @@ describe("solveBenchLayout — pure bench packing geometry", () => {
     expect(solveBenchLayout({ ...base, houseWidthFt: NaN }).fits).toBe(false);
     expect(solveBenchLayout({ ...base, benchWidthFt: -4 }).fits).toBe(false);
     expect(solveBenchLayout({ ...base, benchLengthFt: 0 }).fits).toBe(false);
+  });
+});
+
+describe("benchFixturePositions — bench-aligned light grid (shared by 3D + plan view)", () => {
+  const rects = solveBenchLayout(base).benchRects; // 6 benches, 4×40 each
+
+  it("places exactly the requested fixture count", () => {
+    expect(benchFixturePositions(rects, 18)).toHaveLength(18);
+    expect(benchFixturePositions(rects, 6)).toHaveLength(6);
+  });
+
+  it("distributes evenly with the remainder on the first benches", () => {
+    // 6 benches, 8 fixtures → two benches get 2, four get 1.
+    const positions = benchFixturePositions(rects, 8);
+    expect(positions).toHaveLength(8);
+  });
+
+  it("keeps fixtures within each bench's length span", () => {
+    const positions = benchFixturePositions(rects, 18);
+    // Every fixture x must fall inside some bench's [cx±length/2].
+    for (const p of positions) {
+      const inABench = rects.some(
+        (b) => Math.abs(p.x - b.cx) <= b.lengthFt / 2 + 1e-9,
+      );
+      expect(inABench).toBe(true);
+    }
+  });
+
+  it("returns empty for no benches or no fixtures", () => {
+    expect(benchFixturePositions([], 10)).toHaveLength(0);
+    expect(benchFixturePositions(rects, 0)).toHaveLength(0);
   });
 });

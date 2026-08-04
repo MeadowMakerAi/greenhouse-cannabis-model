@@ -31,6 +31,7 @@ import {
   skyParamsFromElevation,
 } from "../models/kelvinModel";
 import { solveFixtureGrid } from "../models/fixtureGrid";
+import { benchFixturePositions, type BenchLayoutResult } from "../models/benchLayout";
 import WeatherParticles from "./WeatherParticles";
 import EquipmentObjects from "./EquipmentObjects";
 import type { PlacedEquipment } from "../context/ScenarioContext";
@@ -2633,6 +2634,41 @@ function CameraRig({
   return null;
 }
 
+/**
+ * Bench slabs for benched layouts. Each bench is a top slab (the growing
+ * surface the canopy sits on) plus a lighter understructure box for visual
+ * mass. Positions come straight from the pure bench solver's rectangles.
+ */
+function Benches({
+  rects,
+  heightFt,
+  benchType,
+}: {
+  rects: BenchLayoutResult["benchRects"];
+  heightFt: number;
+  benchType: "fixed" | "rolling";
+}) {
+  const topColor = benchType === "rolling" ? "#9aa3b2" : "#6b7280";
+  return (
+    <group>
+      {rects.map((b, i) => (
+        <group key={i} position={[b.cx, 0, b.cz]}>
+          {/* Growing surface */}
+          <mesh position={[0, heightFt, 0]} castShadow receiveShadow>
+            <boxGeometry args={[b.lengthFt, 0.25, b.widthFt]} />
+            <meshStandardMaterial color={topColor} roughness={0.6} metalness={0.25} />
+          </mesh>
+          {/* Understructure */}
+          <mesh position={[0, heightFt * 0.5, 0]} receiveShadow>
+            <boxGeometry args={[b.lengthFt * 0.96, heightFt * 0.9, b.widthFt * 0.7]} />
+            <meshStandardMaterial color="#4b5563" roughness={0.85} metalness={0.1} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 export default function Greenhouse3D({
   floorAreaSqFt,
   canopyAreaSqFt,
@@ -2670,6 +2706,9 @@ export default function Greenhouse3D({
   weather,
   equipment,
   showEnvelope = true,
+  benchLayout,
+  benchHeightFt = 2.4,
+  benchType = "rolling",
 }: Props & {
   resetCameraSignal?: number;
   greenhouseLengthFt?: number;
@@ -2692,6 +2731,12 @@ export default function Greenhouse3D({
    *  footprints, and placed equipment — the scene becomes an open-air field of
    *  plants under sky. Plants + ground + sun stay. Defaults true (greenhouse). */
   showEnvelope?: boolean;
+  /** Benched layout (optional). When provided and `fits`, real bench slabs are
+   *  rendered, the canopy/plants sit on the benches, and the fixture grid
+   *  aligns to bench rows instead of an abstract rectangle. */
+  benchLayout?: BenchLayoutResult | null;
+  benchHeightFt?: number;
+  benchType?: "fixed" | "rolling";
 }) {
   // God-rays source: a ref to the sun-disk mesh + a ready flag so the
   // volumetric light shafts only mount when the sun is actually up.
@@ -2762,13 +2807,23 @@ export default function Greenhouse3D({
   });
   const colSpacing = canopyLength / Math.max(1, cols);
   const rowSpacing = canopyWidth / Math.max(1, rows);
-  const fixtures: { x: number; z: number }[] = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      fixtures.push({
-        x: canopyOffsetX + colSpacing * (c + 0.5),
-        z: canopyOffsetZ + rowSpacing * (r + 0.5),
-      });
+
+  // Benched mode: real bench slabs + fixtures aligned to bench rows. Falls back
+  // to the abstract canopy grid when no (fitting) bench layout is supplied.
+  const benched = showEnvelope && !!benchLayout && benchLayout.fits && benchLayout.benchCount > 0;
+
+  let fixtures: { x: number; z: number }[] = [];
+  if (benched) {
+    // Bench-aligned grid (shared with the plan view via benchFixturePositions).
+    fixtures = benchFixturePositions(benchLayout!.benchRects, fixtureCount);
+  } else {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        fixtures.push({
+          x: canopyOffsetX + colSpacing * (c + 0.5),
+          z: canopyOffsetZ + rowSpacing * (r + 0.5),
+        });
+      }
     }
   }
 
@@ -2979,14 +3034,25 @@ export default function Greenhouse3D({
               />
             )}
 
-            <CanopyAndPlants
-              canopyOffsetX={canopyOffsetX}
-              canopyOffsetZ={canopyOffsetZ}
-              canopyLength={canopyLength}
-              canopyWidth={canopyWidth}
-              plantHeight={plantHeight}
-              plantGrowth={plantGrowth}
-            />
+            {benched && (
+              <Benches
+                rects={benchLayout!.benchRects}
+                heightFt={benchHeightFt}
+                benchType={benchType}
+              />
+            )}
+
+            {/* In benched mode the canopy + plants sit on the bench tops. */}
+            <group position={[0, benched ? benchHeightFt : 0, 0]}>
+              <CanopyAndPlants
+                canopyOffsetX={canopyOffsetX}
+                canopyOffsetZ={canopyOffsetZ}
+                canopyLength={canopyLength}
+                canopyWidth={canopyWidth}
+                plantHeight={plantHeight}
+                plantGrowth={plantGrowth}
+              />
+            </group>
 
             {/* Supplemental lighting only exists under a greenhouse roof. */}
             {showEnvelope && (

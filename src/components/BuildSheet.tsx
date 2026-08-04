@@ -58,6 +58,7 @@ export default function BuildSheet() {
   const { inputs, climate, customFixtures } = useScenario();
   const all = useAllFixtures();
   const d = useDerived();
+  const benchLayout = d.benchLayout;
 
   // Compute the optimal fixture (same logic as Optimized System tab)
   const fixtureCosts: FixtureCostRow[] = Object.values(all).map((f) => {
@@ -631,6 +632,10 @@ export default function BuildSheet() {
           fixtureCount={optFixtureCount}
           gridSpacingFt={optGridSpacing}
           fixtureLabel={optimal?.fixture.label ?? d.fixture.label}
+          benchLayout={benchLayout}
+          benchType={inputs.benchType}
+          houseLengthFt={inputs.greenhouseLengthFt}
+          houseWidthFt={inputs.greenhouseWidthFt}
         />
       </Section>
 
@@ -859,6 +864,9 @@ function Live3DScene(props: {
           fixtureWatts={activeFixture.wattsPerFixture}
           fixtureType={activeFixture.type}
           fixtureLabel={activeFixture.label}
+          benchLayout={derived.benchLayout}
+          benchHeightFt={inputs.benchHeightFt}
+          benchType={inputs.benchType}
         />
         {props.syncToSim && <Greenhouse3DHud ridgeAzimuthDeg={ridgeAzimuth} />}
       </div>
