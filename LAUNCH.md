@@ -1,5 +1,15 @@
 # Launch playbook — Cottage Grove greenhouse model
 
+> ⚠️ **SUPERSEDED IN PART — 2026-07-12 closed-source pivot.** The product is now
+> **proprietary and hosted**: released free / low-cost to *use*, but the source
+> code is **not** open-sourced or given away. Everything below that assumes
+> "give away the repo / MIT / view-the-code" (the Hormozi *code* give-away, the
+> GitHub-repo CTAs, "releasing it free, MIT license") is retired. What still
+> holds: lead with the *artifact* (the live model, the 60-sec screen recording),
+> the bibliography-as-second-asset play, the MIT-cert framing, and the
+> institution-tagging mechanics. The give-away is now the **free hosted tool**,
+> not the code. Rewrite the copy accordingly before executing this playbook.
+
 A pragmatic launch sequence built on two ideas:
 
 1. **Hormozi's give-away-value play actually works** — but only when the value is _legible_ at a glance. A 9k-LOC repo isn't legible. A 60-second screen recording of the live model running a full year is. Lead with the artifact people can _feel_, not the codebase they have to read.

@@ -28,8 +28,6 @@ const PRICES: Record<string, Price> = {
   "gpt-5.6-sol": { in: 5, out: 30 },
   "gpt-5.6-terra": { in: 2.5, out: 15 },
   "gpt-5.6-luna": { in: 1, out: 6 },
-  // xAI
-  "grok-4.5": { in: 2, out: 6 },
 };
 
 // Model ids treated as free (Gemini free tier, Groq free, local Ollama,
@@ -50,14 +48,29 @@ export interface CostEstimate {
   outputTokens: number;
 }
 
+// Anthropic prompt-caching rate multipliers vs. the base input rate.
+const CACHE_WRITE_MULT = 1.25; // writing the cache costs a 25% premium once
+const CACHE_READ_MULT = 0.1; // reading it back is ~10% of the input rate
+
 export function estimateCost(usage: ChatUsage | undefined): CostEstimate | null {
   if (!usage) return null;
   const { inputTokens, outputTokens, model } = usage;
+  const cacheCreation = usage.cacheCreationTokens ?? 0;
+  const cacheRead = usage.cacheReadTokens ?? 0;
   if (FREE_PATTERNS.some((re) => re.test(model))) {
     return { usd: 0, isFree: true, inputTokens, outputTokens };
   }
   const p = PRICES[model];
-  const usd = p ? (inputTokens * p.in + outputTokens * p.out) / 1_000_000 : null;
+  // input_tokens already EXCLUDES cached tokens; add cache writes (1.25×) and
+  // reads (0.10×) at the model's input rate so the meter reflects real caching
+  // economics instead of over/under-counting.
+  const usd = p
+    ? (inputTokens * p.in +
+        cacheCreation * p.in * CACHE_WRITE_MULT +
+        cacheRead * p.in * CACHE_READ_MULT +
+        outputTokens * p.out) /
+      1_000_000
+    : null;
   return { usd, isFree: false, inputTokens, outputTokens };
 }
 

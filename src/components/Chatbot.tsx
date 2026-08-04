@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   chatTurn,
   isProviderKeyValid,
@@ -8,6 +14,7 @@ import {
   type ProviderId,
 } from "../services/chatbotService";
 import { PROVIDER_ORDER } from "../services/providers";
+import { WRITE_TOOL_NAMES } from "../services/chatbotTools";
 import { estimateCost, formatCost } from "../services/pricing";
 import { useScenario } from "../context/ScenarioContext";
 import { useDerived } from "../context/useDerived";
@@ -19,6 +26,15 @@ import { DAYS_IN_MONTH } from "../utils/formatting";
 import AgentAvatar from "./AgentAvatar";
 import { AGENT_NAME } from "./AgentObservations";
 import { runAuditSwarm, AUDIT_PASSES, AuditStoppedError } from "../services/agentSwarm";
+import { assessCompleteness, recommendLighting } from "../services/scenarioAdvisor";
+import { cropTargets } from "../data/cropTargets";
+import {
+  defaultSite,
+  defaultGreenhouseGeometry,
+  defaultEnvelope,
+  defaultElectricalService,
+  defaultEconomics,
+} from "../data/greenhouseDefaults";
 
 const KEY_STORAGE_PREFIX = "greenhouse-model:apiKey:";
 const KEY_SESSION_PREFIX = "greenhouse-model:apiKey:session:";
@@ -116,6 +132,215 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+// ── Sage dock geometry: draggable + resizable floating panel (ported from FM
+//    Command's Amelia dock). Rect persists to localStorage so the panel stays
+//    where the user left it; in this single-page app the Chatbot never
+//    unmounts, so it also "follows" across dashboard tabs for free. ──
+const SAGE_RECT_KEY = "greenhouse-model:sageDockRect";
+const SAGE_MIN_W = 340;
+const SAGE_MIN_H = 380;
+const SAGE_DEFAULT_W = 460;
+const SAGE_DEFAULT_H = 640;
+type SageRect = { x: number; y: number; w: number; h: number };
+type SageDragMode = "move" | "e" | "w" | "s" | "n" | "se" | "sw" | "ne" | "nw";
+
+const sageClamp = (v: number, lo: number, hi: number) =>
+  Math.min(Math.max(v, lo), Math.max(lo, hi));
+
+function sageViewport() {
+  return {
+    vw: typeof window !== "undefined" ? window.innerWidth : 1280,
+    vh: typeof window !== "undefined" ? window.innerHeight : 800,
+  };
+}
+
+function sageDefaultRect(): SageRect {
+  const { vw, vh } = sageViewport();
+  const w = Math.min(SAGE_DEFAULT_W, vw - 24);
+  const h = Math.min(SAGE_DEFAULT_H, vh - 24);
+  return { x: Math.max(12, vw - w - 16), y: Math.max(12, vh - h - 16), w, h };
+}
+
+function sageFitRect(r: SageRect): SageRect {
+  const { vw, vh } = sageViewport();
+  const w = sageClamp(r.w, SAGE_MIN_W, vw - 16);
+  const h = sageClamp(r.h, SAGE_MIN_H, vh - 16);
+  return {
+    w,
+    h,
+    x: sageClamp(r.x, 8, vw - w - 8),
+    y: sageClamp(r.y, 8, vh - h - 8),
+  };
+}
+
+function sageLoadRect(): SageRect {
+  try {
+    const raw = localStorage.getItem(SAGE_RECT_KEY);
+    if (raw) {
+      const r = JSON.parse(raw) as SageRect;
+      if ([r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n))) {
+        return sageFitRect(r);
+      }
+    }
+  } catch {
+    /* corrupt/blocked storage — fall back to the default anchor */
+  }
+  return sageDefaultRect();
+}
+
+function sagePersistRect(r: SageRect) {
+  try {
+    localStorage.setItem(SAGE_RECT_KEY, JSON.stringify(r));
+  } catch {
+    /* ignore */
+  }
+}
+
+// ── Sage trace panel ──────────────────────────────────────────────────────
+// Graph-of-Trace for a linear agent: Sage's roundtrips run in sequence, so the
+// honest render is an ordered step list (NOT a fabricated DAG with invented
+// parent/sibling edges). Each step = tool name + a read/write badge + the
+// input AND the output artifact, both behind progressive disclosure. This is
+// the transparency half of "approval-with-context": you can see exactly what
+// Sage did, with what params, and what came back — turning the black box into
+// an inspectable work log.
+
+function safeJson(v: unknown): string {
+  if (v === undefined) return "";
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+/** One input/output row: short values inline, long ones behind a disclosure. */
+function TraceKV({ label, value }: { label: string; value: unknown }) {
+  const json = safeJson(value);
+  if (json === "" || json === "{}" || json === "null") return null;
+  const long = json.length > 120;
+  return (
+    <div className="mt-1 flex gap-1.5">
+      <span className="shrink-0 pt-px text-[10px] uppercase tracking-wide text-ink-400">{label}</span>
+      {long ? (
+        <details className="min-w-0">
+          <summary className="cursor-pointer truncate font-mono text-ink-600">
+            {json.slice(0, 120)}…
+          </summary>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border border-ink-200 bg-ink-100 p-1.5 font-mono text-[11px] text-ink-800">
+            {json}
+          </pre>
+        </details>
+      ) : (
+        <span className="min-w-0 break-all font-mono text-ink-600">{json}</span>
+      )}
+    </div>
+  );
+}
+
+function ToolTracePanel({ trace }: { trace: NonNullable<ChatMessage["toolTrace"]> }) {
+  const writes = trace.filter((t) => WRITE_TOOL_NAMES.has(t.name)).length;
+  return (
+    <details className="mt-1.5 text-xs">
+      <summary className="cursor-pointer select-none text-ink-500 hover:text-ink-700">
+        Trace · {trace.length} step{trace.length === 1 ? "" : "s"}
+        {writes > 0 && (
+          <span className="ml-1 text-leaf-600">
+            · {writes} write{writes === 1 ? "" : "s"}
+          </span>
+        )}
+      </summary>
+      <ol className="mt-1 space-y-1">
+        {trace.map((t, j) => {
+          const isWrite = WRITE_TOOL_NAMES.has(t.name);
+          return (
+            <li key={j} className="rounded border border-ink-200 bg-white/60 p-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="tabular-nums text-ink-400">{j + 1}</span>
+                <span
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${isWrite ? "bg-leaf-500" : "bg-ink-400"}`}
+                  aria-hidden
+                />
+                <span className="font-mono font-semibold text-ink-800">{t.name}</span>
+                <span
+                  className={`ml-auto rounded px-1 text-[10px] font-semibold uppercase tracking-wide ${
+                    isWrite ? "bg-leaf-500/15 text-leaf-700" : "bg-ink-200 text-ink-500"
+                  }`}
+                >
+                  {isWrite ? "write" : "read"}
+                </span>
+              </div>
+              <TraceKV label="in" value={t.input} />
+              <TraceKV label="out" value={t.output} />
+            </li>
+          );
+        })}
+      </ol>
+    </details>
+  );
+}
+
+// ── Explain-back on writes ────────────────────────────────────────────────
+// The doc's "approval gate = explain-back": don't offer a bare Undo, show
+// exactly WHAT changed. Scenario edits are reversible, so we keep the
+// optimistic-apply + Undo model (a blocking gate would be friction here) —
+// but the summary is derived straight from the write tools' own inputs, so
+// it's honest ("what Sage set"), never invented.
+
+const FIELD_LABELS: Record<string, string> = {
+  greenhouseLengthFt: "length",
+  greenhouseWidthFt: "width",
+  eaveHeightFt: "eave",
+  peakHeightFt: "peak",
+  canopyAreaSqFt: "canopy",
+  fixtureId: "fixture",
+  fixtureCount: "fixture count",
+  gridSpacingFt: "grid spacing",
+  baseTransmissionPct: "glazing transmission",
+  envelopeUValueBTUhrFtF: "glazing U-value",
+  radiantHeatingCapacityBTUhr: "heating capacity",
+  ventilationCFM: "ventilation",
+  siteAddress: "location",
+};
+
+function humanizeKey(k: string): string {
+  if (FIELD_LABELS[k]) return FIELD_LABELS[k];
+  // Fallback: de-camelCase, drop unit suffixes, lowercase.
+  return k
+    .replace(/([A-Z])/g, " $1")
+    .replace(/\b(Ft|Sq Ft|Pct|BTUhr|CFM)\b/gi, "")
+    .trim()
+    .toLowerCase();
+}
+
+function flattenChanges(obj: Record<string, unknown>, out: string[]) {
+  for (const [k, v] of Object.entries(obj)) {
+    if (v != null && typeof v === "object" && !Array.isArray(v)) {
+      flattenChanges(v as Record<string, unknown>, out);
+    } else if (v != null) {
+      out.push(`${humanizeKey(k)} → ${Array.isArray(v) ? v.join("/") : v}`);
+    }
+  }
+}
+
+/** Human-readable summary of a turn's writes, built from the tool inputs. */
+function describeWrites(trace: NonNullable<ChatMessage["toolTrace"]>): string {
+  const changes: string[] = [];
+  for (const t of trace) {
+    if (!WRITE_TOOL_NAMES.has(t.name)) continue;
+    if (t.name === "add_custom_fixture") {
+      changes.push("added a fixture");
+      continue;
+    }
+    if (t.input && typeof t.input === "object") {
+      flattenChanges(t.input as Record<string, unknown>, changes);
+    }
+  }
+  if (changes.length === 0) return "Sage updated the scenario";
+  const shown = changes.slice(0, 3).join(", ");
+  return `Set ${shown}${changes.length > 3 ? ` +${changes.length - 3} more` : ""}`;
+}
+
 export default function Chatbot() {
   const { inputs, setInputs, customFixtures, addCustomFixture } = useScenario();
   const derived = useDerived();
@@ -141,9 +366,84 @@ export default function Chatbot() {
   // Live-streamed assistant text for the in-flight turn (Anthropic streams; other
   // providers leave this null and show the "Thinking…" spinner until done).
   const [streaming, setStreaming] = useState<string | null>(null);
+  // Name of the tool currently executing — live activity during multi-tool
+  // turns so long ingests don't look frozen.
+  const [toolActivity, setToolActivity] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Hybrid confirm UX. Proposals (recommend_* tools) never mutate — the top
+  // option surfaces here as an Apply chip. Direct writes apply immediately but
+  // stash a pre-turn snapshot here so one click reverses the whole turn.
+  const [pendingProposal, setPendingProposal] = useState<{
+    label: string;
+    patch: Partial<typeof inputs>;
+  } | null>(null);
+  const [undoSnapshot, setUndoSnapshot] = useState<typeof inputs | null>(null);
+  // Human-readable "what changed" for the Undo affordance (explain-back).
+  const [undoSummary, setUndoSummary] = useState<string | null>(null);
+  // Same-turn write overlay. React state doesn't update mid-turn, so tools that
+  // run AFTER a write in the same chatTurn (the prescribed apply→assess→recommend
+  // flow) would read stale pre-write inputs — assess would call just-applied
+  // dims "missing" and recommend would size the DEFAULT greenhouse. Write tools
+  // record their patches here; read tools see inputs+overlay. Cleared per send.
+  // ponytail: overlay skips ScenarioContext's clamp/auto-derive — good enough
+  // for field comparisons + sizing args; derived (solar) still lags one turn
+  // and get_derived_outputs says so explicitly.
+  const turnPatchRef = useRef<Partial<typeof inputs>>({});
+  const scenarioNow = () => ({ ...inputs, ...turnPatchRef.current });
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Sage dock rect (draggable header + 8 resize handles), persisted per session.
+  const [dockRect, setDockRect] = useState<SageRect>(() => sageLoadRect());
+  const dockRectRef = useRef(dockRect);
+  dockRectRef.current = dockRect;
+  const [dockDragging, setDockDragging] = useState(false);
+  // Threshold-based start: a plain click on a header button never triggers a
+  // drag (and isn't preventDefault'd), so header controls keep working.
+  const startDockDrag =
+    (mode: SageDragMode) => (e: ReactPointerEvent) => {
+      const sx = e.clientX;
+      const sy = e.clientY;
+      const r0 = dockRectRef.current;
+      let started = false;
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - sx;
+        const dy = ev.clientY - sy;
+        if (!started) {
+          if (Math.abs(dx) + Math.abs(dy) < 4) return;
+          started = true;
+          setDockDragging(true);
+        }
+        const { vw, vh } = sageViewport();
+        let { x, y, w, h } = r0;
+        if (mode === "move") {
+          x = sageClamp(r0.x + dx, 0, vw - r0.w);
+          y = sageClamp(r0.y + dy, 0, vh - r0.h);
+        } else {
+          if (mode.includes("e")) w = sageClamp(r0.w + dx, SAGE_MIN_W, vw - r0.x);
+          if (mode.includes("s")) h = sageClamp(r0.h + dy, SAGE_MIN_H, vh - r0.y);
+          if (mode.includes("w")) {
+            w = sageClamp(r0.w - dx, SAGE_MIN_W, r0.x + r0.w);
+            x = r0.x + (r0.w - w);
+          }
+          if (mode.includes("n")) {
+            h = sageClamp(r0.h - dy, SAGE_MIN_H, r0.y + r0.h);
+            y = r0.y + (r0.h - h);
+          }
+        }
+        setDockRect({ x, y, w, h });
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        if (started) {
+          setDockDragging(false);
+          sagePersistRect(dockRectRef.current);
+        }
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    };
   const fileInputRef = useRef<HTMLInputElement>(null);
   // In-flight request controllers, so the user can Stop a hung/slow call. The
   // provider also enforces a hard per-request timeout (abortTimeout) so a
@@ -165,7 +465,12 @@ export default function Chatbot() {
     let anyUnpriced = false;
     for (const m of history) {
       if (!m.usage) continue;
-      inputTokens += m.usage.inputTokens;
+      // Include cache tokens so the token display can't disagree with the USD
+      // (estimateCost bills cache write/read; inputTokens excludes them).
+      inputTokens +=
+        m.usage.inputTokens +
+        (m.usage.cacheCreationTokens ?? 0) +
+        (m.usage.cacheReadTokens ?? 0);
       outputTokens += m.usage.outputTokens;
       const est = estimateCost(m.usage);
       if (est && est.usd === null && !est.isFree) anyUnpriced = true;
@@ -365,9 +670,15 @@ export default function Chatbot() {
   const toolHandler = async (name: string, input: Record<string, unknown>) => {
     switch (name) {
       case "get_scenario":
-        return inputs;
+        return scenarioNow();
       case "get_derived_outputs": {
         return {
+          ...(Object.keys(turnPatchRef.current).length > 0
+            ? {
+                warning:
+                  "Scenario inputs changed earlier THIS turn; these derived outputs reflect the PRE-change state. Re-check next turn for post-change numbers.",
+              }
+            : {}),
           peakInstalledKW: derived.peakInstalledKW,
           peakFixtureCount: derived.peakFixtureCount,
           peakWattsPerSqFt: derived.peakWattsPerSqFt,
@@ -402,19 +713,43 @@ export default function Chatbot() {
       case "set_scenario": {
         const rawPatches = (input.patches ?? {}) as Record<string, unknown>;
         const merged: Record<string, unknown> = { ...rawPatches };
-        const envelopePatch = rawPatches.envelope;
-        if (
-          envelopePatch &&
-          typeof envelopePatch === "object" &&
-          !Array.isArray(envelopePatch)
-        ) {
-          merged.envelope = {
-            ...(inputs.envelope as unknown as Record<string, unknown>),
-            ...(envelopePatch as Record<string, unknown>),
-          };
+        // Registry-id fields must reference real entries — a model-invented id
+        // (found live: GPT-5 wrote a made-up cropTargetId) would persist into
+        // inputs and crash every derived-output consumer. Reject, don't apply.
+        const rejected: Record<string, string> = {};
+        // Object.hasOwn (not `cropTargets[id]`): a bare index lets id "__proto__"
+        // resolve to Object.prototype (truthy) and slip past the guard.
+        if ("cropTargetId" in merged && !Object.hasOwn(cropTargets, String(merged.cropTargetId))) {
+          rejected.cropTargetId = `unknown id "${merged.cropTargetId}" — valid: ${Object.keys(cropTargets).join(", ")}`;
+          delete merged.cropTargetId;
+        }
+        if ("fixtureId" in merged && !Object.hasOwn(allFixtures, String(merged.fixtureId))) {
+          rejected.fixtureId = `unknown id "${merged.fixtureId}" — use list_fixtures for valid ids`;
+          delete merged.fixtureId;
+        }
+        // Deep-merge ANY nested-object patch (envelope, benchLayout, …) onto the
+        // current value. A partial patch like {benchLayout:{benchWidthFt:5}} must
+        // not drop sibling fields — the clamp would then backfill them from
+        // defaults (e.g. re-disable benches). This is the shallow-merge class
+        // that already bit `envelope` once; generalizing it fixes every nested
+        // field, not just the two we know about.
+        const cur = inputs as unknown as Record<string, unknown>;
+        for (const [key, val] of Object.entries(rawPatches)) {
+          if (
+            val && typeof val === "object" && !Array.isArray(val) &&
+            cur[key] && typeof cur[key] === "object" && !Array.isArray(cur[key])
+          ) {
+            merged[key] = {
+              ...(cur[key] as Record<string, unknown>),
+              ...(val as Record<string, unknown>),
+            };
+          }
         }
         setInputs(merged as Partial<typeof inputs>);
-        return { applied: merged };
+        Object.assign(turnPatchRef.current, merged as Partial<typeof inputs>);
+        return Object.keys(rejected).length
+          ? { applied: merged, rejected }
+          : { applied: merged };
       }
       case "list_fixtures":
         return Object.values(allFixtures).map((f) => ({
@@ -435,7 +770,90 @@ export default function Chatbot() {
         const id = String(input.fixtureId ?? "");
         if (!allFixtures[id]) return { error: `Fixture id ${id} not found` };
         setInputs({ fixtureId: id });
+        turnPatchRef.current.fixtureId = id as typeof inputs.fixtureId;
         return { activeFixture: id };
+      }
+      case "assess_completeness": {
+        const s = scenarioNow();
+        return assessCompleteness(
+          {
+            latitude: s.latitude,
+            longitude: s.longitude,
+            greenhouseLengthFt: s.greenhouseLengthFt,
+            greenhouseWidthFt: s.greenhouseWidthFt,
+            eaveHeightFt: s.eaveHeightFt,
+            peakHeightFt: s.peakHeightFt,
+            canopyAreaSqFt: s.canopyAreaSqFt,
+            envelopeBaseTransmissionPct: s.envelope.baseTransmissionPct,
+            fixtureId: s.fixtureId,
+            fixtureType: allFixtures[s.fixtureId]?.type,
+            flowerPhotoperiodHours: s.flowerPhotoperiodHours,
+            co2Enabled: s.co2Enabled,
+            ventilationMode: s.ventilationMode,
+            radiantHeatingEnabled: s.radiantHeatingEnabled,
+            thermalScreenEnabled: s.thermalScreenEnabled,
+            mechanicalCoolingEnabled: s.mechanicalCoolingEnabled,
+            serviceVoltagePrimary: s.serviceVoltagePrimary,
+            branchCircuitAmps: s.branchCircuitAmps,
+            electricityRatePerKwh: s.electricityRatePerKwh,
+          },
+          {
+            latitude: defaultSite.latitude,
+            longitude: defaultSite.longitude,
+            greenhouseLengthFt: defaultGreenhouseGeometry.greenhouseLengthFt,
+            greenhouseWidthFt: defaultGreenhouseGeometry.greenhouseWidthFt,
+            eaveHeightFt: defaultGreenhouseGeometry.eaveHeightFt,
+            peakHeightFt: defaultGreenhouseGeometry.peakHeightFt,
+            envelopeBaseTransmissionPct: defaultEnvelope.baseTransmissionPct,
+            fixtureId: "ledHighEfficiency",
+            serviceVoltagePrimary: defaultElectricalService.serviceVoltages[1] ?? 240,
+            branchCircuitAmps: defaultElectricalService.branchCircuitAmps,
+            electricityRatePerKwh: defaultEconomics.electricityRatePerKwh,
+          },
+        );
+      }
+      case "recommend_lighting": {
+        const ids = input.fixtureIds as string[] | undefined;
+        const fixtures = ids?.length
+          ? ids.map((id) => allFixtures[id]).filter(Boolean)
+          : Object.values(allFixtures).filter((f) => f.type === "LED");
+        if (fixtures.length === 0) return { error: "No matching fixtures." };
+        const s = scenarioNow();
+        const rec = recommendLighting({
+          targetPPFD: input.targetPPFD != null ? Number(input.targetPPFD) : undefined,
+          targetDLI: input.targetDLI != null ? Number(input.targetDLI) : undefined,
+          photoperiodHours: s.flowerPhotoperiodHours,
+          canopyAreaSqFt: s.canopyAreaSqFt,
+          electricityRatePerKwh: s.electricityRatePerKwh,
+          monthlyFlowerWindowDLI: derived.months.map((m) => m.flowerWindowDLI),
+          fixtures,
+        });
+        if (!("error" in rec) && rec.options[0]) {
+          const top = rec.options[0];
+          // Surface the top option as an Apply chip — proposal only, no mutation.
+          // The patch carries the DLI target too: applying just the fixture would
+          // leave the sim sizing to its old target, breaking the label's promise.
+          setPendingProposal({
+            label: `${top.fixtureCount}× ${top.label} → ~${rec.targetPPFD} PPFD / DLI ${rec.targetDLI} (+${top.addedCoolingTons} tons heat)`,
+            patch: {
+              fixtureId: top.fixtureId as typeof inputs.fixtureId,
+              customTargetDLIOverride: rec.targetDLI,
+            },
+          });
+        }
+        // Solar (derived) can't recompute mid-turn: if this turn already moved
+        // the site or glazing, say so instead of implying the sizing saw it.
+        const overlayKeys = Object.keys(turnPatchRef.current);
+        const solarStale = ["latitude", "longitude", "envelope"].some((k) =>
+          overlayKeys.includes(k),
+        );
+        return solarStale && !("error" in rec)
+          ? {
+              ...rec,
+              warning:
+                "Site/glazing changed earlier this turn; the solar curve used for sizing reflects the PRE-change site. Re-run next turn to size against the updated site.",
+            }
+          : rec;
       }
       case "add_custom_fixture": {
         const vendor = String(input.vendor);
@@ -463,9 +881,14 @@ export default function Chatbot() {
           source: "custom",
           notes: input.notes ? String(input.notes) : undefined,
         };
-        addCustomFixture(fixture);
+        // Idempotent by deterministic id: a re-run of this turn (e.g. the
+        // rate-limit fallback replaying it on Gemini) must not append a
+        // duplicate — select the existing fixture instead of adding twice.
+        const existed = !!allFixtures[id];
+        if (!existed) addCustomFixture(fixture);
         setInputs({ fixtureId: id });
-        return { added: id };
+        turnPatchRef.current.fixtureId = id as typeof inputs.fixtureId;
+        return existed ? { selected: id, note: "fixture already existed" } : { added: id };
       }
       case "compare_fixtures": {
         const ids = (input.fixtureIds as string[]) ?? [];
@@ -597,24 +1020,68 @@ export default function Chatbot() {
     setHistory((h) => [...h, userMessage]);
     setBusy(true);
     setStreaming(null);
+    setPendingProposal(null); // a new turn supersedes any prior proposal
+    turnPatchRef.current = {}; // fresh same-turn write overlay
+    const inputsBeforeTurn = inputs; // snapshot for one-click Undo of this turn's writes
     const ctrl = new AbortController();
     chatAbortRef.current = ctrl;
     try {
+      // Auto-fallback: if the primary rate-limits (esp. Anthropic's 30k-tok/min
+      // on a big spec sheet), retry once on Gemini when a Gemini key is saved —
+      // free, 1M context, native PDF. Skipped if already on Gemini or no key.
+      const geminiKey = storedKeyFor("gemini");
+      const fallback =
+        providerId !== "gemini" && isProviderKeyValid("gemini", geminiKey)
+          ? {
+              providerId: "gemini" as ProviderId,
+              apiKey: geminiKey,
+              model: PROVIDER_CONFIGS.gemini.defaultModel,
+            }
+          : undefined;
+      let fellBackTo: ProviderId | null = null;
       const reply = await chatTurn({
         providerId,
         apiKey,
         model,
         history,
         userMessage: userMsg,
-        attachments: sentAttachments,
+        // Pass the full set; chatTurn re-filters per provider, so a PDF the
+        // primary can't take still reaches a fallback (Gemini) that can.
+        // sentAttachments above only drives the primary's UI drop-note + guards.
+        attachments,
         toolHandler,
         signal: ctrl.signal,
+        fallback,
+        onFallback: (_from, to) => {
+          fellBackTo = to;
+          setStreaming(null); // drop any primary preamble before the retry
+          setToolActivity(null);
+        },
         onDelta: (delta) => setStreaming((s) => (s ?? "") + delta),
         // Each roundtrip starts a fresh live buffer — a tool-use turn's preamble
-        // is cleared instead of accumulating ahead of the final answer.
-        onRoundtripStart: () => setStreaming(null),
+        // is cleared instead of accumulating ahead of the final answer. Clearing
+        // toolActivity too means the indicator only shows while tools are the
+        // latest thing happening.
+        onRoundtripStart: () => {
+          setStreaming(null);
+          setToolActivity(null);
+        },
+        onToolCall: (name) => setToolActivity(name),
       });
+      if (fellBackTo) {
+        reply.content =
+          `_${cfg.label} was rate-limited — answered with ${PROVIDER_CONFIGS[fellBackTo as ProviderId].label} instead._\n\n` +
+          reply.content;
+      }
       setHistory((h) => [...h, reply]);
+      // Hybrid confirm: direct writes applied immediately — offer one-click Undo
+      // back to the pre-turn scenario. (set_simulation_time only moves the sim
+      // clock, not inputs, so it doesn't arm Undo.)
+      const turnTrace = reply.toolTrace ?? [];
+      if (turnTrace.some((t) => WRITE_TOOL_NAMES.has(t.name))) {
+        setUndoSnapshot(inputsBeforeTurn);
+        setUndoSummary(describeWrites(turnTrace));
+      }
     } catch (err) {
       const msg = (err as Error).message;
       setError(msg);
@@ -625,6 +1092,7 @@ export default function Chatbot() {
     } finally {
       chatAbortRef.current = null;
       setStreaming(null);
+      setToolActivity(null);
       setBusy(false);
     }
   };
@@ -764,7 +1232,7 @@ export default function Chatbot() {
           </span>
           {obs.active > 0 && (
             <span
-              className={`ml-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white ${
+              className={`ml-0.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-bold text-white ${
                 obs.topSeverity === "warn" ? "bg-warn-500" : "bg-leaf-500"
               }`}
             >
@@ -774,13 +1242,37 @@ export default function Chatbot() {
         </button>
       )}
       {open && (
-        <div className="fixed bottom-4 right-4 z-50 flex h-[640px] w-[460px] flex-col rounded-xl border border-ink-300/40 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-ink-300/40 px-3 py-2">
+        <>
+          {dockDragging && (
+            <div className="fixed inset-0 z-[55]" style={{ cursor: "grabbing" }} />
+          )}
+          <div
+            className="fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-ink-300/40 bg-white shadow-2xl"
+            style={{
+              left: dockRect.x,
+              top: dockRect.y,
+              width: dockRect.w,
+              height: dockRect.h,
+            }}
+          >
+            {/* resize handles — invisible hit strips (edges) + corners */}
+            <div onPointerDown={startDockDrag("n")} className="absolute inset-x-3 top-0 z-10 h-1.5 cursor-ns-resize" />
+            <div onPointerDown={startDockDrag("s")} className="absolute inset-x-3 bottom-0 z-10 h-1.5 cursor-ns-resize" />
+            <div onPointerDown={startDockDrag("w")} className="absolute inset-y-3 left-0 z-10 w-1.5 cursor-ew-resize" />
+            <div onPointerDown={startDockDrag("e")} className="absolute inset-y-3 right-0 z-10 w-1.5 cursor-ew-resize" />
+            <div onPointerDown={startDockDrag("nw")} className="absolute left-0 top-0 z-20 h-3 w-3 cursor-nwse-resize" />
+            <div onPointerDown={startDockDrag("ne")} className="absolute right-0 top-0 z-20 h-3 w-3 cursor-nesw-resize" />
+            <div onPointerDown={startDockDrag("sw")} className="absolute bottom-0 left-0 z-20 h-3 w-3 cursor-nesw-resize" />
+            <div onPointerDown={startDockDrag("se")} className="absolute bottom-0 right-0 z-20 h-3 w-3 cursor-nwse-resize" />
+            <div
+              onPointerDown={startDockDrag("move")}
+              className="flex cursor-move select-none items-center justify-between border-b border-ink-300/40 px-3 py-2"
+            >
             <div className="flex items-center gap-2">
               <AgentAvatar state={busy || auditing ? "thinking" : "idle"} size={30} />
               <div>
               <div className="text-sm font-semibold">{AGENT_NAME} · cultivation agent</div>
-              <div className="text-[10px] text-ink-500">
+              <div className="text-xs text-ink-500">
                 {cfg.label} · {model}
                 {apiKey ? (
                   <>
@@ -809,7 +1301,7 @@ export default function Chatbot() {
               </div>
               {sessionMeter.inputTokens + sessionMeter.outputTokens > 0 && (
                 <div
-                  className="text-[10px] text-ink-400"
+                  className="text-xs text-ink-400"
                   title="Session total — estimated cost, see pricing.ts"
                 >
                   session {fmtTokens(sessionMeter.inputTokens + sessionMeter.outputTokens)} tok
@@ -832,7 +1324,7 @@ export default function Chatbot() {
               <select
                 value={providerId}
                 onChange={(e) => switchProvider(e.target.value as ProviderId)}
-                className="rounded border border-ink-300 px-1 py-0.5 text-[10px]"
+                className="rounded border border-ink-300 px-1 py-0.5 text-xs"
                 title="Provider"
               >
                 {PROVIDER_ORDER.map((id) => (
@@ -844,7 +1336,7 @@ export default function Chatbot() {
               <select
                 value={model}
                 onChange={(e) => saveModel(e.target.value)}
-                className="rounded border border-ink-300 px-1 py-0.5 text-[10px]"
+                className="rounded border border-ink-300 px-1 py-0.5 text-xs"
                 title="Model"
               >
                 {cfg.models.map((o) => (
@@ -874,10 +1366,10 @@ export default function Chatbot() {
                 </span>
               </div>
               {cfg.note && (
-                <p className="mb-2 text-[11px] leading-snug text-ink-700">{cfg.note}</p>
+                <p className="mb-2 text-xs leading-snug text-ink-700">{cfg.note}</p>
               )}
               {cfg.requiresKey && (
-                <p className="text-[11px] leading-snug text-ink-700">
+                <p className="text-xs leading-snug text-ink-700">
                   The chatbot calls {cfg.label} directly from your browser using
                   a key you provide. The key is stored in this browser's{" "}
                   <span className="font-semibold">
@@ -888,7 +1380,7 @@ export default function Chatbot() {
                 </p>
               )}
               {cfg.requiresKey && (
-                <label className="mt-2 flex items-center gap-2 text-[11px] text-ink-700">
+                <label className="mt-2 flex items-center gap-2 text-xs text-ink-700">
                   <input
                     type="checkbox"
                     checked={sessionOnly}
@@ -901,7 +1393,7 @@ export default function Chatbot() {
                 </label>
               )}
               {onPublicHost && cfg.requiresKey && (
-                <div className="mt-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-[10.5px] leading-snug text-warn-500">
+                <div className="mt-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-xs leading-snug text-warn-500">
                   <strong>You're on a public hostname ({window.location.hostname}).</strong>{" "}
                   Pasting a key here means it lives in this browser's
                   localStorage on a publicly-visible page. Use a strict
@@ -948,12 +1440,12 @@ export default function Chatbot() {
                 </form>
               )}
               {keyDraft.trim() && !isProviderKeyValid(providerId, keyDraft.trim()) && (
-                <p className="mt-1 text-[10.5px] text-warn-500">
+                <p className="mt-1 text-xs text-warn-500">
                   ⚠ That doesn't match the {cfg.label} key format
                   {cfg.keyHint ? ` (${cfg.keyHint})` : ""}.
                 </p>
               )}
-              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-ink-300/30 pt-2 text-[10px] text-ink-500">
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-ink-300/30 pt-2 text-xs text-ink-500">
                 {cfg.keyUrl && (
                   <a
                     href={cfg.keyUrl}
@@ -980,14 +1472,14 @@ export default function Chatbot() {
             {history.length === 0 && (
               <div className="rounded-lg bg-ink-50 p-3 text-xs text-ink-700">
                 Ask anything about the model. I can change scenario inputs, swap fixtures, add new vendor fixtures, run side-by-side comparisons, ingest spec sheets, and reason about energy / amps / HVAC / climate dynamics.
-                <div className="mt-2 space-y-1 text-[11px] text-ink-500">
+                <div className="mt-2 space-y-1 text-xs text-ink-500">
                   <div>📎 <strong>Drop a greenhouse spec sheet (PDF/image)</strong> — I'll extract dimensions, glazing, U-value, heating capacity, electrical service, and update the model.</div>
                   <div>📎 <strong>Drop a fixture datasheet</strong> — I'll add it to the library with vendor specs.</div>
                   <div>· "What if I swap to the Gavita Pro RS 2400e? Compare to current."</div>
                   <div>· "Why are vents closed at 4pm but open at 2pm?"</div>
                   <div>· "Bump CO₂ to 1200 ppm and re-check yield projection."</div>
                 </div>
-                <div className="mt-2 rounded border border-leaf-500/30 bg-leaf-50/40 p-2 text-[10.5px] text-ink-700">
+                <div className="mt-2 rounded border border-leaf-500/30 bg-leaf-50/40 p-2 text-xs text-ink-700">
                   <strong>Hitting rate limits or no Anthropic key?</strong>{" "}
                   Switch the provider dropdown above to{" "}
                   <span className="font-mono">Google Gemini</span> — free
@@ -1007,21 +1499,10 @@ export default function Chatbot() {
               >
                 <div className="whitespace-pre-wrap">{m.content}</div>
                 {m.toolTrace && m.toolTrace.length > 0 && (
-                  <details className="mt-1 text-[10px] text-ink-500">
-                    <summary className="cursor-pointer">
-                      Tool calls ({m.toolTrace.length})
-                    </summary>
-                    {m.toolTrace.map((t, j) => (
-                      <div key={j} className="ml-2 my-1 font-mono">
-                        <span className="text-leaf-600">{t.name}</span>(
-                        {JSON.stringify(t.input).slice(0, 80)}
-                        {JSON.stringify(t.input).length > 80 ? "…" : ""})
-                      </div>
-                    ))}
-                  </details>
+                  <ToolTracePanel trace={m.toolTrace} />
                 )}
                 {m.usage && (m.usage.inputTokens > 0 || m.usage.outputTokens > 0) && (
-                  <div className="mt-1 text-[10px] text-ink-400" title="Estimated cost — see pricing.ts">
+                  <div className="mt-1 text-xs text-ink-400" title="Estimated cost — see pricing.ts">
                     {fmtTokens(m.usage.inputTokens)} in · {fmtTokens(m.usage.outputTokens)} out
                     {(() => {
                       const c = formatCost(estimateCost(m.usage));
@@ -1052,7 +1533,9 @@ export default function Chatbot() {
             )}
             {busy && (streaming == null || streaming.length === 0) && (
               <div className="mr-6 flex items-center justify-between gap-2 rounded bg-ink-300/10 p-2 text-sm text-ink-500">
-                <span className="inline-block animate-pulse">Thinking…</span>
+                <span className="inline-block animate-pulse">
+                  {toolActivity ? `⚙ ${toolActivity}…` : "Thinking…"}
+                </span>
                 <button
                   type="button"
                   onClick={stopChat}
@@ -1068,6 +1551,76 @@ export default function Chatbot() {
             )}
           </div>
 
+          {(pendingProposal || undoSnapshot) && (
+            <div className="flex flex-wrap items-center gap-1 border-t border-ink-200 px-2 py-1 text-xs">
+              {pendingProposal && (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-ink-600" title={pendingProposal.label}>
+                    💡 {pendingProposal.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Guard: the proposed fixture may have been removed since
+                      // (custom fixtures are user-clearable).
+                      const fid = pendingProposal.patch.fixtureId;
+                      if (fid && !allFixtures[fid]) {
+                        setError(`Proposed fixture ${fid} no longer exists.`);
+                        setPendingProposal(null);
+                        return;
+                      }
+                      setUndoSnapshot(inputs); // applying is also undoable
+                      setUndoSummary(pendingProposal.label);
+                      setInputs(pendingProposal.patch);
+                      setPendingProposal(null);
+                    }}
+                    className="rounded border border-leaf-500/50 bg-leaf-50 px-2 py-0.5 font-medium text-leaf-700 hover:bg-leaf-500/20"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingProposal(null)}
+                    className="rounded border border-ink-300 px-2 py-0.5 text-ink-500 hover:bg-ink-300/20"
+                  >
+                    Dismiss
+                  </button>
+                </>
+              )}
+              {undoSnapshot && !pendingProposal && (
+                <>
+                  <span
+                    className="min-w-0 flex-1 truncate text-ink-600"
+                    title={undoSummary ?? "Sage changed the scenario"}
+                  >
+                    ✓ {undoSummary ?? "Sage changed the scenario"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputs(undoSnapshot);
+                      setUndoSnapshot(null);
+                      setUndoSummary(null);
+                    }}
+                    className="rounded border border-ink-300 px-2 py-0.5 font-medium text-ink-600 hover:bg-warn-500/10 hover:text-warn-600"
+                    title="Restore all scenario inputs to before Sage's last change"
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUndoSnapshot(null);
+                      setUndoSummary(null);
+                    }}
+                    className="rounded border border-ink-300 px-2 py-0.5 text-ink-500 hover:bg-ink-300/20"
+                  >
+                    Keep
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div
             className="border-t border-ink-200 p-2"
             onDragOver={(e) => {
@@ -1092,7 +1645,7 @@ export default function Chatbot() {
                 🔬 {auditing ? "Auditing…" : "Run full audit"}
               </button>
               {auditing && (
-                <span className="flex flex-wrap items-center gap-1 text-[10px] text-ink-500">
+                <span className="flex flex-wrap items-center gap-1 text-xs text-ink-500">
                   {AUDIT_PASSES.map((p) => (
                     <span
                       key={p.key}
@@ -1111,7 +1664,7 @@ export default function Chatbot() {
                 <button
                   type="button"
                   onClick={stopAudit}
-                  className="ml-auto rounded border border-ink-300 px-2 py-0.5 text-[10px] font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
+                  className="ml-auto rounded border border-ink-300 px-2 py-0.5 text-xs font-medium text-ink-600 transition hover:border-warn-500/50 hover:bg-warn-500/10 hover:text-warn-600"
                   title="Stop the audit"
                 >
                   Stop
@@ -1119,7 +1672,7 @@ export default function Chatbot() {
               )}
             </div>
             {unsupportedAttachmentWarning && (
-              <div className="mb-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-[10.5px] text-warn-500">
+              <div className="mb-2 rounded border border-warn-500/40 bg-warn-500/10 p-2 text-xs text-warn-500">
                 ⚠ {unsupportedAttachmentWarning}
               </div>
             )}
@@ -1128,7 +1681,7 @@ export default function Chatbot() {
                 {attachments.map((a, i) => (
                   <span
                     key={i}
-                    className="inline-flex items-center gap-1 rounded-md border border-leaf-500/30 bg-leaf-50 px-2 py-0.5 text-[10px] text-leaf-700"
+                    className="inline-flex items-center gap-1 rounded-md border border-leaf-500/30 bg-leaf-50 px-2 py-0.5 text-xs text-leaf-700"
                   >
                     📎 {a.name.length > 28 ? a.name.slice(0, 26) + "…" : a.name}
                     <button
@@ -1181,6 +1734,7 @@ export default function Chatbot() {
             </div>
           </div>
         </div>
+        </>
       )}
     </>
   );

@@ -39,7 +39,39 @@ describe("readAnthropicStream", () => {
     expect(turn.content).toEqual([{ type: "text", text: "Hello world" }]);
     expect(turn.stop_reason).toBe("end_turn");
     // input from message_start, output is the FINAL message_delta value (not summed).
-    expect(turn.usage).toEqual({ input_tokens: 50, output_tokens: 8 });
+    // Cache counts default to 0 when the stream reports no prompt-cache usage.
+    expect(turn.usage).toEqual({
+      input_tokens: 50,
+      output_tokens: 8,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    });
+  });
+
+  it("drops empty text preamble block when model leads with a tool call (no text deltas)", async () => {
+    // Anthropic sometimes emits a text block at index 0 then immediately pivots to
+    // a tool_use block, leaving the text block with text:"". The stream parser must
+    // discard these so the caller never pushes { type:"text", text:"" } into the
+    // message history — Anthropic rejects that on the next roundtrip with 400
+    // "text content blocks must be non-empty".
+    const sse =
+      line({ type: "message_start", message: { usage: { input_tokens: 30, output_tokens: 2 } } }) +
+      line({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }) +
+      line({ type: "content_block_stop", index: 0 }) +
+      line({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_2", name: "set_scenario" } }) +
+      line({ type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"patches":{"greenhouseLengthFt":120}}' } }) +
+      line({ type: "content_block_stop", index: 1 }) +
+      line({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 12 } }) +
+      line({ type: "message_stop" });
+
+    const turn = await readAnthropicStream(sseResponse(sse), () => {});
+
+    expect(turn.stop_reason).toBe("tool_use");
+    // Empty text block must not appear in content — it would cause a 400 on re-send.
+    expect(turn.content.some((b) => b.type === "text" && (b.text ?? "").length === 0)).toBe(false);
+    expect(turn.content).toEqual([
+      { type: "tool_use", id: "toolu_2", name: "set_scenario", input: { patches: { greenhouseLengthFt: 120 } } },
+    ]);
   });
 
   it("assembles a tool_use block from streamed partial_json", async () => {

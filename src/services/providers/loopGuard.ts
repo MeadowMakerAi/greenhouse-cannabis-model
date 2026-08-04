@@ -1,0 +1,41 @@
+/**
+ * Non-converging tool-loop detector. With the roundtrip ceiling raised to 25
+ * (a runaway backstop, not a budget), a model that keeps issuing the SAME tool
+ * call with the SAME input — set_scenario ↔ assess forever — would otherwise
+ * burn the whole ceiling. This catches that early and lets the provider force a
+ * final answer, so the high ceiling only ever helps real deep tasks.
+ *
+ * A legitimate flow never re-issues a byte-identical call several times (even
+ * repeated reads carry different intent / different args as state changes), so
+ * the default limit of 4 is safe against false positives.
+ */
+export function makeToolLoopGuard(limit = 4) {
+  const counts = new Map<string, number>();
+  return {
+    /**
+     * Record one roundtrip's tool calls. Returns true once any identical
+     * (name + input) call has been seen `limit` times across the turn —
+     * the signal to stop looping and force a final answer.
+     */
+    record(calls: { name: string; input: unknown }[]): boolean {
+      let looping = false;
+      for (const c of calls) {
+        // A repeating loop reproduces byte-identical calls, so plain stringify
+        // is a sufficient signature; unserializable input degrades to name-only.
+        let inputSig: string;
+        try {
+          inputSig = JSON.stringify(c.input);
+        } catch {
+          inputSig = "";
+        }
+        // Space-delimit name from input; tool names are bare identifiers with
+        // no spaces, so "name input" can't collide across distinct calls.
+        const sig = c.name + " " + inputSig;
+        const n = (counts.get(sig) ?? 0) + 1;
+        counts.set(sig, n);
+        if (n >= limit) looping = true;
+      }
+      return looping;
+    },
+  };
+}

@@ -14,7 +14,7 @@
       for the provider the user selected.
 
       connect-src   — fetch / WebSocket targets (Anthropic + Google Gemini +
-                      OpenAI + xAI (Grok) + OpenRouter + Groq + local Ollama + weather
+                      OpenAI + OpenRouter + Groq + local Ollama + weather
                       + soil (SoilGrids/ISRIC) services + the dev server origin)
       script-src    — JS sources (self + the Vite dev server inline scripts
                       via 'unsafe-inline'; tighten further once a backend
@@ -33,7 +33,7 @@
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self';
-               connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com https://api.x.ai https://openrouter.ai https://api.groq.com http://localhost:11434 http://127.0.0.1:11434 https://power.larc.nasa.gov https://api.open-meteo.com https://archive-api.open-meteo.com https://api.weather.gov https://rest.isric.org https://*.supabase.co wss://*.supabase.co ws://localhost:* ws://127.0.0.1:*;
+               connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com https://openrouter.ai https://api.groq.com http://localhost:11434 http://127.0.0.1:11434 https://power.larc.nasa.gov https://api.open-meteo.com https://archive-api.open-meteo.com https://api.weather.gov https://rest.isric.org https://*.supabase.co wss://*.supabase.co ws://localhost:* ws://127.0.0.1:*;
                script-src 'self' 'unsafe-inline' 'unsafe-eval';
                style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
                font-src 'self' https://fonts.gstatic.com data:;

@@ -100,7 +100,7 @@ export default function Greenhouse3DHud({
             <div className="font-mono">{inputs.longitude.toFixed(4)}°</div>
           </div>
           <div>
-            <div className="text-ink-500">DOY</div>
+            <div className="cursor-help text-ink-500" title="Day of year — the calendar day counted 1–365, used to place the sun and season.">DOY</div>
             <div className="font-mono">{sim.dayOfYear}</div>
           </div>
           <div>
@@ -167,12 +167,12 @@ export default function Greenhouse3DHud({
         </div>
         <div className="grid grid-cols-3 gap-3">
           <Stat label="Temp" value={snapshot.outdoorTempF.toFixed(1)} unit="°F" />
-          <Stat label="RH" value={snapshot.outdoorRH.toFixed(0)} unit="%" />
-          <Stat label="VPD" value={snapshot.outdoorVPD.toFixed(2)} unit="kPa" />
+          <Stat label="RH" value={snapshot.outdoorRH.toFixed(0)} unit="%" hint="Relative humidity — how full of moisture the air is, as a % of the most it could hold at this temperature." />
+          <Stat label="VPD" value={snapshot.outdoorVPD.toFixed(2)} unit="kPa" hint="Vapor Pressure Deficit — how 'thirsty' the air is, which sets how fast plants transpire. Flower target is roughly 1.0–1.3 kPa." />
         </div>
         <div className="mt-2 grid grid-cols-2 gap-3 border-t border-ink-300/30 pt-2">
-          <Stat label="Outdoor PPFD" value={snapshot.outdoorPPFD.toFixed(0)} unit="µmol/m²/s" small />
-          <Stat label="Dew point" value={snapshot.outdoorDewPointF.toFixed(0)} unit="°F" small />
+          <Stat label="Outdoor PPFD" value={snapshot.outdoorPPFD.toFixed(0)} unit="µmol/m²/s" small hint="How much usable grow-light is hitting the canopy right now (photosynthetic photon flux)." />
+          <Stat label="Dew point" value={snapshot.outdoorDewPointF.toFixed(0)} unit="°F" small hint="Temperature at which moisture condenses on surfaces. When it climbs above ~68°F, evaporative (wet-wall) cooling stops working — the humid-NY summer problem." />
         </div>
       </div>
 
@@ -189,8 +189,8 @@ export default function Greenhouse3DHud({
         </div>
         <div className="grid grid-cols-3 gap-2">
           <Stat label="Temp" value={snapshot.indoorTempF.toFixed(1)} unit="°F" />
-          <Stat label="RH" value={snapshot.indoorRH.toFixed(0)} unit="%" />
-          <Stat label="VPD" value={snapshot.indoorVPD.toFixed(2)} unit="kPa" highlight />
+          <Stat label="RH" value={snapshot.indoorRH.toFixed(0)} unit="%" hint="Relative humidity — how full of moisture the air is, as a % of the most it could hold at this temperature." />
+          <Stat label="VPD" value={snapshot.indoorVPD.toFixed(2)} unit="kPa" highlight hint="Vapor Pressure Deficit — how 'thirsty' the air is, which sets how fast plants transpire. Flower target is roughly 1.0–1.3 kPa." />
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2 border-t border-ink-300/30 pt-2">
           <div className="min-w-0">
@@ -279,7 +279,7 @@ export default function Greenhouse3DHud({
         </div>
         <div className="mt-2 border-t border-ink-300/30 pt-2">
           <div className="flex items-baseline justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-ink-500">Canopy PPFD</span>
+            <span className="cursor-help text-[10px] uppercase tracking-wider text-ink-500" title="Total grow-light intensity reaching the canopy — sunlight plus supplemental fixtures (µmol/m²/s).">Canopy PPFD</span>
             <span className="font-mono text-sm font-semibold tabular-nums text-ink-900">
               {snapshot.canopyTotalPPFD.toFixed(0)}
               <span className="ml-1 text-[10px] font-normal text-ink-500">µmol/m²/s</span>
@@ -309,16 +309,25 @@ function Stat({
   unit,
   small,
   highlight,
+  hint,
 }: {
   label: string;
   value: string;
   unit: string;
   small?: boolean;
   highlight?: boolean;
+  /** Plain-language explanation shown on hover — keeps the HUD compact
+   *  while making the acronym readable to a first-time user. */
+  hint?: string;
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-ink-500">{label}</div>
+      <div
+        className={`text-[10px] uppercase tracking-wider text-ink-500${hint ? " cursor-help" : ""}`}
+        title={hint}
+      >
+        {label}
+      </div>
       <div className={`${small ? "text-xs" : "text-base"} font-mono font-semibold tabular-nums ${highlight ? "text-leaf-600" : "text-ink-900"}`}>
         {value}
         <span className="ml-0.5 text-[9px] font-normal text-ink-500">{unit}</span>
