@@ -59,6 +59,65 @@ type=LED, voltage range as stated. PPE auto-derives (≈2.9) — Sage must not
 state a PPE the datasheet doesn't imply. **Must flag:** greenhouse itself still
 at defaults (dimensions, glazing, location) via `assess_completeness`.
 
+## Case 4 — benched proforma with rolling benches (the Huifa anchor)
+
+**Input (paste into chat):**
+
+> Huifa 90 x 120 greenhouse proforma. Gutter-connect, 12' gutters, 16' peak,
+> double-poly. 36 rolling benches, 5' x 40' each, ebb-and-flow, on a single
+> movable aisle system. Gavita 1700e LED throughout with a Growlink controller.
+> Montgomery NY.
+
+**Expected `set_scenario` patch:**
+
+| field | value |
+|---|---|
+| greenhouseLengthFt | 120 |
+| greenhouseWidthFt | 90 |
+| eaveHeightFt | 12 |
+| peakHeightFt | 16 |
+| layoutMode | "benched" |
+| benchType | "rolling" |
+| benchWidthFt | 5 |
+| benchLengthFt | 40 |
+| benchAisleWidthFt | (from spec if stated, else default 3) |
+| lightingControllerCapable | true (Growlink controller + dimmable Gavita) |
+
+**Must NOT set** `canopyAreaSqFt` — it derives from the benches. **Must flag:**
+run `assess_completeness` and reconcile the stated **36 benches** against what
+actually fits the 120×90 footprint at 5×40 + aisles; if the solver's bench
+count differs from 36, say so (spec may assume tighter aisles or multi-bay).
+Canopy = bench tops (36 × 5 × 40 = 7,200 ft² if all fit). Dynamic trim is ON
+(dimmable + controller) — note the supplemental lights dim to fill the gap.
+
+## Case 5 — fixed benches, aisle per row
+
+**Input:**
+
+> 30x96 poly house, 8ft sidewall. Rolling? No — fixed rock-wool benches, 4ft
+> wide, 3ft aisle between every bench, running the length of the house.
+
+**Expected:** `layoutMode: "benched"`, `benchType: "fixed"`, `benchWidthFt: 4`,
+`benchAisleWidthFt: 3`, `benchOrientation: "length-run"`. **Must flag:** fixed
+benches burn an aisle between every row — quote the canopy a **rolling** system
+would recover in the same footprint (one shared aisle), since that's the cheap
+density win. Peak height not stated → ask, don't assume.
+
+## Case 6 — open floor, non-dimmable HPS on a timer
+
+**Input:**
+
+> 40x100 house, plants straight on the floor in fabric pots, no benches. 600W
+> DE HPS on a mechanical time clock, 208V. No dimming.
+
+**Expected:** dims applied (100/40); `layoutMode` stays "open" (no benches →
+canopy is the typed/derived-from-floor value, NOT bench-derived); fixture = a
+DE HPS; `lightingControllerCapable: false`. **Must flag:** HPS isn't dimmable
+AND it's on a dumb timer → **no dynamic trim**, lights run full power the whole
+photoperiod and waste bright-hour surplus as heat. Quote what dimmable LEDs +
+a controller would save (energy + cooling). This is the "why is my electric so
+high" case.
+
 ---
 
 Add a case whenever a real ingestion fails: paste the exact input, write the

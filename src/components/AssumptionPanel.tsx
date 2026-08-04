@@ -16,6 +16,8 @@ export default function AssumptionPanel() {
   const allFixtures = useAllFixtures();
   const transmission = netCanopyTransmissionPct(inputs.envelope);
   const benched = inputs.layoutMode === "benched";
+  const activeFixtureDimmable = allFixtures[inputs.fixtureId]?.dimmable ?? true;
+  const lightsCanDim = activeFixtureDimmable && inputs.lightingControllerCapable;
   // Live bench solve for the derived summary + misfit warning. Pure + cheap;
   // the same solver derives canopy in setInputs.
   const benchSolve = benched
@@ -560,6 +562,24 @@ export default function AssumptionPanel() {
           unit="$/kWh"
           hint="All-in delivered rate including demand charges, if known."
         />
+        <ToggleField
+          label="Dimming controller installed"
+          value={inputs.lightingControllerCapable}
+          onChange={(b) => setInputs({ lightingControllerCapable: b })}
+          hint={
+            activeFixtureDimmable
+              ? "This fixture is dimmable. With a controller, the lights dynamically trim as the sun fills the DLI/PPFD gap — that's the supplemental-lighting saving."
+              : "This fixture is NOT dimmable — it runs full power on schedule regardless of this toggle. Dimmable LEDs + a controller would trim the solar surplus."
+          }
+        />
+        <div className="col-span-2 rounded-lg border border-ink-200 bg-ink-50 p-2 text-xs">
+          <span className="text-ink-500">Dynamic trim: </span>
+          <span className={lightsCanDim ? "font-medium text-leaf-600" : "font-medium text-amber-700"}>
+            {lightsCanDim
+              ? "ON — lights dim to fill the DLI/PPFD gap, saving energy in bright months"
+              : "OFF — lights run full power whenever on; bright-hour surplus is wasted as heat"}
+          </span>
+        </div>
       </FieldGroup>
 
       <CustomFixtureForm />

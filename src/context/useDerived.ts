@@ -362,12 +362,25 @@ export function useDerived() {
       };
     });
 
-    const annualKwh = months.reduce((a, m) => a + m.monthlyKwh + m.underCanopyKwhMonth, 0);
-    const annualCost = months.reduce(
-      (a, m) => a + m.monthlyCostUSD + m.underCanopyMonthlyCost,
-      0,
-    );
     const peakInstalledKW = Math.max(...months.map((m) => m.installedKW));
+    // Dynamic-trim capability governs the annual overhead-lighting energy:
+    //  · dimmable fixture WITH a controller → dims down as the sun fills the
+    //    DLI/PPFD gap, so energy is the sum of the per-month gap-derated draw.
+    //  · non-dimmable (most HPS) OR no controller → can't trim, runs at full
+    //    installed power on the photoperiod schedule year-round; bright-month
+    //    surplus is wasted as heat. Same lever the live sim uses
+    //    (useLiveDynamics `dimWhenBright`). Default LED is dimmable → unchanged.
+    const canDimLights = fixture.dimmable && inputs.lightingControllerCapable;
+    const overheadAnnualKwh = canDimLights
+      ? months.reduce((a, m) => a + m.monthlyKwh, 0)
+      : peakInstalledKW * inputs.flowerPhotoperiodHours * 365;
+    const overheadAnnualCost = canDimLights
+      ? months.reduce((a, m) => a + m.monthlyCostUSD, 0)
+      : overheadAnnualKwh * inputs.electricityRatePerKwh;
+    const annualKwh =
+      overheadAnnualKwh + months.reduce((a, m) => a + m.underCanopyKwhMonth, 0);
+    const annualCost =
+      overheadAnnualCost + months.reduce((a, m) => a + m.underCanopyMonthlyCost, 0);
     // Peak lighting kW — overhead + under-canopy, since both bars run
     // in the same flower window. Codex P1: dropping under-canopy
     // under-bills demand by ~underCanopyKW × $/kW for any scenario
@@ -554,6 +567,13 @@ export function useDerived() {
         "HPS adds large radiant heat directly to the canopy. Cooling/dehumidification penalty in summer can outweigh lower capex.",
       );
     }
+    if (!canDimLights) {
+      warnings.global.push(
+        fixture.dimmable
+          ? "No dimming controller selected — lights can't trim as the sun fills the gap, so they run full power on the photoperiod schedule and waste bright-hour surplus as heat. Add a dimming controller to capture the dynamic-lighting savings."
+          : `${fixture.type} fixtures aren't dimmable — they run full power whenever on and can't trim solar surplus (wasted as heat). Dimmable LEDs plus a controller would dynamically fill the DLI/PPFD gap and cut annual energy.`,
+      );
+    }
     if (
       inputs.blackoutEnabled &&
       transmission > 0.6 &&
@@ -648,6 +668,8 @@ export function useDerived() {
       annualPMAvg,
       annualDLIMolM2,
       benchLayout,
+      canDimLights,
+      overheadAnnualKwh,
     };
   }, [inputs, climate, allFixtures]);
 }
