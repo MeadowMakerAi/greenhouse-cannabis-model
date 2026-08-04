@@ -59,6 +59,21 @@ const LED: FixtureSpec = {
   source: "preset",
 };
 
+const HPS: FixtureSpec = {
+  id: "testHps",
+  label: "Test DE HPS 1000",
+  type: "HPS",
+  ppe: 1.7,
+  opticalUtilization: 0.85,
+  dimmable: false,
+  radiantFraction: 0.5,
+  convectiveFraction: 0.5,
+  wattsPerFixture: 1000,
+  minVoltage: 208,
+  maxVoltage: 277,
+  source: "preset",
+};
+
 describe("assessCompleteness", () => {
   it("reports an all-default scenario as mostly missing", () => {
     const r = assessCompleteness(ALL_DEFAULT, DEFAULTS);
@@ -111,6 +126,47 @@ describe("assessCompleteness", () => {
       DEFAULTS,
     );
     expect(r.conflicts).toHaveLength(0);
+  });
+
+  it("flags benched layout whose benches don't fit the house", () => {
+    const r = assessCompleteness(
+      { ...ALL_DEFAULT, layoutMode: "benched", benchFits: false },
+      DEFAULTS,
+    );
+    expect(r.conflicts.join(" ")).toMatch(/don't fit/);
+  });
+
+  it("reports a fitting benched layout in have[] with the bench count", () => {
+    const r = assessCompleteness(
+      { ...ALL_DEFAULT, layoutMode: "benched", benchFits: true, benchCount: 6 },
+      DEFAULTS,
+    );
+    expect(r.have.join(" ")).toMatch(/bench layout \(6 benches/);
+    expect(r.conflicts.join(" ")).not.toMatch(/don't fit/);
+  });
+
+  it("flags a non-dimmable fixture — supplemental lights can't trim", () => {
+    const r = assessCompleteness(
+      { ...ALL_DEFAULT, fixtureDimmable: false },
+      DEFAULTS,
+    );
+    expect(r.conflicts.join(" ")).toMatch(/isn't dimmable/);
+  });
+
+  it("flags dimmable fixtures with no controller to trim them", () => {
+    const r = assessCompleteness(
+      { ...ALL_DEFAULT, fixtureDimmable: true, lightingControllerCapable: false },
+      DEFAULTS,
+    );
+    expect(r.conflicts.join(" ")).toMatch(/no dimming controller/);
+  });
+
+  it("does not flag dimmability when a dimmable fixture has a controller", () => {
+    const r = assessCompleteness(
+      { ...ALL_DEFAULT, fixtureDimmable: true, lightingControllerCapable: true },
+      DEFAULTS,
+    );
+    expect(r.conflicts.join(" ")).not.toMatch(/dimmable|controller/);
   });
 });
 
@@ -175,6 +231,18 @@ describe("recommendLighting", () => {
     expect(
       recommendLighting({ ...args, targetPPFD: 1000, canopyAreaSqFt: 0 }),
     ).toHaveProperty("error");
+  });
+
+  it("carries each fixture's dimmable flag into its option (Sage flags non-trimming hardware)", () => {
+    const r = recommendLighting({
+      ...args,
+      targetPPFD: 1000,
+      fixtures: [LED, HPS],
+    });
+    if ("error" in r) throw new Error(r.error);
+    const byId = Object.fromEntries(r.options.map((o) => [o.fixtureId, o]));
+    expect(byId.testLed.dimmable).toBe(true);
+    expect(byId.testHps.dimmable).toBe(false);
   });
 });
 

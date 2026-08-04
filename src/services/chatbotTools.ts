@@ -38,7 +38,7 @@ export const CHATBOT_TOOLS: ToolDefinition[] = [
   {
     name: "set_scenario",
     description:
-      "Update one or more scenario inputs. Provide a JSON object of key/value pairs to patch. Examples of keys: canopyAreaSqFt, greenhouseFloorAreaSqFt, latitude, longitude, fixtureId, electricityRatePerKwh, co2Enabled, co2SetpointPpm, ventilationMode, shadeEnabled, indoorTargetDryBulbF, targetNightTempF, cultivationPhase, cyclesPerYear, thermalScreenEnabled, useIntegratedHeatPump.",
+      "Update one or more scenario inputs. Provide a JSON object of key/value pairs to patch. Examples of keys: canopyAreaSqFt, greenhouseFloorAreaSqFt, latitude, longitude, fixtureId, electricityRatePerKwh, co2Enabled, co2SetpointPpm, ventilationMode, shadeEnabled, indoorTargetDryBulbF, targetNightTempF, cultivationPhase, cyclesPerYear, thermalScreenEnabled, useIntegratedHeatPump, lightingControllerCapable, layoutMode ('open'|'benched'), benchType ('fixed'|'rolling'), benchWidthFt, benchLengthFt, benchHeightFt, benchAisleWidthFt, benchPerimeterAisleFt, benchOrientation ('length-run'|'width-run'). In 'benched' mode canopyAreaSqFt is DERIVED from the benches — set the bench fields, not canopy.",
     input_schema: {
       type: "object",
       properties: {
@@ -233,6 +233,22 @@ When you see these in the scenario, raise them unprompted:
 - **Yield projection in Aspirational/Elite tier without harvest evidence** — the model flags this; back it up.
 - **Demand charge > 40% of total electric bill** — recommend staggered startup or off-peak operation.
 - **Peak amperage > 90% of service** — utility upgrade required, flag before procurement.
+- **Benched layout where the benches don't fit the house** — canopy can't be derived; the benches/aisles overflow the footprint. Tell them to shrink the bench, aisle, or perimeter, or that the house is too small.
+- **Non-dimmable fixtures (or no controller)** — the lights can't trim as the sun fills the DLI/PPFD gap, so they run full power on schedule and waste bright-hour surplus as heat. Note it every time it applies; dimmable LEDs + a controller is the fix.
+
+## Benches, aisles, and the light grid
+
+Real greenhouses grow on benches, not an abstract canopy rectangle — and it drives both layout and cost. Reason about it:
+
+- **Two layout modes.** \`layoutMode: "open"\` = floor / ground beds; canopy is the number the user typed. \`layoutMode: "benched"\` = canopy is DERIVED from the bench grid (bench tops = canopy). If a spec mentions benches, rolling benches, tables, or trays, set benched mode + the bench dimensions and let canopy derive.
+- **Rolling vs fixed.** Rolling (movable) benches share ONE aisle for the whole block — you roll them apart to open a walk aisle where you need it — so they pack far more canopy into the same floor than fixed benches, which need an aisle between every row. When a grower is canopy-constrained, rolling benches are the cheap density win; quote the canopy gain.
+- **The light grid follows the benches.** Fixtures hang in rows over bench rows; grid spacing is the bench pitch. A bench spec that overflows the house is a real error — surface it (see failure modes).
+
+## Dynamic supplemental lighting — it's SUPPLEMENTAL
+
+Supplemental light exists to top up the sun to the DLI/PPFD target — not to run flat-out. Reason in BOTH units: the DLI target sets the daily total; the PPFD target sets the instantaneous canopy setpoint. As the sun rises through the day the lights should dim to hold the setpoint, going dark when the sun alone clears the target.
+
+That dynamic trim needs BOTH a dimmable fixture AND a controller. Most HPS can't dim; without a controller nothing can. When the lights can't trim, they run full power the whole photoperiod and the bright-month surplus is wasted as heat — worse energy AND worse cooling load. Always note when a fixture/controller can't dim, and quote what dimmable LEDs + a controller would save. This is the single most common "why is my electric so high" answer.
 
 ## Spec ingestion protocol — messy input is the normal case
 
@@ -268,6 +284,8 @@ For greenhouse spec sheets, call \`set_scenario\` with:
 - vent area / motors → \`ventilationCFM\`
 - electrical service → \`serviceVoltagePrimary\` / \`serviceVoltageSecondary\` / \`branchCircuitAmps\`
 - frame / truss spacing → infer \`envelope.structureShadeLossPct\` (5–10%)
+- benches / rolling benches / tables / trays → \`layoutMode: "benched"\` + \`benchType\` (rolling if movable/roll-out, else fixed), \`benchWidthFt\`, \`benchLengthFt\`, \`benchAisleWidthFt\`. Canopy then derives from the bench grid — don't also set canopyAreaSqFt. If the spec gives a bench COUNT, sanity-check it against what fits (\`assess_completeness\` flags a misfit).
+- dimming controller / "dimmable" / lighting controls → \`lightingControllerCapable\`; non-dimmable HPS on a timer means no dynamic trim.
 Floor area, envelope area, volume auto-derive from dims — don't set directly.
 
 For fixture datasheets, call \`add_custom_fixture\` with vendor + model + type + wattsPerFixture (datasheet "input power") + ppf_umol_s + voltage range + notes. PPE auto-derives.
